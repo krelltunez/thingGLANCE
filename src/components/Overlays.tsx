@@ -9,6 +9,7 @@ import { cycleShort, money } from '@/core/money'
 import { loadSamples } from '@/db/demo'
 import { submitPassphrase, syncNow } from '@/sync/manager'
 import { useData } from '@/state/data'
+import { useSync } from '@/state/sync'
 import { updateSettings, useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
 import { markWelcomed } from '@/state/welcome'
@@ -21,6 +22,7 @@ export function PassphraseModal() {
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const sync = useSync()
 
   const submit = async () => {
     if (!value || busy) return
@@ -39,6 +41,11 @@ export function PassphraseModal() {
       </>}
     >
       <form onSubmit={(e) => { e.preventDefault(); void submit() }} className="space-y-4">
+        {sync.keyConflict && (
+          <p className="rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+            The passphrase this device was using does not open what your other GLANCE apps keep on this account. That is why the household roster was empty here, and dayGLANCE could not read tasks sent from here. Enter the one the other apps use; what is on this device is kept and uploaded again under it.
+          </p>
+        )}
         <p className="text-sm leading-relaxed text-dim">
           Your things are encrypted here before they reach GLANCEvault, with a key made from this passphrase. Use the <span className="text-ink">same passphrase as your other GLANCE apps</span> on this account. If this is the account's first app, whatever you enter becomes its passphrase.
         </p>

@@ -21,6 +21,7 @@ Sibling repos sit next to this one (`../lastGLANCE` is the closest model: same s
 - **Other surfaces read `buildSnapshot()`** (`src/core/snapshot.ts`). Bump `SNAPSHOT_VERSION` on a breaking change.
 - **Colours are CSS variables** (`src/index.css`) mapped in `tailwind.config.ts`. Use the semantic names (`bg-panel`, `text-dim`, `text-accent`, `ok` / `warn` / `bad` / `sub`), never raw palette classes, so light and dark stay one set of class names.
 - **Live push is additive.** `src/sync/vaultEventStream.ts` only ever triggers the same drains the polling cadence runs. Never make anything depend on a nudge arriving.
+- **A passphrase is proven against the sibling apps before it is trusted** (`src/sync/keyCheck.ts`). The sync engine only checks a key against the app's own namespace, which is empty when thingGLANCE joins an existing account, so on its own it accepts any passphrase. Never call `engine.ensureRootKey()` on a new passphrase without that check first.
 - **Vault intents are always encrypted.** No plaintext path, send or receive.
 - A config change to the vault connection ends in `window.location.reload()`: the sync package keeps its root key in module state.
 - Release notes contain no em dashes (family rule). Times are Mountain Time (America/Denver).

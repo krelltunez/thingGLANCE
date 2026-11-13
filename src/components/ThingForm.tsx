@@ -10,7 +10,8 @@ import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
-import { Chip, Field, Sheet, cx, num } from './ui'
+import { Chip, Field, Sheet } from './ui'
+import { cx, num } from './kit'
 import { categoryIcon } from './icons'
 
 interface Draft {

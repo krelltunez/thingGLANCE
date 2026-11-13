@@ -3,36 +3,14 @@
 // these tables, local or pulled from the vault, so nothing needs a manual
 // refresh.
 
-import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/client'
-import type { Coverage, DataSet, HorizonEvent, Subscription, Thing, User } from '@/core/types'
+import type { Coverage, DataSet, Subscription, Thing, User } from '@/core/types'
 import { attentionQueue, buildHorizon } from '@/core/horizon'
 import { lifecycle, type Lifecycle } from '@/core/health'
+import { DataContext, type DataValue } from './data'
 import { getMeUserId, getMultiUserEnabled, getUserFilter, multiUserSnapshot, subscribeMultiUser, type UserFilter } from '@/multiuser/settings'
-
-export interface DataValue extends DataSet {
-  ready: boolean
-  users: User[]
-  multiUser: boolean
-  meId: string | null
-  filter: UserFilter
-  // Everything below respects the Mine / Everyone filter.
-  visibleThings: Thing[]
-  activeThings: Thing[]
-  retiredThings: Thing[]
-  visibleSubs: Subscription[]
-  events: HorizonEvent[]
-  queue: HorizonEvent[]
-  life: Map<string, Lifecycle>
-  thingById: Map<string, Thing>
-  subById: Map<string, Subscription>
-  coveragesFor: (thingId: string) => Coverage[]
-  subsFor: (thingId: string) => Subscription[]
-  userName: (id: string | null | undefined) => string | null
-}
-
-const Ctx = createContext<DataValue | null>(null)
 
 const EMPTY: DataSet & { users: User[] } = { things: [], coverages: [], subscriptions: [], decisions: [], users: [] }
 
@@ -108,11 +86,5 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw, mu])
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
-}
-
-export function useData(): DataValue {
-  const v = useContext(Ctx)
-  if (!v) throw new Error('useData outside DataProvider')
-  return v
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

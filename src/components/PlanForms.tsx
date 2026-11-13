@@ -11,7 +11,8 @@ import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
-import { Field, Segmented, Sheet, Toggle, cx, num } from './ui'
+import { Field, Segmented, Sheet, Toggle } from './ui'
+import { cx, num } from './kit'
 
 export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: string }) {
   const d = useData()

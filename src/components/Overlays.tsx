@@ -11,8 +11,10 @@ import { submitPassphrase, syncNow } from '@/sync/manager'
 import { useData } from '@/state/data'
 import { updateSettings, useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
+import { markWelcomed } from '@/state/welcome'
 import { categoryIcon } from './icons'
-import { Field, Sheet, Wordmark, cx, useEscape } from './ui'
+import { Field, Sheet, Wordmark } from './ui'
+import { cx, useEscape } from './kit'
 
 export function PassphraseModal() {
   const ui = useUI()
@@ -132,13 +134,10 @@ export function CommandPalette() {
   )
 }
 
-const WELCOMED_KEY = 'tg_welcomed'
-export const needsWelcome = (): boolean => localStorage.getItem(WELCOMED_KEY) !== '1'
-
 export function Welcome({ onDone }: { onDone: () => void }) {
   const ui = useUI()
   const [busy, setBusy] = useState(false)
-  const finish = () => { localStorage.setItem(WELCOMED_KEY, '1'); onDone() }
+  const finish = () => { markWelcomed(); onDone() }
   const points: { icon: LucideIcon; title: string; body: string }[] = [
     { icon: ShieldCheck, title: 'Warranties and coverage', body: 'Know a warranty is ending while you can still use it.' },
     { icon: Repeat, title: 'Plans and renewals', body: 'See what renews, what it adds up to, and what to cancel first.' },

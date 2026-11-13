@@ -12,8 +12,11 @@ import { forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
-import { Empty, Ring, TBadge, TONES, cx } from '@/components/ui'
-import { DecidedRow, EventRow, LifeBar, ThingAvatar, VerdictChip, useEventActions, verdictTone } from '@/components/parts'
+import { Empty, Ring, TBadge } from '@/components/ui'
+import { TONES, cx } from '@/components/kit'
+import { DecidedRow, EventRow, LifeBar, ThingAvatar, VerdictChip } from '@/components/parts'
+import { verdictTone } from '@/components/kit'
+import { useEventActions } from '@/components/useEventActions'
 
 function Stat({ label, value, sub, i }: { label: string; value: string; sub: string; i: number }) {
   return (

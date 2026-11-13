@@ -112,6 +112,27 @@ await syncNow(A)
 await goto(A, 'Things')
 check('A: edit made on B arrives', await A.getByText('E2E Laptop (renamed)').first().isVisible().catch(() => false))
 
+// ── Live push: a change on A reaches B with nobody pressing sync ────────────
+await goto(A, 'Plans')
+await goto(B, 'Plans')
+const liveB = await B.evaluate(() => window.__glanceVaultSse?.state)
+check('B: event stream is open', liveB === 'open', `state=${liveB}`)
+await A.keyboard.press('Meta+k')
+await A.getByPlaceholder(/Search things and plans/).fill('add a plan')
+await A.keyboard.press('Enter')
+await A.getByLabel('Name', { exact: true }).fill('E2E Live Plan')
+await A.getByLabel(/^Amount/).fill('4.99')
+await A.getByRole('button', { name: 'Add plan' }).click()
+// A pushes 3s after the write; B is nudged, debounces 400ms, then pulls.
+let arrived = false
+for (let i = 0; i < 20 && !arrived; i++) {
+  await B.waitForTimeout(500)
+  arrived = await B.getByRole('button', { name: /E2E Live Plan/ }).first().isVisible().catch(() => false)
+}
+const onA = await A.getByRole('button', { name: /E2E Live Plan/ }).first().isVisible().catch(() => false)
+const diag = await B.evaluate(() => JSON.stringify(window.__glanceVaultSse))
+check('B: change on A arrives on its own (live push)', arrived, arrived ? '' : `visibleOnA=${onA} sse=${diag}`)
+
 // ── Household roster (glance-users) ──────────────────────────────────────────
 const household = async (page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click()

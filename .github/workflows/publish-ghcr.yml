@@ -13,12 +13,14 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # The arm64 half of the build runs under QEMU, and npm ci under emulation
-    # can deadlock with no output (lastGLANCE's v2.6.0 release run sat for five
-    # and a half hours). A healthy run takes a few minutes, so half an hour
-    # turns a hang into a visible failure. Recover with "Re-run all jobs" on the
-    # failed run, which keeps the release event and so the version tags; a
-    # manual run from main only publishes the :main and :sha-* tags.
+    # The Dockerfile's build stage is pinned to the runner's own platform, so
+    # npm ci and the Vite build run once, natively, and only the nginx layer
+    # differs per architecture. Keep it that way: npm ci under QEMU can
+    # deadlock with no output (lastGLANCE's v2.6.0 release run sat for five and
+    # a half hours). A healthy run takes a few minutes, so half an hour turns a
+    # hang into a visible failure. Recover with "Re-run all jobs" on the failed
+    # run, which keeps the release event and so the version tags; a manual run
+    # from main only publishes the :main and :sha-* tags.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -28,6 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Nothing in the runtime stage executes today (it only copies files), so
+      # this is a guard for the day a RUN is added there.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

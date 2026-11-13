@@ -25,7 +25,7 @@ Sizes are relative: **S** is days, **M** is a week or two, **L** is several week
 Being vault-only removes a large share of lastGLANCE's surface area. None of this needs building:
 
 - The WebDAV proxy sidecar: `server.js`, `api/`, the `/api/` nginx location, the Vite dev proxy plugin, and the SSRF test vectors. The Docker image can be nginx and static files alone.
-- iCloud: the plugin, both containers, the entitlements, the first-run modal.
+- iCloud: the plugin, both containers, the entitlements, the first-run modal. (It could return later as a free, zero-setup option if iOS users ask for it, but the family's direction is toward GLANCEvault Pro, not back to iCloud.)
 - Direct Access: the Android SAF folder sync and the iOS file bookmarks.
 - The file-tier sync engine and everything that reconciles it with the vault.
 - The custom OkHttp plugin on Android. It exists because CapacitorHttp rejects PROPFIND and MKCOL; the vault only uses ordinary verbs, so `CapacitorHttp` is enough.
@@ -75,54 +75,57 @@ Done when: the image runs on your server, two of your devices sync through your 
 
 ## Phase 0.5: household members and users (L, in stages)
 
-The spec is [household-members.md](household-members.md). Its last section compares the spec with the roster code as it stands and is the source for the decisions below. The spec asks not to interrupt current work, so only stage A has any urgency; the rest can follow the UI feedback round.
+> Status, 2026-11-13: stage A is done, along with the parts of B, C and D that the two core goals needed (any number of members, and a user attaching themselves as one). [As built](household-members.md#as-built-2026-11-13) has the detail and the reasons. What is left in each stage is marked below.
+
+The spec is [household-members.md](household-members.md). It was written without access to the code, so it is followed for its shape, not to the letter. Its findings section compares it with the roster code and is the source for the decisions below.
 
 The idea in one line: a **member** is anyone the household tracks things for, a **user** is a member who runs the app on a device, and every thing and plan says whose it is, who handles it and who can see it.
 
-### Settle first
+### Settled
 
-Two design points the comparison turned up. Both are recommendations waiting for a yes.
+- **The `glance-users` row stays `{ id, name, updatedAt }`.** The sibling apps write a member back as exactly that, so any new field placed on the row is erased the next time someone renames a person in dayGLANCE or lastGLANCE.
+- **A user is a member with a device row.** "This is me" writes one `device` entity per device into thingGLANCE's own vault app. No list on the member, no credential ids, no server change.
+- **The remaining shared fields wait.** Colour, relationship and `mergedInto` go in a companion record keyed by member id when the shared package is built. That is also what lets a merged member keep its pointer, which a soft-deleted row cannot hold.
 
-- **Keep `glance-users` as it is and add a companion record.** The sibling apps write a member back as `{ id, name, updatedAt }` and nothing else, so any new field placed on that row is erased the next time someone renames a person in dayGLANCE or lastGLANCE. The new core fields (colour, relationship, the device link, `mergedInto`) go in a companion record keyed by the same member id, in a vault app the household package owns. It also gives a merged member somewhere to keep its `mergedInto` pointer, which a soft-deleted row cannot hold.
-- **Link a member to devices by `deviceId`, not credential id.** A self-hosted device is never told its credential id; every device already knows its device id, and it survives re-enrollment.
-
-### Stage A: the wire shape (S). Before much real data.
+### Stage A: the wire shape (S). Done.
 
 - `Thing`: `ownerIds[]` becomes `ownerMemberId` (null means Household); add `responsibleMemberId`, `visibility`, `ownershipHistory`.
 - `Subscription`: `payerId` becomes `payerMemberId`, `thingId` becomes `coversThingIds[]`; add `coversMemberIds`, `responsibleMemberId`, `visibility`.
 - `User` becomes `Member` in `src/core/types.ts`. `Coverage` and `Decision` do not change.
 - A reader for v0.1 rows, in the Dexie upgrade and in the remote-apply path, so anything loaded before this lands is carried forward: one owner maps across, none or several becomes Household, `thingId` becomes a one-item list.
-- No new UI. The existing owner and payer pickers keep working against the new fields.
+- The forms gained the matching fields: one owner or the household, who deals with it, private, and for plans several things and the people covered.
 
-Trying the app with real data before stage A is fine. The reader exists for exactly that, and it is one household's vault. What to avoid is months of data in the old shape on several devices.
+Real data can go in now. The reader stays for good, so a backup or a device still on v0.1 is carried forward whenever it turns up.
 
-### Stage B: `@glance-apps/household` (M)
+### Stage B: `@glance-apps/household` (M). Not started; the logic it will hold exists.
+
+The rules are already pure, in `src/core/household.ts`. Extraction waits until a second app wants them, so the package's API is shaped by two consumers, not guessed from one.
 
 - A new repo beside `glance-sync` and `glance-billing`. Surface as the spec suggests: list and get, create, update, link and unlink a device, merge, `resolve(id)` that follows `mergedInto`, and a change subscription.
 - Storage and transport are injected, so the package runs with no vault at all (local-only mode), in the web app, and later in a headless refresh or Electron main. No React, no Dexie inside it.
 - It owns both records: the legacy `glance-users` row and the companion. `src/multiuser/rosterVault.ts` here shrinks to an adapter.
 - Tests include a "legacy writer" that plays an old sibling app renaming a member, proving the companion fields survive.
 
-### Stage C: the roster in the app (M)
+### Stage C: the roster in the app (M). Partly done.
 
-- Settings → Household: add a member by name alone, "this is me" on a device (writes the link), unlink a device, remove a member (blocked while they own, pay for or are responsible for anything, with a reassign prompt first).
-- Hand-me-down: change owner on a thing, keep everything else, append to `ownershipHistory`.
+- Done. Settings → Household: add a member by name alone, "This is me" and "Not me" on a device, detach another device, and removal blocked (with the reason) while the member owns, pays for or is responsible for anything. Still to do: the reassign prompt that clears the block in one step.
+- Done. Hand-me-down: change owner on a thing, keep everything else, append to `ownershipHistory`. The detail drawer shows who had it before.
 - Merge, with a suggestion when two members share a name and a warning that the other GLANCE apps will not follow the merge until they adopt the package.
-- Pickers: owner lists every member plus Household; responsible lists users only.
+- Done. Pickers: owner lists every member plus Household; responsible lists users only.
 - Onboarding: "Found your household: 4 people. Use them?" on first sync when a roster exists; otherwise add yourself and anyone else, skippable.
 - Roster export and import as a small file, for local-only households.
 
-### Stage D: views (M)
+### Stage D: views (M). Mostly to do.
 
-- A member filter on Glance, Horizon, Things and Plans. It replaces the Mine / Everyone switch, and the device-local "multi-user" toggle goes away: owners show whenever the roster has more than one member.
+- A member filter on Glance, Horizon, Things and Plans. It replaces the Mine / Everyone switch, and the device-local "multi-user" toggle goes away: owners show whenever the roster has more than one member. The filter logic already takes any member (`concernsThing`, `concernsPlan`); only the switch is still Mine / Everyone.
 - Upgrade fund per member plus the household total. Plan totals for the household and "what I pay".
-- Private items hidden on every device that is not the owner's, with copy that says plainly this is hiding, not encryption.
+- Done. Private items hidden on every device that is not the owner's, with copy that says plainly this is hiding, not encryption.
 - A "needs someone" prompt for items with no responsible user.
 
 ### Stage E: who gets told (S, lands with the reminder logic in Phase 1)
 
 - The decision queue and reminders take the device's member as an input: responsible user only, everyone for unassigned items, owner's devices only for private ones. This lives in `src/core` with the rest of the reminder rules.
-- `buildSnapshot()` is built for the device's member, so widgets, the tray, the launcher and MCP never show a private item on someone else's device. That is a `SNAPSHOT_VERSION` bump.
+- Done. `buildSnapshot()` now requires the device's member (`viewerId`) and leaves other members' private items out, so widgets, the tray, the launcher and MCP cannot show one. Its output shape did not change, so `SNAPSHOT_VERSION` is still 1.
 
 Done when: a thing owned by a member with no device shows up on two users' devices with the right one being asked about it; a hand-me-down keeps its history; a merge survives a late-syncing device; a rename from an old sibling app loses nothing; and all of it works with sync switched off. `npm run test:e2e` grows to cover the synced cases.
 
@@ -273,7 +276,7 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 | Repo | Change | Needed by |
 | --- | --- | --- |
 | `glance-vault` | Add `thingglance` to the default allowed apps; roll to Pro | Phase 0 |
-| `glance-vault` | Allow the household companion app (for example `glance-household`), ideally in the same release | Phase 0.5, stage B |
+| `glance-vault` | Allow the household companion app (for example `glance-household`) | Phase 0.5, stage B, when the companion record is built |
 | `glance-household` (new) | The `@glance-apps/household` package | Phase 0.5, stage B |
 | `lastGLANCE`, `day-planner`, `lifeGLANCE` | Adopt the household package so merges and the richer member record carry across | Later, separately |
 | `glance-intents` | Add `THINGGLANCE` to `SOURCE_APPS` (the schema already accepts the value) | Any time |
@@ -286,7 +289,7 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 ## Suggested order
 
 1. Phase 0, so you are using it with real data while everything else is built.
-2. Phase 0.5 stage A alongside the first round of UI tweaks, since both touch the data model. Then stages B to D.
+2. The rest of Phase 0.5 stages C and D alongside the first round of UI tweaks. Stage B when a second app is ready to adopt it.
 3. Phase 1, before any shell, with stage E of Phase 0.5 folded into the reminder work.
 4. Android scaffold far enough to create the Play listing and start the closed-test clock, then the rest of Phase 2.
 5. Phase 5 (desktop) or Phase 4 (iOS), whichever you will use more. Desktop unlocks MCP.
@@ -352,9 +355,6 @@ A cheap precaution covers both: from the first paid release, record an "owned si
 - Should plans be creatable from other apps by intent, for example dayGLANCE sending "I subscribed to X"?
 - Does lifeGLANCE want a milestone when a thing is bought or retired?
 - Which locales ship first?
-- Household: is "private is hidden, not encrypted" acceptable for v1? (The spec recommends yes.)
-- Household: what happens to a member's private items when their last device is unlinked?
-- Household: companion record and `deviceId` link, as recommended in Phase 0.5, or the spec's original single record with `credentialIds`?
-- Household: when an item is sent to dayGLANCE, should the task go to the responsible member there?
-- Household: should a member be able to cut a device off the vault from inside the app? Today that is an operator route on the server.
+- Household: three calls were made in the first pass and are easy to reverse if you disagree. Private is hidden, not encrypted. A private item stays hidden while its owner has no device. A task sent to dayGLANCE goes to whoever deals with the thing.
+- Household: should a member be able to cut a device off the vault from inside the app? Today "detach" only stops it counting as that person; signing it out is an operator route on the server.
 - Is a Microsoft Store build wanted? dayGLANCE's repo has MSIX handling that could be reused.

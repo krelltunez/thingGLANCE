@@ -2,9 +2,10 @@
 // Warranties running out, support windows closing, plans renewing, trials
 // converting, and the day you said you would replace something.
 
-import type { DataSet, Day, Decision, EventType, HorizonEvent, Severity, Subscription, Thing } from './types'
+import type { DataSet, Day, Decision, EventType, HorizonEvent, Severity, Thing } from './types'
 import { addDays, daysBetween, today } from './dates'
 import { lifecycle } from './health'
+import { concernsPlan, concernsThing } from './household'
 import { cycleShort, renewalsBetween } from './money'
 
 // How far ahead each kind of event starts asking for attention, in days.
@@ -62,13 +63,10 @@ export interface HorizonOptions {
   from?: Day
   to?: Day
   ref?: Day
-  // Only things / plans a given household member owns or pays for.
-  userId?: string | null
+  // Only what concerns one household member (see core/household.ts). This is
+  // a filter, not privacy: pass data through visibleTo() first for that.
+  memberId?: string | null
 }
-
-const ownedBy = (t: Thing, userId?: string | null) => !userId || t.ownerIds.length === 0 || t.ownerIds.includes(userId)
-const paidBy = (s: Subscription, userId?: string | null, thing?: Thing) =>
-  !userId || s.payerId === userId || (!s.payerId && (!thing || ownedBy(thing, userId)))
 
 export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonEvent[] {
   const ref = opts.ref ?? today()
@@ -95,7 +93,7 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
   }
 
   for (const t of data.things) {
-    if (t.status !== 'active' || !ownedBy(t, opts.userId)) continue
+    if (t.status !== 'active' || (opts.memberId && !concernsThing(t, opts.memberId))) continue
     const mine = data.coverages.filter((c) => c.thingId === t.id)
     const life = lifecycle(t, mine, ref)
 
@@ -117,10 +115,14 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
   }
 
   for (const s of data.subscriptions) {
-    const thing = s.thingId ? thingsById.get(s.thingId) : undefined
-    if (thing && thing.status !== 'active') continue
-    if (!paidBy(s, opts.userId, thing)) continue
-    const where = thing ? thing.name : s.provider ?? 'Subscription'
+    // A plan follows the things it is attached to: once every one of them is
+    // retired it stops asking. The first active one is where a tap leads.
+    const attached = s.coversThingIds.map((id) => thingsById.get(id)).filter((t): t is Thing => !!t)
+    const live = attached.filter((t) => t.status === 'active')
+    if (attached.length > 0 && live.length === 0) continue
+    if (opts.memberId && !concernsPlan(s, opts.memberId, thingsById)) continue
+    const thing = live[0]
+    const where = thing ? (live.length > 1 ? `${thing.name} + ${live.length - 1} more` : thing.name) : s.provider ?? 'Subscription'
     const base = { thingId: thing?.id, subscriptionId: s.id }
 
     if (s.status === 'cancelled') {

@@ -17,6 +17,22 @@ export const TONES: Record<Tone, { text: string; soft: string; solid: string; st
   dim: { text: 'text-dim', soft: 'border-line/15 bg-line/5 text-dim', solid: 'bg-faint', stroke: 'stroke-faint', bar: 'bg-faint/60' },
 }
 
+// The household part of a form, as the form holds it: '' is the household (or
+// "anyone"), since a <select> cannot carry null.
+export interface WhoDraft {
+  holder: string
+  responsible: string
+  isPrivate: boolean
+}
+
+// Draft -> the three stored fields. Private only sticks when there is someone
+// for it to be private to.
+export const whoFields = (w: WhoDraft): { holder: string | null; responsibleMemberId: string | null; visibility: 'shared' | 'private' } => ({
+  holder: w.holder || null,
+  responsibleMemberId: w.responsible || null,
+  visibility: w.isPrivate && w.holder ? 'private' : 'shared',
+})
+
 export const severityTone = (s: Severity): Tone => (s === 'past' || s === 'urgent' ? 'bad' : s === 'soon' ? 'warn' : 'dim')
 
 export const cx = (...parts: (string | false | null | undefined)[]): string => parts.filter(Boolean).join(' ')

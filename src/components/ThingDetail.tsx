@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  Archive, ArchiveRestore, ExternalLink, Pencil, Pin, PinOff, Plus, Repeat, ShieldCheck, Trash2, X,
+  Archive, ArchiveRestore, ExternalLink, EyeOff, Pencil, Pin, PinOff, Plus, Repeat, ShieldCheck, Trash2, X,
 } from 'lucide-react'
 import type { Thing } from '@/core/types'
 import { category } from '@/core/categories'
@@ -87,7 +87,9 @@ export function ThingDetail({ thingId }: { thingId: string }) {
   const own = ownership(thing, covs, subs)
   const tone = verdictTone(life.verdict)
   const upcoming = d.events.filter((e) => e.thingId === thing.id && (e.days >= 0 || e.attention)).slice(0, 6)
-  const owners = thing.ownerIds.map((id) => d.userName(id)).filter(Boolean)
+  const owner = d.memberName(thing.ownerMemberId)
+  const handler = thing.responsibleMemberId !== thing.ownerMemberId ? d.memberName(thing.responsibleMemberId) : null
+  const before = (thing.ownershipHistory ?? []).map((h) => `${d.memberName(h.memberId) ?? 'Household'} until ${fmtDay(h.to, 'MMM YYYY')}`)
   const retired = thing.status === 'retired'
 
   const headline = retired
@@ -119,8 +121,14 @@ export function ThingDetail({ thingId }: { thingId: string }) {
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 <VerdictChip verdict={life.verdict} />
                 {life.covered && <Chip tone="ok" icon={ShieldCheck}>Covered</Chip>}
-                {d.multiUser && owners.map((n) => <Chip key={n} tone="dim">{n}</Chip>)}
+                {d.multiUser && d.members.length > 0 && <Chip tone="dim">{owner ?? 'Household'}</Chip>}
+                {thing.visibility === 'private' && <Chip tone="dim" icon={EyeOff}>Private</Chip>}
               </div>
+              {d.multiUser && (handler || before.length > 0) && (
+                <p className="mt-2 text-xs text-faint">
+                  {[handler ? `${handler} deals with it` : null, before.length ? `Before: ${before.join(', ')}` : null].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
           </section>
 

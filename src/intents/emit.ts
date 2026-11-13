@@ -50,7 +50,8 @@ export async function sendEventToDayglance(event: HorizonEvent, thing?: Thing | 
   const rootKey = await loadIntentsRootKey()
   if (!rootKey) throw new IntentsUnavailableError('no-key')
   const task = taskFor(event, getIntentsConfig().leadDays)
-  const owners = thing?.ownerIds ?? []
+  // The task goes to whoever deals with the thing; failing that, its owner.
+  const assignee = thing?.responsibleMemberId ?? thing?.ownerMemberId ?? null
   try {
     const envelope = await buildEncryptedEnvelope(
       {
@@ -63,7 +64,7 @@ export async function sendEventToDayglance(event: HorizonEvent, thing?: Thing | 
           notes: task.notes,
           source_app: SOURCE_APP,
           source_entity_id: event.key,
-          ...(owners.length > 0 && { assigned_user_ids: owners }),
+          ...(assignee && { assigned_user_ids: [assignee] }),
         },
       },
       (salt) => deriveEnvelopeKey(rootKey, salt),

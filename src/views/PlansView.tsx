@@ -27,7 +27,8 @@ function PlanRow({ sub }: { sub: Subscription }) {
   const d = useData()
   const ui = useUI()
   const { currency } = useSettings()
-  const thing = sub.thingId ? d.thingById.get(sub.thingId) : undefined
+  const things = sub.coversThingIds.map((id) => d.thingById.get(id)).filter((t) => !!t)
+  const where = things.length > 1 ? `${things[0].name} + ${things.length - 1} more` : things[0]?.name
   const next = nextDate(sub)
   const days = next ? daysFromToday(next.day) : null
   const long = sub.cycle === 'yearly' || sub.cycle === 'quarterly'
@@ -43,7 +44,7 @@ function PlanRow({ sub }: { sub: Subscription }) {
           {off && <Chip tone="dim">Cancelled</Chip>}
         </span>
         <span className="block truncate text-xs text-dim">
-          {[sub.provider, thing?.name, d.multiUser ? d.userName(sub.payerId) : null].filter(Boolean).join(' · ') || 'Standalone'}
+          {[sub.provider, where, d.multiUser ? d.memberName(sub.payerMemberId) : null].filter(Boolean).join(' · ') || 'Standalone'}
           {next && <> · {next.label} {fmtDay(next.day, 'MMM D')}</>}
         </span>
       </button>

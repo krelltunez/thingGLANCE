@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import dayjs from 'dayjs'
-import { Trash2 } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 import type { CoverageType, Cycle, Subscription } from '@/core/types'
 import { DAY, today } from '@/core/dates'
 import { CYCLES } from '@/core/money'
@@ -12,7 +12,8 @@ import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
 import { Field, Segmented, Sheet, Toggle } from './ui'
-import { cx, num } from './kit'
+import { cx, num, whoFields, type WhoDraft } from './kit'
+import { HouseholdFields, MembersPicker } from './HouseholdFields'
 
 export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: string }) {
   const d = useData()
@@ -25,34 +26,46 @@ export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: strin
     amount: existing ? String(existing.amount) : '',
     cycle: (existing?.cycle ?? 'monthly') as Cycle,
     anchorDate: existing?.anchorDate ?? today(),
-    thingId: existing?.thingId ?? thingId ?? '',
+    thingIds: existing?.coversThingIds ?? (thingId ? [thingId] : []),
     status: (existing?.status ?? 'active') as Subscription['status'],
     trialEnd: existing?.trialEnd ?? '',
     endDate: existing?.endDate ?? '',
     autoRenew: existing?.autoRenew ?? true,
     review: existing?.review ?? false,
-    payerId: existing?.payerId ?? '',
+    who: (existing
+      ? { holder: existing.payerMemberId ?? '', responsible: existing.responsibleMemberId ?? '', isPrivate: existing.visibility === 'private' }
+      : { holder: '', responsible: d.meId ?? '', isPrivate: false }) as WhoDraft,
+    coversMemberIds: existing?.coversMemberIds ?? [],
     notes: existing?.notes ?? '',
   }))
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }))
   const amount = num(f.amount)
   const valid = !!f.name.trim() && amount != null && !!f.anchorDate
 
+  const attached = f.thingIds.map((tid) => d.thingById.get(tid)).filter((t) => !!t)
+  const attachable = d.things.filter((t) => t.status === 'active' && !f.thingIds.includes(t.id))
+
   const save = async () => {
     if (!valid) return
+    const who = whoFields(f.who)
     await saveSubscription({
       name: f.name.trim(),
       provider: f.provider.trim() || undefined,
       amount: amount!,
       cycle: f.cycle,
       anchorDate: f.status === 'trial' && f.trialEnd ? f.trialEnd : f.anchorDate,
-      thingId: f.thingId || null,
+      // Ids this device cannot resolve (a thing hidden from it, or not yet
+      // synced) are kept: the form only edits what it can show.
+      coversThingIds: f.thingIds,
+      coversMemberIds: f.coversMemberIds,
       status: f.status,
       trialEnd: f.status === 'trial' ? f.trialEnd || undefined : undefined,
       endDate: f.status === 'cancelled' || !f.autoRenew ? f.endDate || undefined : undefined,
       autoRenew: f.autoRenew,
       review: f.review,
-      payerId: f.payerId || null,
+      payerMemberId: who.holder,
+      responsibleMemberId: who.responsibleMemberId,
+      visibility: who.visibility,
       notes: f.notes.trim() || undefined,
     }, existing?.id)
     ui.close()
@@ -87,17 +100,29 @@ export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: strin
           <Segmented value={f.status} onChange={(v) => set('status', v)} options={[{ id: 'active', label: 'Active' }, { id: 'trial', label: 'Free trial' }, { id: 'cancelled', label: 'Cancelled' }]} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {f.status === 'trial'
             ? <Field label="Trial ends" hint="The day it starts charging."><input type="date" className="input" value={f.trialEnd} onChange={(e) => set('trialEnd', e.target.value)} /></Field>
             : f.status === 'cancelled'
               ? <Field label="Access ends" hint="Optional."><input type="date" className="input" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></Field>
               : <Field label="Next renewal" hint="Any renewal date works; it repeats from there."><input type="date" className="input" value={f.anchorDate} onChange={(e) => set('anchorDate', e.target.value)} /></Field>}
-          <Field label="Attached to">
-            <select className="input" value={f.thingId} onChange={(e) => set('thingId', e.target.value)}>
-              <option value="">Nothing (standalone)</option>
-              {d.things.filter((t) => t.status === 'active' || t.id === f.thingId).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+          <Field label="Attached to" hint={attached.length > 1 ? 'Its cost is split evenly between them.' : undefined}>
+            {attached.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {attached.map((t) => (
+                  <span key={t.id} className="inline-flex h-8 max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/15 pl-3 pr-1 text-[13px] font-medium text-accent">
+                    <span className="truncate">{t.name}</span>
+                    <button type="button" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-accent/20" aria-label={`Detach ${t.name}`} onClick={() => set('thingIds', f.thingIds.filter((x) => x !== t.id))}><X size={13} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {(attachable.length > 0 || attached.length === 0) && (
+              <select className="input" aria-label="Attach a thing" value="" onChange={(e) => { if (e.target.value) set('thingIds', [...f.thingIds, e.target.value]) }}>
+                <option value="">{attached.length ? 'Attach another…' : 'Nothing (standalone)'}</option>
+                {attachable.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
           </Field>
         </div>
 
@@ -108,13 +133,9 @@ export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: strin
           </div>
         )}
 
-        {d.multiUser && d.users.length > 0 && (
-          <Field label="Who pays?">
-            <select className="input" value={f.payerId} onChange={(e) => set('payerId', e.target.value)}>
-              <option value="">Household</option>
-              {d.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </Field>
+        <HouseholdFields value={f.who} onChange={(who) => set('who', who)} noun="plan" holderLabel="Who pays?" />
+        {d.multiUser && d.members.length > 1 && (
+          <MembersPicker label="Who is it for?" value={f.coversMemberIds} onChange={(ids) => set('coversMemberIds', ids)} hint="Optional. A family plan covers several people." />
         )}
 
         <Field label="Notes"><textarea className="input" rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Where to cancel, which card it is on…" /></Field>

@@ -2,7 +2,7 @@
 
 Nov 12, 2026 · Jason Krellner
 
-> Where this sits in the plan: [ROADMAP.md, Phase 0.5](ROADMAP.md#phase-05-household-members-and-users-l-in-stages). The spec below is as written. The last section, [Findings against the code](#findings-against-the-code-2026-11-13), was added on 2026-11-13 and answers the third open question.
+> Where this sits in the plan: [ROADMAP.md, Phase 0.5](ROADMAP.md#phase-05-household-members-and-users-l-in-stages). The spec below is as written, and is a guide to the shape rather than a contract: it was drafted without access to the code. Two sections were added on 2026-11-13. [Findings against the code](#findings-against-the-code-2026-11-13) answers the third open question, and [As built](#as-built-2026-11-13) records what the first pass implemented and where it departs from the spec.
 
 ## Purpose and status
 
@@ -153,6 +153,8 @@ Recommendation: **leave the `glance-users` row exactly as it is and put the new 
 
 Recommendation: link by `deviceId`. It needs no server change and no migration of existing self-hosted devices. One wrinkle to remember: the roster engine identifies itself to the vault as `<deviceId>-roster`, so the link must store the plain device id.
 
+What was built goes one step further and drops the list altogether: see [As built](#as-built-2026-11-13).
+
 ### Smaller points
 
 - **Revoke.** Unlinking a member is an app-side edit. Actually cutting a device off the vault is an operator route today (`POST /admin/credentials/:id/revoke`); there is no route a household member can call. I did not check what a GLANCEvault Pro account page offers. The spec's "Revoke user" row therefore means "unlink" unless the vault grows an account-level revoke.
@@ -179,4 +181,48 @@ Three of these are renames, which is the one kind of change the roadmap warns ab
 
 ### Where the spec and the repo disagree
 
-- The spec says iCloud is undecided. `CLAUDE.md` and the roadmap both say there is no iCloud road. Nothing here depends on the answer, so the roadmap is unchanged; if iCloud is genuinely back on the table it needs its own decision.
+- The spec says iCloud is undecided. `CLAUDE.md` and the roadmap both say there is no iCloud road. Settled on 2026-11-13: iCloud is probably out. It could come back later as a free, zero-setup option if iOS users really want one, but the direction for the whole family is away from it and toward GLANCEvault Pro. Nothing here depends on it.
+
+## As built (2026-11-13)
+
+The first pass covers the two things the spec is really for: the app tracks any number of household members whether or not they use it, and a user of the app can attach themselves as one of them. It reuses the existing roster and sync engine, and adds no package, no vault app and no server change.
+
+### What is in
+
+| Area | Where | Notes |
+| --- | --- | --- |
+| Things: owner, responsible, visibility, history | `src/core/types.ts` | `ownerMemberId` (null is the household), `responsibleMemberId`, `visibility`, `ownershipHistory`. |
+| Plans: payer, responsible, covers, visibility | `src/core/types.ts` | `payerMemberId`, `responsibleMemberId`, `coversMemberIds`, `coversThingIds`, `visibility`. A plan across several things splits its cost evenly between them. |
+| Reading v0.1 rows | `src/core/shape.ts` | Used by the database upgrade, the vault apply and backup import. One owner maps across; none or several becomes the household. |
+| The rules | `src/core/household.ts` | Pure: who is a user, who may see what, the member filter, hand-me-downs, what blocks removing a member. |
+| "This is me" | `DeviceLink` in `src/core/types.ts` | See below. |
+| Forms | `src/components/HouseholdFields.tsx` | Owner or payer, "who deals with it" (users only), private. |
+| Settings → Household | `src/components/Settings.tsx` | Add by name, This is me / Not me, who uses the app and on what, detach another device, removal blocked with the reason. |
+
+### Where it departs from the spec
+
+**The user link is one row per device, not a list on the member.** The spec puts `credentialIds[]` on the member record. Built instead: a `device` entity in thingGLANCE's own vault app, with the device's id as its id and a `memberId`. A member with at least one such row is a user.
+
+- Each device writes only its own row, so two devices attaching at the same moment cannot overwrite each other. A list on one shared record is last-writer-wins and would lose one of them.
+- It never touches the `glance-users` row, so no sibling app can erase it.
+- Being a user of thingGLANCE is a fact about thingGLANCE. Someone who only runs dayGLANCE cannot be asked about a warranty here, so the link does not belong on a record every app shares.
+- It needs nothing from the server and works with sync off.
+
+"This is me" used to be a device-local setting. It is now this row, and the old setting is handed over once on the first run.
+
+**No companion record yet.** With the device link out of the way, the only fields the companion would hold are colour, relationship and `mergedInto`. None of them is needed for the first pass, so it waits for the shared package, when the sibling apps can read it too. The recommendation in finding 1 still stands for when it is built.
+
+**No package yet.** The rules live in `src/core/household.ts` with no React, Dexie or DOM, so lifting them into `@glance-apps/household` later is a move, not a rewrite. Extracting now would mean publishing a package with one consumer and an API nobody else has tried.
+
+**"Revoke" is "detach".** Any device can detach any other in Settings. That stops it counting as that person. It does not sign the device out of the vault, which is still an operator action.
+
+### Decisions taken where the spec left a question
+
+- **Private is hiding, not encryption**, and the form says so in those words. `visibleTo()` strips other members' private items before anything else in the app sees the data, and `buildSnapshot()` does the same, so no view, widget or tool can show one by accident.
+- **A private item whose owner has no device stays hidden** until someone attaches as that member. It is recoverable, and it never silently exposes something on a detach.
+- **Private needs someone to be private to.** A private thing with no owner, or a private plan with no payer, reads as shared.
+- **A task sent to dayGLANCE** is assigned to whoever deals with the thing, or failing that its owner.
+
+### Not built yet
+
+Merge and the duplicate-name hint, a reassign prompt when removing a member (today it is blocked with the reason), the onboarding offer to adopt an existing roster, roster export and import, the member filter in place of Mine / Everyone, fund and plan totals per member, the "needs someone" prompt, and routing alerts to the responsible user. The "shared household" switch in Settings is also still there; the spec derives it from the size of the roster.

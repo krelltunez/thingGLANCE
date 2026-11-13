@@ -14,7 +14,7 @@
 import { createDbSyncEngine } from '@glance-apps/sync'
 import type { DbSyncEngine, DbSyncResult, SyncErrorCode } from '@glance-apps/sync'
 import { db } from '@/db/client'
-import type { User } from '@/core/types'
+import type { Member } from '@/core/types'
 import { APP_ID, getVaultConfig, isVaultEnabled } from '@/sync/vaultConfig'
 import { getDeviceId } from '@/sync/deviceId'
 import { CRYPTO_DB_NAME, isUnknownAppError } from '@/sync/dbEngine'
@@ -25,7 +25,7 @@ export const ROSTER_VAULT_APP = 'glance-users'
 const STORAGE_PREFIX = `${APP_ID}-${ROSTER_VAULT_APP}`
 const SEEDED_FLAG = `${STORAGE_PREFIX}-db-sync-snapshot-seeded`
 
-export function isRosterEntity(entity: unknown): entity is User {
+export function isRosterEntity(entity: unknown): entity is Member {
   if (!entity || typeof entity !== 'object') return false
   const e = entity as Record<string, unknown>
   return typeof e.id === 'string' && !!e.id && typeof e.name === 'string' && !!e.name.trim() && typeof e.updatedAt === 'string'
@@ -37,22 +37,22 @@ const notifyApplied = () => { if (typeof window !== 'undefined') window.dispatch
 // deleted: the local tombstone is newer and its soft-delete is on the way up.
 async function applyRemoteRosterEntity(entityId: string, entity: unknown): Promise<void> {
   if (!isRosterEntity(entity) || entity.id !== entityId) return
-  const changed = await db.transaction('rw', db.users, db.tombstones, async () => {
+  const changed = await db.transaction('rw', db.members, db.tombstones, async () => {
     const tomb = await db.tombstones.get(entityId)
-    const existing = await db.users.get(entityId)
+    const existing = await db.members.get(entityId)
     if (!existing && tomb && tomb.deletedAt >= entity.updatedAt) return false
     if (existing && existing.updatedAt >= entity.updatedAt) return false
     if (tomb) await db.tombstones.delete(entityId)
-    await db.users.put({ id: entityId, name: entity.name, updatedAt: entity.updatedAt })
+    await db.members.put({ id: entityId, name: entity.name, updatedAt: entity.updatedAt })
     return true
   })
   if (changed) notifyApplied()
 }
 
 async function applyRemoteRosterDelete(entityId: string): Promise<void> {
-  await db.transaction('rw', db.users, db.tombstones, async () => {
+  await db.transaction('rw', db.members, db.tombstones, async () => {
     await db.tombstones.put({ id: entityId, deletedAt: new Date().toISOString() })
-    await db.users.delete(entityId)
+    await db.members.delete(entityId)
   })
   notifyApplied()
 }
@@ -80,7 +80,7 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
     vaultToken: cfg.vaultToken,
     accountId: cfg.accountId,
     deviceId: `${getDeviceId()}-roster`,
-    getLocalEntity: async (id) => (await db.users.get(id)) ?? null,
+    getLocalEntity: async (id) => (await db.members.get(id)) ?? null,
     applyRemoteEntity: applyRemoteRosterEntity,
     applyRemoteDelete: applyRemoteRosterDelete,
     isInsertOnly: () => false,
@@ -103,7 +103,7 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
         localStorage.setItem(SEEDED_FLAG, '1')
       } else {
         try {
-          for (const u of await db.users.toArray()) engine.markDirty(u.id)
+          for (const u of await db.members.toArray()) engine.markDirty(u.id)
           localStorage.setItem(SEEDED_FLAG, '1')
         } catch (err) {
           console.warn('[thingglance] roster initial snapshot failed:', err)

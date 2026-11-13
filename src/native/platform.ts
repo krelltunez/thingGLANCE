@@ -22,6 +22,18 @@ export function shell(): Shell {
   return 'web'
 }
 
+// "Chrome on macOS": a short name for this device in the household's device
+// list. It only has to tell two of them apart.
+export function describeDevice(): string {
+  const ua = navigator.userAgent
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
+  const kind = shell()
+  if (kind === 'desktop') return os ? `${os} app` : 'Desktop app'
+  if (kind === 'native') return os ? `${os} app` : 'Phone app'
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser'
+  return os ? `${browser} on ${os}` : browser
+}
+
 export const isStandalone = (): boolean =>
   window.matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true
 

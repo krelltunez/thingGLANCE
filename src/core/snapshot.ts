@@ -11,6 +11,7 @@ import type { DataSet, Day, EventType, Severity } from './types'
 import { today } from './dates'
 import { attentionQueue, buildHorizon } from './horizon'
 import { lifecycle, replacementFund, type Verdict } from './health'
+import { visibleTo } from './household'
 import { monthlyCost } from './money'
 
 export const SNAPSHOT_VERSION = 1
@@ -39,10 +40,21 @@ export interface SnapshotEvent {
   amount?: number
 }
 
-export function buildSnapshot(data: DataSet, opts: { userId?: string | null; ref?: Day; limit?: number } = {}): GlanceSnapshot {
+export interface SnapshotOptions {
+  // The member this device belongs to (null: nobody). Private items of other
+  // members never reach a snapshot, so no widget, tray or tool can show them.
+  viewerId: string | null
+  // Narrow the dated events to what concerns one member.
+  memberId?: string | null
+  ref?: Day
+  limit?: number
+}
+
+export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapshot {
   const ref = opts.ref ?? today()
   const limit = opts.limit ?? 8
-  const events = buildHorizon(data, { ref, userId: opts.userId })
+  const data = visibleTo(all, opts.viewerId)
+  const events = buildHorizon(data, { ref, memberId: opts.memberId })
   const queue = attentionQueue(events)
   const slim = ({ key, type, date, days, severity, title, detail, thingId, subscriptionId, amount }: (typeof events)[number]): SnapshotEvent =>
     ({ key, type, date, days, severity, title, detail, thingId, subscriptionId, amount })

@@ -14,6 +14,7 @@ Sibling repos sit next to this one (`../lastGLANCE` is the closest model: same s
 - **`src/core` stays pure**: no React, Dexie or DOM imports. Widgets, the tray, MCP and headless runs will import it.
 - **One write path**: every local mutation goes through `src/db/queries.ts`, which stamps `updatedAt` and calls `markDirty`. Remote applies in `src/sync/dbEngine.ts` write to Dexie directly and must never call `markDirty`.
 - **Local shape == sync shape.** UUID ids double as vault entity ids; every synced entity has a `kind`. The only local-only field is `sample`.
+- **Household members**: before touching owners, payers, the roster or who gets alerted, read `docs/household-members.md` (the spec, plus how it differs from the code today). The `glance-users` row stays `{ id, name, updatedAt }`: sibling apps erase anything else put on it.
 - **Sample rows never sync.** `toSync` answers null for them; editing one promotes its whole family (thing + coverages + plans) via `promoteFamily`.
 - **Other surfaces read `buildSnapshot()`** (`src/core/snapshot.ts`). Bump `SNAPSHOT_VERSION` on a breaking change.
 - **Colours are CSS variables** (`src/index.css`) mapped in `tailwind.config.ts`. Use the semantic names (`bg-panel`, `text-dim`, `text-accent`, `ok` / `warn` / `bad` / `sub`), never raw palette classes, so light and dark stay one set of class names.

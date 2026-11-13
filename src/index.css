@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour tokens as RGB triplets so Tailwind's alpha modifiers work
+   (bg-accent/10). Light is the :root default; .dark overrides. The dark base
+   #05081A is the GLANCE family's shared night colour; sky is thingGLANCE's. */
+:root {
+  --bg: 238 244 251;
+  --panel: 255 255 255;
+  --raised: 244 248 253;
+  --line: 20 50 95;
+  --ink: 10 20 42;
+  --dim: 66 82 112;
+  --faint: 118 133 162;
+  --accent: 2 132 199;
+  --accent-ink: 255 255 255;
+  --ok: 5 150 105;
+  --warn: 202 108 4;
+  --bad: 225 29 72;
+  --sub: 124 58 237;
+  --glow: 56 189 248;
+  --grid-alpha: 0.07;
+}
+.dark {
+  --bg: 5 8 26;
+  --panel: 11 17 38;
+  --raised: 18 27 56;
+  --line: 148 197 255;
+  --ink: 232 240 252;
+  --dim: 150 166 196;
+  --faint: 98 113 146;
+  --accent: 56 189 248;
+  --accent-ink: 3 16 32;
+  --ok: 52 211 153;
+  --warn: 251 191 36;
+  --bad: 251 113 133;
+  --sub: 167 139 250;
+  --glow: 56 189 248;
+  --grid-alpha: 0.09;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-bg text-ink antialiased font-sans;
+    overscroll-behavior: none;
+    font-feature-settings: 'cv11', 'ss01', 'calt';
+  }
+  ::selection { background: rgb(var(--accent) / 0.3); }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  input[type='date'] { color-scheme: light; }
+  .dark input[type='date'], .dark select { color-scheme: dark; }
+  :focus-visible { outline: 2px solid rgb(var(--accent) / 0.7); outline-offset: 2px; border-radius: 6px; }
+  h1, h2, h3 { text-wrap: balance; }
+}
+
+@layer components {
+  /* The page backdrop: a faint dot grid under a sky glow that fades out. */
+  .app-bg {
+    background-color: rgb(var(--bg));
+    background-image:
+      radial-gradient(ellipse 80% 420px at 50% -120px, rgb(var(--glow) / 0.16), transparent 70%),
+      radial-gradient(circle at 1px 1px, rgb(var(--line) / var(--grid-alpha)) 1px, transparent 0);
+    background-size: 100% 100%, 24px 24px;
+    background-attachment: fixed;
+  }
+
+  .panel {
+    @apply relative rounded-2xl border border-line/10 bg-panel/75 backdrop-blur-sm;
+    box-shadow: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -18px rgb(0 0 0 / 0.35);
+  }
+
+  /* HUD corner brackets for the panels that deserve them. */
+  .hud::before, .hud::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 1.5px solid rgb(var(--accent) / 0.55);
+    pointer-events: none;
+  }
+  .hud::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-top-left-radius: 16px; }
+  .hud::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-bottom-right-radius: 16px; }
+
+  /* Mono micro-label: the app's instrument-panel voice. */
+  .label { @apply font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-faint; }
+  .num { @apply font-mono tabular-nums tracking-tight; }
+
+  .btn {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line/10 bg-raised/70 px-3.5 text-sm font-medium text-ink transition
+      hover:border-line/25 hover:bg-raised active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink transition
+      hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.4), 0 8px 24px -8px rgb(var(--accent) / 0.55);
+  }
+  .btn-ghost {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-dim transition hover:bg-line/5 hover:text-ink active:scale-[0.98] disabled:opacity-40;
+  }
+  .btn-danger {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-bad/30 bg-bad/10 px-3.5 text-sm font-medium text-bad transition hover:bg-bad/20 active:scale-[0.98];
+  }
+  .icon-btn {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line/10 bg-raised/60 text-dim transition hover:border-line/25 hover:text-ink active:scale-95;
+  }
+
+  .input {
+    @apply h-10 w-full rounded-lg border border-line/15 bg-bg/60 px-3 text-sm text-ink placeholder:text-faint transition
+      focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20;
+  }
+  textarea.input { @apply h-auto py-2.5 leading-relaxed; }
+
+  .chip { @apply inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium leading-none whitespace-nowrap; }
+}
+
+@layer utilities {
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(var(--line) / 0.2) transparent; }
+  .glow-accent { box-shadow: 0 0 18px -2px rgb(var(--accent) / 0.55); }
+  .text-glow { text-shadow: 0 0 22px rgb(var(--accent) / 0.45); }
+  .safe-top { padding-top: max(0.75rem, env(safe-area-inset-top)); }
+  .safe-bottom { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+}
+
+/* Staggered entrance for lists: set --i on each child. */
+.stagger > * { animation: rise 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 28ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* Desktop shell (Electron, later): the header is the window's drag handle and
+   clears the macOS traffic lights. Same class contract as lastGLANCE. */
+html.desktop-darwin .app-header { padding-top: 2.25rem; -webkit-app-region: drag; }
+html.desktop-darwin .app-header :is(button, a, input, select, [role='button'], [role='tab']),
+html.desktop-darwin .fixed { -webkit-app-region: no-drag; }

@@ -4,13 +4,14 @@
 
 import { clearDbRootKey, getSyncPassphrase, hasDbRootKey, initDbRootKey, setSyncPassphrase } from '@glance-apps/sync'
 import type { DbSyncEngine, SyncErrorCode } from '@glance-apps/sync'
-import { DB_CRYPTO_CONFIG, createDbEngine, isUnknownAppError } from './dbEngine'
+import { DB_CRYPTO_CONFIG, createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './dbEngine'
+import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
 import { registerDbEngine } from './dirtyTracker'
 import { getVaultConfig, isVaultEnabled } from './vaultConfig'
 import { createRosterDbEngine } from '@/multiuser/rosterVault'
 import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
 import { setupIntentsEncryption } from '@/intents/setup'
-import { loadIntentsRootKey } from '@/intents/keyStore'
+import { clearIntentsRootKey, loadIntentsRootKey } from '@/intents/keyStore'
 import { drainIntents, startIntentsPoller } from '@/intents/receive'
 import { createNudgeCoalescer, createVaultEventClient, detectSseTransport, openWebSseStream, type SseClientState } from './vaultEventStream'
 
@@ -25,6 +26,17 @@ export interface SyncState {
   // The server does not list `thingglance` in its allowed apps.
   unsupported: boolean
   rosterUnsupported: boolean
+  // The key cached on this device does not open what the account's other
+  // GLANCE apps wrote: it came from a different passphrase. Sync is held (it
+  // would only add rows nobody else can read) until the right one is entered.
+  keyConflict: boolean
+  // The last time this device read the shared roster, and how that went.
+  // Null until the first read (multi-user off, or still waiting).
+  rosterCheckedAt: string | null
+  rosterError: string | null
+  rosterSkipped: number
+  // Rows that decrypted but were not a member (no name, or an id that is not theirs).
+  rosterRejected: number
   skipped: number
   pending: number
   // Live push from the vault's event stream. 'off' means polling only, which
@@ -34,7 +46,8 @@ export interface SyncState {
 
 let state: SyncState = {
   phase: 'off', pro: false, lastSynced: null, errorCode: null, errorMessage: null,
-  unsupported: false, rosterUnsupported: false, skipped: 0, pending: 0, live: 'off',
+  unsupported: false, keyConflict: false, rosterUnsupported: false, rosterCheckedAt: null, rosterError: null, rosterSkipped: 0, rosterRejected: 0,
+  skipped: 0, pending: 0, live: 'off',
 }
 const listeners = new Set<() => void>()
 const set = (patch: Partial<SyncState>) => {
@@ -113,6 +126,7 @@ export async function startSync(): Promise<void> {
   roster = createRosterDbEngine({
     onError: (message, code) => { if (message) console.warn('[thingglance] roster sync error:', code ?? '(no code)', message) },
     onUnsupported: () => set({ rosterUnsupported: true }),
+    onChecked: (o) => set({ rosterCheckedAt: new Date().toISOString(), rosterError: o.error, rosterSkipped: o.skipped, rosterRejected: o.rejected }),
   })
   registerRosterDbEngine(roster)
 
@@ -121,6 +135,15 @@ export async function startSync(): Promise<void> {
   // Restore the cached root key; only ask for the passphrase when there is none.
   const hasRoot = hasDbRootKey() || (await initDbRootKey(DB_CRYPTO_CONFIG).catch(() => false))
   if (!hasRoot && getSyncPassphrase() === null) set({ phase: 'locked' })
+  else if (hasRoot && (await cachedKeyConflicts())) {
+    // Remember that everything this device uploaded went up under the wrong
+    // key, so it is uploaded again once the right passphrase is in.
+    localStorage.setItem(REKEY_FLAG, '1')
+    await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => {})
+    await clearIntentsRootKey().catch(() => {})
+    setSyncPassphrase(null)
+    set({ phase: 'locked', keyConflict: true })
+  }
 
   void cycle()
   startIntentsPoller()
@@ -190,23 +213,81 @@ function startEventStream(): void {
   if (document.visibilityState !== 'hidden') client.start()
 }
 
+// ── Is this the account's passphrase? ────────────────────────────────────────
+// See keyCheck.ts for why the engine's own check is not enough.
+
+// Set while this device's uploads are known to be under a wrong key.
+const REKEY_FLAG = 'tg_rekey_pending'
+// Once a sibling has confirmed the cached key for this account there is no
+// need to ask the vault again on every start.
+const CONFIRMED_KEY = 'tg_key_confirmed_for'
+const accountTag = (): string => { const c = getVaultConfig(); return c ? `${c.vaultUrl}|${c.accountId}` : '' }
+
+async function cachedKeyConflicts(): Promise<boolean> {
+  if (localStorage.getItem(CONFIRMED_KEY) === accountTag()) return false
+  try {
+    const outcome = await checkKeyAgainstSiblings()
+    if (outcome === 'match') localStorage.setItem(CONFIRMED_KEY, accountTag())
+    return outcome === 'mismatch'
+  } catch {
+    return false // offline or refused: says nothing either way, try next start
+  }
+}
+
+const WRONG_PASSPHRASE = 'That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.'
+
 // Resolves to null on success, or a message to show under the passphrase field.
-export async function submitPassphrase(passphrase: string): Promise<string | null> {
+export async function submitPassphrase(typed: string): Promise<string | null> {
   if (!engine) return 'The vault is not connected.'
+  const rejected = async (): Promise<string> => {
+    // The wrong key is cached now; drop it so the next attempt derives afresh.
+    await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => {})
+    setSyncPassphrase(null)
+    return WRONG_PASSPHRASE
+  }
+
+  // First against the other apps on the account, before thingGLANCE's own
+  // namespace gets a say (or gets written to).
+  let passphrase = typed
+  let siblings: SiblingKeyCheck | 'fresh'
+  try {
+    siblings = await tryPassphrase(passphrase, DB_CRYPTO_CONFIG)
+    // A pasted passphrase often carries a stray space or newline.
+    if (siblings === 'mismatch' && typed.trim() !== typed && (await tryPassphrase(typed.trim(), DB_CRYPTO_CONFIG)) === 'match') {
+      passphrase = typed.trim()
+      siblings = 'match'
+    }
+  } catch (err) {
+    return syncErrorText((err as { code?: string })?.code ?? 'NETWORK_ERROR', (err as Error)?.message ?? null)
+  }
+  if (siblings === 'mismatch') return rejected()
+
   setSyncPassphrase(passphrase)
   try {
     await engine.ensureRootKey()
   } catch (err) {
     const code = (err as { code?: string })?.code ?? null
-    if (code === 'KEY_MISMATCH') {
-      // The wrong key is cached now; drop it so the next attempt derives afresh.
-      await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => {})
-      setSyncPassphrase(null)
-      return 'That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.'
+    if (code !== 'KEY_MISMATCH') return syncErrorText(code, (err as Error)?.message ?? null)
+    if (siblings !== 'match') return rejected()
+    // The siblings accept this key, so it is the account's. thingGLANCE's own
+    // verifier disagreeing means it was written under a wrong passphrase:
+    // replace it, and upload this device's rows again under the right key.
+    try {
+      await rewriteOwnVerifier()
+      localStorage.setItem(REKEY_FLAG, '1')
+      await engine.ensureRootKey()
+    } catch (again) {
+      return syncErrorText((again as { code?: string })?.code ?? null, (again as Error)?.message ?? null)
     }
-    return syncErrorText(code, (err as Error)?.message ?? null)
   }
-  set({ phase: 'idle', errorCode: null, errorMessage: null })
+  if (siblings === 'match') localStorage.setItem(CONFIRMED_KEY, accountTag())
+  if (localStorage.getItem(REKEY_FLAG) === '1') {
+    await markAllLocalEntitiesDirty(engine)
+    // The intents key came from the same wrong passphrase.
+    await clearIntentsRootKey().catch(() => {})
+    localStorage.removeItem(REKEY_FLAG)
+  }
+  set({ phase: 'idle', keyConflict: false, errorCode: null, errorMessage: null })
   // Intents are encrypted with a key from the same passphrase and salt; derive
   // it now while the passphrase is in memory.
   if (!(await loadIntentsRootKey().catch(() => null))) {

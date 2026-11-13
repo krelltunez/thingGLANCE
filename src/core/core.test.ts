@@ -4,7 +4,8 @@ import { forecast, monthlyCost, nextRenewal, renewalsBetween } from './money'
 import { lifecycle, replacementFund } from './health'
 import { attentionQueue, buildHorizon, eventKey, nextEventFor } from './horizon'
 import { buildSnapshot } from './snapshot'
-import { tMinus } from './dates'
+import { packRows, tMinus } from './dates'
+import { CATEGORIES, category, guessCategory } from './categories'
 
 const REF = '2026-11-12'
 const stamp = '2026-01-01T00:00:00.000Z'
@@ -123,5 +124,39 @@ describe('countdown', () => {
     expect(tMinus(0)).toBe('T-0')
     expect(tMinus(365)).toBe('T-12mo')
     expect(tMinus(1096)).toBe('T-3y')
+  })
+})
+
+describe('kinds', () => {
+  it('files doorbells and security cameras apart from cameras and smart home', () => {
+    expect(guessCategory('Ring Video Doorbell Pro 2')).toBe('security')
+    expect(guessCategory('Arlo Pro 5 security camera')).toBe('security')
+    expect(guessCategory('Sony a7 IV mirrorless camera')).toBe('camera')
+    expect(guessCategory('Nest Learning Thermostat')).toBe('smarthome')
+  })
+  it('reads a kind it does not know as Other, so a newer build cannot break an older one', () => {
+    expect(category('hovercraft' as never).id).toBe('other')
+  })
+  it('fills the kind picker with no gap at either width (6 or 9 across)', () => {
+    expect(CATEGORIES.length % 6).toBe(0)
+    expect(CATEGORIES.length % 9).toBe(0)
+  })
+})
+
+describe('packing spans into rows', () => {
+  const span = (x: { from: string; to: string }): [string, string] => [x.from, x.to]
+  it('gives overlapping spans a row each, longest first', () => {
+    const warranty = { id: 'w', from: '2026-01-01', to: '2027-01-01' }
+    const care = { id: 'c', from: '2026-01-01', to: '2029-01-01' }
+    expect(packRows([warranty, care], span).map((r) => r.map((x) => x.id))).toEqual([['c'], ['w']])
+  })
+  it('reuses a row once the span in it has ended', () => {
+    const first = { id: 'a', from: '2026-01-01', to: '2026-12-31' }
+    const next = { id: 'b', from: '2027-01-01', to: '2027-12-31' }
+    const across = { id: 'x', from: '2026-06-01', to: '2027-06-01' }
+    expect(packRows([next, across, first], span).map((r) => r.map((x) => x.id))).toEqual([['a', 'b'], ['x']])
+  })
+  it('answers no rows for nothing', () => {
+    expect(packRows([], span)).toEqual([])
   })
 })

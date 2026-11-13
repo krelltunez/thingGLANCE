@@ -82,7 +82,7 @@ function Vault() {
   const ui = useUI()
   const cfg = getVaultConfig()
   const connected = !!cfg?.enabled
-  const [mode, setMode] = useState<'pro' | 'self'>('pro')
+  const [mode, setMode] = useState<'pro' | 'self'>('self')
   const [key, setKey] = useState('')
   const [url, setUrl] = useState('')
   const [account, setAccount] = useState('')
@@ -180,9 +180,13 @@ function Vault() {
   return (
     <div className="space-y-3">
       <Block title="Sync with GLANCEvault" hint="thingGLANCE syncs one way only: through GLANCEvault, end-to-end encrypted. It also carries the shared household roster and tasks sent to dayGLANCE. Without it, everything stays on this device.">
-        <Segmented value={mode} onChange={(m) => { setMode(m); setNote(null) }} options={[{ id: 'pro', label: 'GLANCEvault Pro' }, { id: 'self', label: 'Self-hosted' }]} />
+        <Segmented value={mode} onChange={(m) => { setMode(m); setNote(null) }} options={[
+          { id: 'self', label: 'Self-hosted' },
+          { id: 'pro', label: <span className="inline-flex items-center gap-1.5">GLANCEvault Pro <span className="rounded border border-line/15 px-1 font-mono text-[9px] uppercase tracking-wider text-faint">Soon</span></span> },
+        ]} />
         {mode === 'pro' ? (
           <div className="mt-4 space-y-3">
+            <p className="rounded-lg border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim">GLANCEvault Pro, the hosted vault, is coming soon. If you were sent an account key as a tester, it works here today.</p>
             <Field label="Account key" hint="Paste the key you were sent. It is exchanged once for this device's own credential and never stored.">
               <input className="input num" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="gv_…" />
             </Field>
@@ -270,6 +274,7 @@ function Household() {
               })}
               {d.members.length === 0 && <li className="py-3 text-sm text-dim">No members yet.</li>}
             </ul>
+            <RosterStatus empty={d.members.length === 0} />
             <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add() }}>
               <input className="input" placeholder="Add a member" value={name} onChange={(e) => setName(e.target.value)} />
               <button type="submit" className="btn shrink-0" disabled={!name.trim()}>Add</button>
@@ -291,6 +296,27 @@ function Household() {
         </>
       )}
     </div>
+  )
+}
+
+// Says what the last read of the vault's shared roster found, so an empty
+// list is explained rather than left to look broken.
+function RosterStatus({ empty }: { empty: boolean }) {
+  const sync = useSync()
+  if (sync.phase === 'off' || sync.rosterUnsupported) return null
+  const again = <button type="button" className="font-medium text-accent hover:underline" onClick={() => syncRosterSoon(0)}>Check again</button>
+  const line = 'mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed'
+  if (sync.phase === 'locked') return <p className={cx(line, TONES.warn.soft)}>{sync.keyConflict ? 'This device was using a passphrase that does not match your other GLANCE apps, so it could not read the roster. Enter the right one and the members appear.' : 'The roster is read once you enter your sync passphrase.'}</p>
+  if (!sync.rosterCheckedAt) return <p className={cx(line, 'border-line/10 text-dim')}>Reading the roster from your vault…</p>
+  const at = dayjs(sync.rosterCheckedAt).format('h:mm A')
+  if (sync.rosterError) return <p className={cx(line, TONES.bad.soft)}>Could not read the roster from your vault at {at}: {sync.rosterError} {again}</p>
+  if (sync.rosterRejected > 0 && empty) return <p className={cx(line, TONES.warn.soft)}>Your vault has {sync.rosterRejected} roster {sync.rosterRejected === 1 ? 'row' : 'rows'} that could not be read as a member (checked at {at}). {again}</p>
+  if (sync.rosterSkipped > 0) return <p className={cx(line, TONES.warn.soft)}>{sync.rosterSkipped} roster {sync.rosterSkipped === 1 ? 'row' : 'rows'} in your vault could not be decrypted at {at}, which usually means a different passphrase. {again}</p>
+  if (!empty) return null
+  return (
+    <p className={cx(line, 'border-line/10 text-dim')}>
+      Checked your vault at {at} and found no members in the shared roster for this account. {again}
+    </p>
   )
 }
 
@@ -440,9 +466,11 @@ export function Settings({ section }: { section?: SettingsSection }) {
   const [tab, setTab] = useState<SettingsSection>(section ?? 'general')
   const Body = { general: General, vault: Vault, household: Household, integrations: Integrations, data: Data, about: About }[tab]
   return (
-    <Sheet title="Settings" onClose={ui.close} width="max-w-3xl">
-      <div className="flex flex-col gap-5 sm:flex-row">
-        <nav className="scrollbar-none -mx-5 flex shrink-0 gap-1 overflow-x-auto px-5 sm:mx-0 sm:w-44 sm:flex-col sm:px-0">
+    // One size whatever the section holds, so switching sections never moves
+    // the panel. A long section scrolls inside it.
+    <Sheet title="Settings" onClose={ui.close} width="max-w-3xl" className="h-[92svh] sm:h-[660px]">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+        <nav className="scrollbar-none -mx-5 flex shrink-0 gap-1 overflow-x-auto px-5 sm:sticky sm:top-0 sm:mx-0 sm:w-44 sm:flex-col sm:px-0">
           {SECTIONS.map((s) => (
             <button key={s.id} type="button" onClick={() => setTab(s.id)}
               className={cx('flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition',
@@ -451,7 +479,7 @@ export function Settings({ section }: { section?: SettingsSection }) {
             </button>
           ))}
         </nav>
-        <div className="min-h-[340px] min-w-0 flex-1"><Body /></div>
+        <div className="min-w-0 flex-1"><Body /></div>
       </div>
     </Sheet>
   )

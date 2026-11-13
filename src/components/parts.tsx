@@ -1,12 +1,13 @@
 // Domain-aware building blocks shared by the screens.
 
 import { useState } from 'react'
+import dayjs from 'dayjs'
 import { Check, Send, Undo2 } from 'lucide-react'
 import type { HorizonEvent, Thing } from '@/core/types'
 import { VERDICTS, type Lifecycle, type Verdict } from '@/core/health'
 import { EVENT_META } from '@/core/horizon'
-import { daysBetween, fmtDay, today } from '@/core/dates'
-import { money } from '@/core/money'
+import { daysBetween, fmtDay, fmtMonth, today } from '@/core/dates'
+import { money, type ForecastMonth } from '@/core/money'
 import { isIntentsEnabled } from '@/intents/config'
 import { useSettings } from '@/state/settings'
 import { Chip, TBadge } from './ui'
@@ -93,6 +94,48 @@ export function DecidedRow({ event }: { event: HorizonEvent }) {
       <Check size={13} className="text-ok" />
       <span className="min-w-0 flex-1 truncate line-through decoration-line/30">{event.title} · {event.detail}</span>
       <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => void actions.restore(event)}><Undo2 size={12} /> Restore</button>
+    </div>
+  )
+}
+
+// Plan charges for the months ahead: one bar per month with what leaves the
+// account written above it. The Glance and Plans pages share it so the two
+// charts cannot drift. The parent sets the height (a fixed one, or flex-1).
+export function ChargesChart({ months, className }: { months: ForecastMonth[]; className?: string }) {
+  const { currency } = useSettings()
+  const max = Math.max(1, ...months.map((m) => m.total))
+  // On a phone there is no room to label twelve bars, so only the spikes
+  // (annual renewals standing clear of a normal month) keep theirs, or this
+  // month's when the year is flat.
+  const sorted = months.map((m) => m.total).sort((a, b) => a - b)
+  const usual = sorted[Math.floor(sorted.length / 2)] ?? 0
+  const isSpike = (total: number) => total > 0 && total >= usual * 1.4 && total > usual
+  const flat = !months.some((m) => isSpike(m.total))
+  return (
+    <div className={cx('flex items-end gap-1.5 sm:gap-2', className)}>
+      {months.map((m, i) => {
+        const keep = isSpike(m.total) || (flat && i === 0)
+        return (
+          <div key={m.month} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+            <div className="pointer-events-none absolute -top-1 z-10 hidden w-max max-w-[230px] -translate-y-full rounded-lg border border-line/15 bg-raised px-2.5 py-2 text-left shadow-xl group-hover:block">
+              <p className="text-xs font-semibold text-ink">{fmtMonth(m.month)} · <span className="num">{money(m.total, currency)}</span></p>
+              {m.items.slice(0, 5).map((it) => <p key={it.id + it.date} className="truncate text-[11px] text-dim">{it.name} <span className="num text-faint">{money(it.amount, currency)}</span></p>)}
+              {m.items.length > 5 && <p className="text-[11px] text-faint">+{m.items.length - 5} more</p>}
+            </div>
+            {m.total > 0 && (
+              <span className={cx('num whitespace-nowrap text-[10px] leading-none', isSpike(m.total) ? 'text-dim' : 'text-faint', !keep && 'hidden sm:block')}>
+                {money(Math.round(m.total), currency)}
+              </span>
+            )}
+            {/* The bar scales into what is left once the two labels have their room. */}
+            <div
+              className={cx('w-full rounded-t-md transition-all duration-700 group-hover:brightness-125', i === 0 ? 'bg-sub' : 'bg-sub/35')}
+              style={{ height: `max(3px, calc((100% - 2.5rem) * ${m.total / max}))` }}
+            />
+            <span className="label !text-[9px] leading-none">{dayjs(m.month).format('MMM')}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

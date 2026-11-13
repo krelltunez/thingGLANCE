@@ -1,5 +1,5 @@
 import {
-  AppWindow, Box, Cable, CalendarX, Camera, CircleArrowUp, Gamepad2, HardDrive, Headphones, Hourglass,
+  AppWindow, Box, Cable, CalendarX, Camera, Cctv, CircleArrowUp, Gamepad2, HardDrive, Headphones, Hourglass,
   Laptop, LifeBuoy, Lightbulb, Monitor, PcCase, Printer, Repeat, Router, ShieldCheck, Smartphone, Tablet,
   Tv, Watch, type LucideIcon,
 } from 'lucide-react'
@@ -7,7 +7,7 @@ import type { CategoryId, EventType } from '@/core/types'
 import { category } from '@/core/categories'
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  Smartphone, Laptop, PcCase, Tablet, Watch, Headphones, Tv, Monitor, Gamepad2, Camera, Router, HardDrive,
+  Smartphone, Laptop, PcCase, Tablet, Watch, Headphones, Tv, Monitor, Gamepad2, Camera, Cctv, Router, HardDrive,
   Lightbulb, Printer, Cable, AppWindow, Box,
 }
 

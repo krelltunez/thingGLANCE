@@ -5,8 +5,8 @@
 import { useMemo, useState } from 'react'
 import dayjs from 'dayjs'
 import { Telescope } from 'lucide-react'
-import type { HorizonEvent, Subscription, Thing } from '@/core/types'
-import { DAY, daysBetween, fmtDay, fmtMonth, today } from '@/core/dates'
+import type { Coverage, HorizonEvent, Subscription, Thing } from '@/core/types'
+import { DAY, daysBetween, fmtDay, fmtMonth, packRows, today } from '@/core/dates'
 import { cycleShort, isBilling, money, renewalsBetween } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
@@ -26,12 +26,22 @@ const LEAD_IN_MONTHS = 2
 const ROW = 64
 const SUB_ROW = 40
 const HEAD = 44
+// Coverage bars that overlap in time get a row each. Every extra row makes
+// the lane this much taller.
+const COVER_STEP = 19
+// On a phone the label column is dropped and each lane carries its own name
+// on a line above its bars, so the chart has the whole width. `--lane-pad` is
+// that line's height (zero from `sm` up); see the section's class names.
+const lanePad = (px: number) => `calc(${px}px + var(--lane-pad))`
+const NAME_TAG = 'sticky left-2 z-[5] mt-[3px] inline-flex h-[17px] max-w-[72vw] items-center rounded bg-panel/85 px-1 text-[12px] font-medium text-ink sm:hidden'
+const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
 
 export function HorizonView() {
   const d = useData()
   const ui = useUI()
   const { currency } = useSettings()
-  const [range, setRange] = useState<Range>('2y')
+  // A phone starts on the closest view: it has a third of the width to show it in.
+  const [range, setRange] = useState<Range>(() => (isPhone() ? '1y' : '2y'))
 
   const { months, px } = RANGES[range]
   const start = dayjs().startOf('month').subtract(LEAD_IN_MONTHS, 'month')
@@ -52,6 +62,18 @@ export function HorizonView() {
     () => [...d.activeThings].sort((a, b) => (d.life.get(a.id)?.daysLeft ?? 1e9) - (d.life.get(b.id)?.daysLeft ?? 1e9)),
     [d.activeThings, d.life],
   )
+  // Each thing's coverage, packed into rows so that a warranty and a plan
+  // running at the same time are not drawn on top of each other.
+  const coverRows = useMemo(() => {
+    const out = new Map<string, Coverage[][]>()
+    for (const t of things) {
+      const shown = d.coveragesFor(t.id).filter((c) => c.endDate >= startDay)
+      out.set(t.id, packRows(shown, (c) => [c.startDate ?? t.purchaseDate ?? startDay, c.endDate]))
+    }
+    return out
+  }, [things, d, startDay])
+  const laneHeight = (t: Thing) => ROW + Math.max(0, (coverRows.get(t.id)?.length ?? 1) - 1) * COVER_STEP
+
   const loose = d.visibleSubs.filter((s) => s.status !== 'cancelled' && !s.coversThingIds.some((id) => d.thingById.get(id)))
     .sort((a, b) => b.amount * (b.cycle === 'yearly' ? 1 : 12) - a.amount * (a.cycle === 'yearly' ? 1 : 12))
 
@@ -75,45 +97,50 @@ export function HorizonView() {
 
   const lane = (t: Thing) => {
     const life = d.life.get(t.id)!
-    const covs = d.coveragesFor(t.id)
+    const rows = coverRows.get(t.id) ?? []
     const subs = d.subsFor(t.id).filter((s) => s.status !== 'cancelled')
+    const height = laneHeight(t)
+    // Everything below the coverage rows moves down with them.
+    const drop = height - ROW
     return (
-      <div key={t.id} className="relative border-b border-line/[0.06]" style={{ height: ROW }}>
-        {covs.map((c) => {
-          const from = c.startDate ?? t.purchaseDate ?? startDay
-          if (c.endDate < startDay) return null
-          const lapsed = c.endDate < ref
-          return (
-            <div key={c.id} title={`${c.name} · until ${fmtDay(c.endDate)}`}
-              className={cx('absolute top-[11px] flex h-[15px] items-center overflow-hidden rounded-[5px] border px-1.5', lapsed ? 'border-line/15 bg-line/10' : 'border-ok/40 bg-ok/20')}
-              style={bar(from, c.endDate)}>
-              <span className={cx('truncate font-mono text-[9px] font-medium uppercase tracking-wider', lapsed ? 'text-faint' : 'text-ok')}>{c.name}</span>
-            </div>
-          )
-        })}
-        {life.supportEnd && life.supportEnd >= startDay && (
-          <>
-            <div className={cx('absolute top-[33px] h-[4px] rounded-full', t.supportBasis === 'estimate' ? 'bg-[repeating-linear-gradient(90deg,rgb(var(--accent)/0.75)_0_6px,transparent_6px_10px)]' : 'bg-accent/70')}
-              style={bar(life.start ?? startDay, life.supportEnd)} />
-            {inView(life.supportEnd) && (
-              <span title={`${t.supportBasis === 'estimate' ? 'Updates likely end' : 'Security updates end'} ${fmtDay(life.supportEnd)}`}
-                className="absolute top-[29px] h-3 w-3 -translate-x-1/2 rounded-sm border-2 border-accent bg-bg" style={{ left: `${pos(life.supportEnd)}%` }} />
-            )}
-          </>
-        )}
-        {life.replaceBy && life.replaceBy >= startDay && (
-          <>
-            <div className="absolute top-[49px] h-px bg-line/25" style={bar(life.start ?? startDay, life.replaceBy)} />
-            {inView(life.replaceBy) && (
-              <span title={`Planned replacement ${fmtDay(life.replaceBy)}`}
-                className="absolute top-[44px] h-[11px] w-[11px] -translate-x-1/2 rotate-45 rounded-[2px] bg-warn shadow-[0_0_10px_rgb(var(--warn)/0.6)]" style={{ left: `${pos(life.replaceBy)}%` }} />
-            )}
-          </>
-        )}
-        {subs.flatMap((s) => renewalDots(s).map((day) => (
-          <span key={s.id + day} title={`${s.name} renews ${fmtDay(day)} · ${money(s.amount, currency)}`}
-            className="absolute top-[46px] h-[7px] w-[7px] -translate-x-1/2 rounded-full bg-sub ring-2 ring-panel" style={{ left: `${pos(day)}%` }} />
-        )))}
+      <div key={t.id} className="relative border-b border-line/[0.06]" style={{ height: lanePad(height) }}>
+        <button type="button" className={NAME_TAG} onClick={() => ui.openThing(t.id)}><span className="truncate">{t.name}</span></button>
+        <div className="absolute inset-x-0 bottom-0" style={{ height }}>
+          {rows.flatMap((row, r) => row.map((c) => {
+            const from = c.startDate ?? t.purchaseDate ?? startDay
+            const lapsed = c.endDate < ref
+            return (
+              <div key={c.id} title={`${c.name} · until ${fmtDay(c.endDate)}`}
+                className={cx('absolute flex h-[15px] items-center overflow-hidden rounded-[5px] border px-1.5', lapsed ? 'border-line/15 bg-line/10' : 'border-ok/40 bg-ok/20')}
+                style={{ ...bar(from, c.endDate), top: 11 + r * COVER_STEP }}>
+                <span className={cx('truncate font-mono text-[9px] font-medium uppercase tracking-wider', lapsed ? 'text-faint' : 'text-ok')}>{c.name}</span>
+              </div>
+            )
+          }))}
+          {life.supportEnd && life.supportEnd >= startDay && (
+            <>
+              <div className={cx('absolute h-[4px] rounded-full', t.supportBasis === 'estimate' ? 'bg-[repeating-linear-gradient(90deg,rgb(var(--accent)/0.75)_0_6px,transparent_6px_10px)]' : 'bg-accent/70')}
+                style={{ ...bar(life.start ?? startDay, life.supportEnd), top: 33 + drop }} />
+              {inView(life.supportEnd) && (
+                <span title={`${t.supportBasis === 'estimate' ? 'Updates likely end' : 'Security updates end'} ${fmtDay(life.supportEnd)}`}
+                  className="absolute h-3 w-3 -translate-x-1/2 rounded-sm border-2 border-accent bg-bg" style={{ left: `${pos(life.supportEnd)}%`, top: 29 + drop }} />
+              )}
+            </>
+          )}
+          {life.replaceBy && life.replaceBy >= startDay && (
+            <>
+              <div className="absolute h-px bg-line/25" style={{ ...bar(life.start ?? startDay, life.replaceBy), top: 49 + drop }} />
+              {inView(life.replaceBy) && (
+                <span title={`Planned replacement ${fmtDay(life.replaceBy)}`}
+                  className="absolute h-[11px] w-[11px] -translate-x-1/2 rotate-45 rounded-[2px] bg-warn shadow-[0_0_10px_rgb(var(--warn)/0.6)]" style={{ left: `${pos(life.replaceBy)}%`, top: 44 + drop }} />
+              )}
+            </>
+          )}
+          {subs.flatMap((s) => renewalDots(s).map((day) => (
+            <span key={s.id + day} title={`${s.name} renews ${fmtDay(day)} · ${money(s.amount, currency)}`}
+              className="absolute h-[7px] w-[7px] -translate-x-1/2 rounded-full bg-sub ring-2 ring-panel" style={{ left: `${pos(day)}%`, top: 46 + drop }} />
+          )))}
+        </div>
       </div>
     )
   }
@@ -122,15 +149,18 @@ export function HorizonView() {
     const dots = renewalDots(s)
     const until = s.status === 'trial' && s.trialEnd ? s.trialEnd : null
     return (
-      <div key={s.id} className="relative border-b border-line/[0.06]" style={{ height: SUB_ROW }}>
-        {isBilling(s) && <div className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sub/30" style={bar(ref, endDay)} />}
-        {until && inView(until) && (
-          <span title={`Trial converts ${fmtDay(until)}`} className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bad bg-bg" style={{ left: `${pos(until)}%` }} />
-        )}
-        {dots.map((day) => (
-          <span key={day} title={`${s.name} renews ${fmtDay(day)} · ${money(s.amount, currency)}`}
-            className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sub ring-2 ring-panel" style={{ left: `${pos(day)}%` }} />
-        ))}
+      <div key={s.id} className="relative border-b border-line/[0.06]" style={{ height: lanePad(SUB_ROW) }}>
+        <button type="button" className={NAME_TAG} onClick={() => ui.open({ type: 'subscription', id: s.id })}><span className="truncate">{s.name}</span></button>
+        <div className="absolute inset-x-0 bottom-0" style={{ height: SUB_ROW }}>
+          {isBilling(s) && <div className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sub/30" style={bar(ref, endDay)} />}
+          {until && inView(until) && (
+            <span title={`Trial converts ${fmtDay(until)}`} className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bad bg-bg" style={{ left: `${pos(until)}%` }} />
+          )}
+          {dots.map((day) => (
+            <span key={day} title={`${s.name} renews ${fmtDay(day)} · ${money(s.amount, currency)}`}
+              className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sub ring-2 ring-panel" style={{ left: `${pos(day)}%` }} />
+          ))}
+        </div>
       </div>
     )
   }
@@ -145,15 +175,15 @@ export function HorizonView() {
         <Segmented value={range} onChange={setRange} options={[{ id: '1y', label: '1 yr' }, { id: '2y', label: '2 yr' }, { id: '3y', label: '3 yr' }, { id: '5y', label: '5 yr' }]} />
       </div>
 
-      <section className="panel hud overflow-hidden">
+      <section className="panel hud overflow-hidden [--lane-pad:20px] sm:[--lane-pad:0px]">
         <div className="flex">
-          {/* Lane labels */}
-          <div className="w-[132px] shrink-0 border-r border-line/10 bg-panel/60 sm:w-[220px]">
+          {/* Lane labels. From `sm` up; on a phone each lane names itself. */}
+          <div className="hidden w-[220px] shrink-0 border-r border-line/10 bg-panel/60 sm:block">
             <div className="flex items-end border-b border-line/10 px-3 pb-2" style={{ height: HEAD }}><span className="label">Things</span></div>
             {things.map((t) => (
-              <button key={t.id} type="button" onClick={() => ui.openThing(t.id)} style={{ height: ROW }}
+              <button key={t.id} type="button" onClick={() => ui.openThing(t.id)} style={{ height: laneHeight(t) }}
                 className="flex w-full items-center gap-2.5 border-b border-line/[0.06] px-3 text-left transition hover:bg-line/5">
-                <ThingAvatar thing={t} size={32} className="hidden !rounded-lg sm:flex" />
+                <ThingAvatar thing={t} size={32} className="!rounded-lg" />
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-medium text-ink">{t.name}</span>
                   <span className="block truncate text-[11px] text-faint">{t.brand ?? '—'}</span>
@@ -165,7 +195,7 @@ export function HorizonView() {
               <button key={s.id} type="button" onClick={() => ui.open({ type: 'subscription', id: s.id })} style={{ height: SUB_ROW }}
                 className="flex w-full items-center justify-between gap-2 border-b border-line/[0.06] px-3 text-left transition hover:bg-line/5">
                 <span className="truncate text-[13px] text-ink">{s.name}</span>
-                <span className="num hidden shrink-0 text-[11px] text-faint sm:inline">{money(s.amount, currency)}/{cycleShort(s.cycle)}</span>
+                <span className="num shrink-0 text-[11px] text-faint">{money(s.amount, currency)}/{cycleShort(s.cycle)}</span>
               </button>
             ))}
           </div>
@@ -190,7 +220,11 @@ export function HorizonView() {
 
               <div className="border-b border-line/10" style={{ height: HEAD }} />
               {things.map(lane)}
-              {loose.length > 0 && <div className="border-b border-line/10" style={{ height: 41 }} />}
+              {loose.length > 0 && (
+                <div className="flex items-end border-b border-line/10 pb-2" style={{ height: 41 }}>
+                  <span className="label sticky left-3 sm:hidden">Plans</span>
+                </div>
+              )}
               {loose.map(subLane)}
             </div>
           </div>

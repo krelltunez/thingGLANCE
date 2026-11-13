@@ -122,7 +122,7 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
 
   // Doorbell with a cloud plan hanging off it.
   const bell = thing({
-    name: 'Video Doorbell Pro 2', category: 'smarthome', brand: 'Ring', model: 'Hardwired',
+    name: 'Video Doorbell Pro 2', category: 'security', brand: 'Ring', model: 'Hardwired',
     purchaseDate: monthsAgo(15), price: 229, retailer: 'Amazon', lifespanMonths: 72,
   })
   cover(bell, { type: 'warranty', name: 'Limited warranty', provider: 'Ring', startDate: monthsAgo(15), endDate: monthsAgo(3) })

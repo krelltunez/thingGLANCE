@@ -3,7 +3,6 @@
 // week before it renews.
 
 import { useMemo } from 'react'
-import dayjs from 'dayjs'
 import { Eye, EyeOff, Plus, Repeat } from 'lucide-react'
 import type { Subscription } from '@/core/types'
 import { daysFromToday, fmtDay, fmtMonth } from '@/core/dates'
@@ -13,6 +12,7 @@ import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
 import { Chip, Empty, TBadge } from '@/components/ui'
+import { ChargesChart } from '@/components/parts'
 import { cx, type Tone } from '@/components/kit'
 
 function nextDate(s: Subscription): { day: string; label: string } | null {
@@ -75,7 +75,6 @@ export function PlansView() {
   const live = subs.filter((s) => s.status !== 'cancelled')
   const monthly = subs.reduce((t, s) => t + monthlyCost(s), 0)
   const months = useMemo(() => forecast(subs, 12), [subs])
-  const max = Math.max(1, ...months.map((m) => m.total))
   const peak = months.reduce((a, b) => (b.total > a.total ? b : a), months[0])
 
   const sorted = (list: Subscription[]) => [...list].sort((a, b) => (nextDate(a)?.day ?? '9999').localeCompare(nextDate(b)?.day ?? '9999'))
@@ -122,20 +121,7 @@ export function PlansView() {
         </div>
         <div>
           <p className="label mb-3">Charges, next 12 months</p>
-          <div className="flex h-40 items-end gap-1.5 sm:gap-2">
-            {months.map((m, i) => (
-              <div key={m.month} className="group relative flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-                <div className="pointer-events-none absolute -top-1 z-10 hidden w-max max-w-[230px] -translate-y-full rounded-lg border border-line/15 bg-raised px-2.5 py-2 text-left shadow-xl group-hover:block">
-                  <p className="text-xs font-semibold text-ink">{fmtMonth(m.month)}</p>
-                  {m.items.slice(0, 6).map((it) => <p key={it.id + it.date} className="truncate text-[11px] text-dim">{it.name} <span className="num text-faint">{money(it.amount, currency)}</span></p>)}
-                  {m.items.length > 6 && <p className="text-[11px] text-faint">+{m.items.length - 6} more</p>}
-                </div>
-                <span className="num hidden text-[10px] text-faint sm:block">{m.total > 0 ? money(Math.round(m.total), currency) : ''}</span>
-                <div className={cx('w-full rounded-t-md transition-all duration-700 group-hover:brightness-125', i === 0 ? 'bg-sub' : 'bg-sub/35')} style={{ height: `${Math.max(2, (m.total / max) * 78)}%` }} />
-                <span className="label !text-[9px]">{dayjs(m.month).format('MMM')}</span>
-              </div>
-            ))}
-          </div>
+          <ChargesChart months={months} className="h-40" />
         </div>
       </section>
 

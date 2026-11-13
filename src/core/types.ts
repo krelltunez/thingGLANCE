@@ -11,7 +11,7 @@ export type Iso = string // ISO 8601 timestamp
 
 export type CategoryId =
   | 'laptop' | 'desktop' | 'phone' | 'tablet' | 'watch' | 'audio' | 'tv' | 'display'
-  | 'console' | 'camera' | 'network' | 'storage' | 'smarthome' | 'printer' | 'accessory'
+  | 'console' | 'camera' | 'security' | 'network' | 'storage' | 'smarthome' | 'printer' | 'accessory'
   | 'software' | 'other'
 
 export interface Spec { label: string; value: string }

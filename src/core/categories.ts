@@ -22,6 +22,9 @@ export const CATEGORIES: Category[] = [
   { id: 'display', label: 'Display', plural: 'Displays', icon: 'Monitor', lifespanMonths: 84 },
   { id: 'console', label: 'Console', plural: 'Consoles', icon: 'Gamepad2', lifespanMonths: 72 },
   { id: 'camera', label: 'Camera', plural: 'Cameras', icon: 'Camera', lifespanMonths: 72 },
+  // Doorbells and cameras that watch the house. Apart from `camera` (the kind
+  // you take pictures with) and from `smarthome` (bulbs, plugs, thermostats).
+  { id: 'security', label: 'Security camera', plural: 'Security cameras', icon: 'Cctv', lifespanMonths: 72 },
   { id: 'network', label: 'Network', plural: 'Network', icon: 'Router', lifespanMonths: 60 },
   { id: 'storage', label: 'Storage', plural: 'Storage', icon: 'HardDrive', lifespanMonths: 72 },
   { id: 'smarthome', label: 'Smart home', plural: 'Smart home', icon: 'Lightbulb', lifespanMonths: 60 },
@@ -47,11 +50,13 @@ export function guessCategory(text: string): CategoryId | null {
     [/\b(playstation|xbox|nintendo|switch|steam deck|console)\b/, 'console'],
     [/\b(television|oled|qled|\btv\b|apple tv|chromecast|roku)\b/, 'tv'],
     [/\b(monitor|display)\b/, 'display'],
+    // Before `camera` and `smarthome`, which would otherwise claim these.
+    [/\b(doorbell|security camera|cctv|floodlight cam|nest cam|arlo|blink|wyze cam|eufycam)\b/, 'security'],
     [/\b(camera|mirrorless|dslr|gopro)\b/, 'camera'],
     [/\b(router|wi-?fi|mesh|switch|access point|unifi|eero)\b/, 'network'],
     [/\b(nas|synology|ssd|hard drive|storage)\b/, 'storage'],
     [/\b(printer|scanner)\b/, 'printer'],
-    [/\b(thermostat|doorbell|smart lock|hue|nest|ring|smart home)\b/, 'smarthome'],
+    [/\b(thermostat|smart lock|hue|nest|ring|smart home)\b/, 'smarthome'],
   ]
   for (const [re, id] of rules) if (re.test(t)) return id
   return null

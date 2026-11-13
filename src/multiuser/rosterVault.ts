@@ -25,18 +25,30 @@ export const ROSTER_VAULT_APP = 'glance-users'
 const STORAGE_PREFIX = `${APP_ID}-${ROSTER_VAULT_APP}`
 const SEEDED_FLAG = `${STORAGE_PREFIX}-db-sync-snapshot-seeded`
 
-export function isRosterEntity(entity: unknown): entity is Member {
-  if (!entity || typeof entity !== 'object') return false
+// Reads a roster row another app wrote. Strict about what makes it a member
+// (a name, and an id that is its own), forgiving about the timestamp: a row
+// from an older build may carry epoch milliseconds or none at all, and losing
+// a household member over that would be the worse failure. A row with no
+// timestamp reads as the oldest possible, so any later edit wins.
+export function readRosterEntity(entityId: string, entity: unknown): Member | null {
+  if (!entity || typeof entity !== 'object') return null
   const e = entity as Record<string, unknown>
-  return typeof e.id === 'string' && !!e.id && typeof e.name === 'string' && !!e.name.trim() && typeof e.updatedAt === 'string'
+  if (typeof e.name !== 'string' || !e.name.trim()) return null
+  if (e.id != null && e.id !== entityId) return null
+  const at = e.updatedAt
+  const updatedAt = typeof at === 'string' && at ? at
+    : typeof at === 'number' && Number.isFinite(at) ? new Date(at).toISOString()
+    : new Date(0).toISOString()
+  return { id: entityId, name: e.name, updatedAt }
 }
 
 const notifyApplied = () => { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tg:sync-applied')) }
 
 // Upsert by id. A member this device deleted later than the remote edit stays
 // deleted: the local tombstone is newer and its soft-delete is on the way up.
-async function applyRemoteRosterEntity(entityId: string, entity: unknown): Promise<void> {
-  if (!isRosterEntity(entity) || entity.id !== entityId) return
+async function applyRemoteRosterEntity(entityId: string, raw: unknown, onRejected: () => void): Promise<void> {
+  const entity = readRosterEntity(entityId, raw)
+  if (!entity) { onRejected(); return }
   const changed = await db.transaction('rw', db.members, db.tombstones, async () => {
     const tomb = await db.tombstones.get(entityId)
     const existing = await db.members.get(entityId)
@@ -60,6 +72,11 @@ async function applyRemoteRosterDelete(entityId: string): Promise<void> {
 export interface RosterCallbacks {
   onError?: (message: string | null, code: SyncErrorCode | null) => void
   onUnsupported?: () => void
+  // A cycle finished, well or badly. Lets the UI say "checked, and the vault's
+  // roster is empty" instead of leaving an empty list unexplained.
+  // `skipped` rows would not decrypt; `rejected` rows decrypted but were not a
+  // member.
+  onChecked?: (outcome: { error: string | null; skipped: number; rejected: number }) => void
 }
 
 const EMPTY = { applied: 0, skipped: 0, skippedEntityIds: [] } as DbSyncResult
@@ -70,6 +87,8 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
   if (!isVaultEnabled()) return null
   const cfg = getVaultConfig()!
   let unsupported = false
+  let failed: string | null = null
+  let rejected = 0
 
   const engine = createDbSyncEngine({
     storageKeyPrefix: STORAGE_PREFIX,
@@ -81,16 +100,17 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
     accountId: cfg.accountId,
     deviceId: `${getDeviceId()}-roster`,
     getLocalEntity: async (id) => (await db.members.get(id)) ?? null,
-    applyRemoteEntity: applyRemoteRosterEntity,
+    applyRemoteEntity: (id, entity) => applyRemoteRosterEntity(id, entity, () => { rejected += 1 }),
     applyRemoteDelete: applyRemoteRosterDelete,
     isInsertOnly: () => false,
-    getEntityLastModified: (e) => (isRosterEntity(e) ? e.updatedAt : undefined),
+    getEntityLastModified: (e) => (e as { updatedAt?: string } | null)?.updatedAt,
     pullCursorCommit: 'per-page',
     onError: (message, code) => {
       if (isUnknownAppError(message)) {
         if (!unsupported) { unsupported = true; callbacks.onUnsupported?.() }
         return
       }
+      if (message) failed = message
       callbacks.onError?.(message, code)
     },
   })
@@ -110,7 +130,16 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
         }
       }
     }
-    return runCycle()
+    failed = null
+    rejected = 0
+    try {
+      const result = await runCycle()
+      if (!unsupported) callbacks.onChecked?.({ error: failed, skipped: result?.skipped ?? 0, rejected })
+      return result
+    } catch (err) {
+      callbacks.onChecked?.({ error: failed ?? (err instanceof Error ? err.message : 'The roster could not be read.'), skipped: 0, rejected })
+      throw err
+    }
   }
 
   return { ...engine, dbSyncCycle, sync: dbSyncCycle }

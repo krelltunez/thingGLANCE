@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import dayjs from 'dayjs'
 import { ArrowRight, CircleCheck, PiggyBank, Plus, Radar, Sparkles } from 'lucide-react'
 import type { HorizonEvent } from '@/core/types'
-import { DAY, addDays, daysBetween, fmtDay, fmtMonth, relative, span, today } from '@/core/dates'
+import { DAY, addDays, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
 import { EVENT_META } from '@/core/horizon'
 import { replacementFund } from '@/core/health'
 import { forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
@@ -14,9 +14,13 @@ import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
 import { Empty, Ring, TBadge } from '@/components/ui'
 import { TONES, cx } from '@/components/kit'
-import { DecidedRow, EventRow, LifeBar, ThingAvatar, VerdictChip } from '@/components/parts'
+import { ChargesChart, DecidedRow, EventRow, LifeBar, ThingAvatar, VerdictChip } from '@/components/parts'
 import { verdictTone } from '@/components/kit'
 import { useEventActions } from '@/components/useEventActions'
+
+// The Fleet card shows the things closest to the end of their window, and says
+// so when there are more.
+const FLEET_SHOWN = 7
 
 function Stat({ label, value, sub, i }: { label: string; value: string; sub: string; i: number }) {
   return (
@@ -25,6 +29,37 @@ function Stat({ label, value, sub, i }: { label: string; value: string; sub: str
       <p className="num mt-1.5 text-[22px] font-semibold leading-none text-ink">{value}</p>
       <p className="mt-1.5 truncate text-xs text-dim">{sub}</p>
     </div>
+  )
+}
+
+// The strip's backdrop: faint circuit traces in three groups, each breathing
+// in and out on its own slow clock so the panel feels live without anything
+// travelling across it. Purely decorative, and kept above the month labels.
+const TRACES: { d: string; nodes: [number, number][]; seconds: number; delay: number }[] = [
+  {
+    d: 'M0 14H88l10 10h74l8-8h96 M214 46h62l10-10h118l8 8h70 M640 20h54l12 12h92 M930 46h84l10-10h66l8 8h102',
+    nodes: [[276, 16], [482, 44], [798, 32], [1200, 44]], seconds: 9, delay: 0,
+  },
+  {
+    d: 'M120 38h70l10 10h58 M372 12h88l8 8h110l10-10h48 M742 44h96l10-10h60 M1040 18h70l10 10h80',
+    nodes: [[120, 38], [258, 48], [646, 10], [908, 34], [1040, 18]], seconds: 12, delay: -4,
+  },
+  {
+    d: 'M0 48h52l8-8h84 M300 30h44l10 10h70 M540 44h66l10-10h40l8 8h58 M860 14h62l8 8h96 M1100 34h100',
+    nodes: [[144, 40], [424, 40], [732, 42], [860, 14], [1026, 22]], seconds: 15, delay: -9,
+  },
+]
+
+function CircuitTraces() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 1200 68" preserveAspectRatio="xMidYMid slice" className="pointer-events-none absolute inset-0 h-full w-full text-accent">
+      {TRACES.map((t, i) => (
+        <g key={i} className="animate-trace" style={{ animationDuration: `${t.seconds}s`, animationDelay: `${t.delay}s` }}>
+          <path d={t.d} fill="none" stroke="currentColor" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          {t.nodes.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.8} fill="currentColor" />)}
+        </g>
+      ))}
+    </svg>
   )
 }
 
@@ -58,7 +93,7 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
         <div className="absolute inset-y-0 w-px bg-accent/70" style={{ left: `${pos(today())}%` }}>
           <span className="absolute -left-[3px] top-0 h-[7px] w-[7px] rounded-full bg-accent glow-accent" />
         </div>
-        <div className="pointer-events-none absolute inset-y-0 w-1/4 animate-sweep bg-gradient-to-r from-transparent via-accent/[0.06] to-transparent" />
+        <CircuitTraces />
         {pips.map((e) => (
           <button
             key={e.key} type="button" onClick={() => openEvent(e)}
@@ -79,31 +114,6 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
   )
 }
 
-function BurnChart() {
-  const { visibleSubs } = useData()
-  const { currency } = useSettings()
-  const months = useMemo(() => forecast(visibleSubs, 12), [visibleSubs])
-  const max = Math.max(1, ...months.map((m) => m.total))
-  return (
-    <div className="flex h-44 items-end gap-1.5">
-      {months.map((m, i) => (
-        <div key={m.month} className="group relative flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-          <div className="pointer-events-none absolute -top-1 z-10 hidden w-max max-w-[220px] -translate-y-full rounded-lg border border-line/15 bg-raised px-2.5 py-2 text-left shadow-xl group-hover:block">
-            <p className="text-xs font-semibold text-ink">{fmtMonth(m.month)} · <span className="num">{money(m.total, currency)}</span></p>
-            {m.items.slice(0, 4).map((it) => <p key={it.id + it.date} className="truncate text-[11px] text-dim">{it.name} <span className="num text-faint">{money(it.amount, currency)}</span></p>)}
-            {m.items.length > 4 && <p className="text-[11px] text-faint">+{m.items.length - 4} more</p>}
-          </div>
-          <div
-            className={cx('w-full rounded-t-md transition-all duration-700 group-hover:brightness-125', i === 0 ? 'bg-sub' : 'bg-sub/35')}
-            style={{ height: `${Math.max(3, (m.total / max) * 100)}%` }}
-          />
-          <span className="label !text-[9px]">{dayjs(m.month).format('MMM')[0]}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export function GlanceView() {
   const d = useData()
   const ui = useUI()
@@ -112,6 +122,7 @@ export function GlanceView() {
 
   const monthly = d.visibleSubs.reduce((t, s) => t + monthlyCost(s), 0)
   const fund = useMemo(() => replacementFund(d.activeThings, d.coverages), [d.activeThings, d.coverages])
+  const months = useMemo(() => forecast(d.visibleSubs, 12), [d.visibleSubs])
   const next30 = useMemo(() => {
     let total = 0
     let count = 0
@@ -160,7 +171,7 @@ export function GlanceView() {
             <h1 className="mt-2.5 text-[26px] font-semibold leading-[1.15] tracking-tight text-ink lg:text-[34px]">{headline}</h1>
             <p className="mt-2 text-sm leading-relaxed text-dim lg:text-[15px]">
               {first
-                ? <>Next up: <button type="button" className="font-medium text-ink underline decoration-accent/50 underline-offset-4 hover:decoration-accent" onClick={() => first.thingId ? ui.openThing(first.thingId) : ui.open({ type: 'subscription', id: first.subscriptionId })}>{first.title.toLowerCase()}</button> for {first.detail}, {first.days < 0 ? relative(first.days) : relative(first.days)}.</>
+                ? <>{first.days < 0 ? 'Overdue' : 'Next up'}: <button type="button" className="font-medium text-ink underline decoration-accent/50 underline-offset-4 hover:decoration-accent" onClick={() => first.thingId ? ui.openThing(first.thingId) : ui.open({ type: 'subscription', id: first.subscriptionId })}>{first.title.toLowerCase()}</button> for {first.detail}, {relative(first.days)}.</>
                 : <>You are watching {d.activeThings.length} {d.activeThings.length === 1 ? 'thing' : 'things'} and {d.visibleSubs.filter((s) => s.status !== 'cancelled').length} plans. The next date is a way off.</>}
             </p>
           </div>
@@ -203,7 +214,7 @@ export function GlanceView() {
             <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('things')}>All things <ArrowRight size={12} /></button>
           </header>
           <div className="stagger space-y-1">
-            {fleet.slice(0, 7).map((t, i) => {
+            {fleet.slice(0, FLEET_SHOWN).map((t, i) => {
               const life = d.life.get(t.id)!
               const tone = verdictTone(life.verdict)
               return (
@@ -224,11 +235,16 @@ export function GlanceView() {
               )
             })}
           </div>
+          {fleet.length > FLEET_SHOWN && (
+            <button type="button" className="mt-1 w-full rounded-lg px-2 py-1.5 text-left text-xs text-dim transition hover:bg-line/5 hover:text-ink" onClick={() => ui.setView('things')}>
+              +{fleet.length - FLEET_SHOWN} more in Things
+            </button>
+          )}
         </section>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-5">
-        <section className="panel min-w-0 p-4 lg:col-span-7 lg:p-5">
+        <section className="panel flex min-w-0 flex-col p-4 lg:col-span-7 lg:p-5">
           <header className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Plan charges, month by month</h2>
@@ -236,7 +252,7 @@ export function GlanceView() {
             </div>
             <button type="button" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('plans')}>Plans <ArrowRight size={12} /></button>
           </header>
-          <BurnChart />
+          <ChargesChart months={months} className="min-h-44 flex-1" />
         </section>
 
         <section className="panel min-w-0 p-4 lg:col-span-5 lg:p-5">

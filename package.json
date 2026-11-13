@@ -1,0 +1,44 @@
+{
+  "name": "thingglance",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "description": "Know what's next for your things: warranties, subscriptions, support windows and the right moment to upgrade.",
+  "homepage": "https://www.glance-apps.com/thingglance",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "test:e2e": "node e2e/vault-sync.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.5",
+    "@fontsource-variable/jetbrains-mono": "^5.2.5",
+    "@glance-apps/intents": "1.4.0",
+    "@glance-apps/sync": "2.4.0",
+    "dayjs": "^1.11.13",
+    "dexie": "^4.4.2",
+    "dexie-react-hooks": "^4.2.0",
+    "lucide-react": "1.31.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "playwright-core": "^1.65.0",
+    "postcss": "^8.5.3",
+    "sharp": "^0.35.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^4.1.7"
+  }
+}

@@ -1,0 +1,19 @@
+node_modules
+dist
+dev-dist
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+
+# Mobile / desktop build outputs (future shells)
+outputs
+android/keystore.properties
+*.keystore
+*.jks
+dist-electron
+dist-app
+
+# End-to-end screenshots
+e2e/out

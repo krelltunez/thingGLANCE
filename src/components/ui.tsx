@@ -43,7 +43,8 @@ export function Ring({ value, size = 44, stroke = 4, tone = 'accent', children }
   }, [value])
   return (
     <span className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
+      {/* overflow-visible: the glow is a filter on the arc and would otherwise be cut off square at the svg's edge. */}
+      <svg width={size} height={size} className="-rotate-90 overflow-visible">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-line/10" strokeDasharray={value == null ? '2 5' : undefined} />
         {value != null && (
           <circle
@@ -117,14 +118,16 @@ export function Empty({ icon: Icon, title, body, action }: { icon: LucideIcon; t
 }
 
 // A modal: a bottom sheet on phones, a centred dialog from sm up.
-export function Sheet({ title, subtitle, onClose, children, footer, width = 'max-w-lg' }: {
+export function Sheet({ title, subtitle, onClose, children, footer, width = 'max-w-lg', className }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: string
+  // For a sheet that should hold one height (the max-height still caps it).
+  className?: string
 }) {
   useEscape(onClose)
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 animate-fade-in bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <div className={cx('panel hud relative flex max-h-[92svh] w-full animate-slide-up flex-col rounded-b-none !bg-panel sm:max-h-[86svh] sm:animate-pop sm:rounded-b-2xl', width)}>
+      <div className={cx('panel hud relative flex max-h-[92svh] w-full animate-slide-up flex-col rounded-b-none !bg-panel sm:max-h-[86svh] sm:animate-pop sm:rounded-b-2xl', width, className)}>
         <header className="flex items-start justify-between gap-4 border-b border-line/10 px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-ink">{title}</h2>

@@ -52,3 +52,24 @@ export function span(days: number): string {
 
 export const fmtDay = (d: Day | undefined | null, f = 'MMM D, YYYY'): string => (d ? dayjs(d).format(f) : '—')
 export const fmtMonth = (d: Day): string => dayjs(d).format('MMM YYYY')
+
+// Packs dated spans into as few rows as it can, so that no two spans in a row
+// overlap. Used where spans are drawn as bars on a shared axis: a warranty and
+// a protection plan that run at the same time get a row each instead of being
+// drawn on top of one another. Spans that merely touch (one ends the day the
+// next begins) are kept apart too, since their bars would meet.
+export function packRows<T>(items: T[], span: (item: T) => [Day, Day]): T[][] {
+  const rows: { end: Day; items: T[] }[] = []
+  const sorted = [...items].sort((a, b) => {
+    const [as, ae] = span(a)
+    const [bs, be] = span(b)
+    return as < bs ? -1 : as > bs ? 1 : ae > be ? -1 : ae < be ? 1 : 0
+  })
+  for (const item of sorted) {
+    const [from, to] = span(item)
+    const row = rows.find((r) => r.end < from)
+    if (row) { row.items.push(item); row.end = to }
+    else rows.push({ end: to, items: [item] })
+  }
+  return rows.map((r) => r.items)
+}

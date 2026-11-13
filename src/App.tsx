@@ -71,9 +71,14 @@ function AddMenu({ onOpen, variant }: { onOpen: (m: Modal) => void; variant: 'he
             <Plus size={22} />
           </button>}
       {open && (
-        <div className={cx('panel absolute z-50 w-48 animate-pop !bg-raised p-1.5 shadow-2xl', variant === 'header' ? 'right-0 top-11' : 'bottom-14 left-1/2 -translate-x-1/2')}>
-          <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'thing' })}><Package size={15} className="text-accent" /> A thing</button>
-          <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'subscription' })}><Repeat size={15} className="text-sub" /> A plan</button>
+        // Placed by this wrapper, animated by the panel inside it. The pop
+        // animation drives `transform`, so on one element it would override
+        // the centring translate until it finished and the menu would jump.
+        <div className={cx('absolute z-50 w-48', variant === 'header' ? 'right-0 top-11' : 'bottom-14 left-1/2 -translate-x-1/2')}>
+          <div className={cx('panel animate-pop !bg-raised p-1.5 shadow-2xl', variant === 'fab' && 'origin-bottom')}>
+            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'thing' })}><Package size={15} className="text-accent" /> A thing</button>
+            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'subscription' })}><Repeat size={15} className="text-sub" /> A plan</button>
+          </div>
         </div>
       )}
     </div>

@@ -62,7 +62,7 @@ export function syncErrorText(code: string | null, message: string | null): stri
     case 'RATE_LIMITED':
     case 'SYNC_SUPPRESSED': return 'Sync is pausing briefly and will resume on its own.'
     case 'VERIFIER_UNSUPPORTED': return 'This vault server is too old to verify the encryption key. Update the server.'
-    case 'UNKNOWN_APP': return 'This vault does not accept thingGLANCE yet. Add "thingglance" to the server\'s allowed apps (GLANCEVAULT_ALLOWED_APPS).'
+    case 'UNKNOWN_APP': return 'This vault does not accept thingGLANCE yet. Add "thingglance" to the server\'s allowed apps (GLANCEVAULT_ALLOWED_APPS) and recreate its container.'
     default: return message || 'Sync failed.'
   }
 }

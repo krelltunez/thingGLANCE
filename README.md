@@ -54,7 +54,7 @@ Or build it yourself with `docker compose up -d --build`. The container answers 
 Three things to get right when it sits behind your own domain:
 
 - **HTTPS.** The service worker, install prompt and encryption all need a secure context. Terminate TLS at your reverse proxy.
-- **Your vault must allow it.** Add the app's address (for example `https://things.example.com`) to the vault's `GLANCEVAULT_ALLOWED_ORIGINS`, and `thingglance` to `GLANCEVAULT_ALLOWED_APPS`. A vault served over plain HTTP cannot be reached from an HTTPS page.
+- **Your vault must allow it.** Add the app's address (for example `https://things.example.com`) to the vault's `GLANCEVAULT_ALLOWED_ORIGINS`, and `thingglance` to `GLANCEVAULT_ALLOWED_APPS`. A vault served over plain HTTP cannot be reached from an HTTPS page. See [Allowing thingGLANCE on your vault](#allowing-thingglance-on-your-vault) if the app still says it is not listed.
 - **Do not buffer the vault's event stream.** Live updates arrive over `GET /events` on the vault. If the proxy in front of the *vault* buffers responses, the stream opens and stays silent; Settings → GLANCEvault will say so, and sync falls back to checking every few minutes. For nginx that means `proxy_buffering off;` on that location.
 
 ## Sync: GLANCEvault only
@@ -67,6 +67,27 @@ Unlike its siblings, thingGLANCE has exactly one sync road: **GLANCEvault**, end
 - **Household.** Track things for everyone in the house, whether or not they use the app. The member list is the shared `glance-users` vault app, the same roster the other apps read and write. A thing has an owner (or belongs to the household) and someone who deals with it; a plan has a payer and can cover several things and people. Saying "This is me" on a device makes that member a user, and either can be marked private, which hides it on everyone else's devices (it is not separately encrypted). See [docs/household-members.md](docs/household-members.md).
 - **Live updates.** The app holds the vault's `/events` stream open while it is visible and syncs the moment another device writes. Polling (every five minutes, on focus, and three seconds after a local write) keeps running underneath as the backstop.
 - **Intents** go over the vault's `intents` endpoints, always encrypted. thingGLANCE emits `create` (source app `app.thingglance`, `source_entity_id` = the horizon event key) and consumes the `notify` that comes back, so completing the task in dayGLANCE clears the item here on every device.
+
+### Allowing thingGLANCE on your vault
+
+Set this in the vault's `.env`. The list replaces the server's default rather than adding to it, so name every app you use; `glance-users` is the shared household roster.
+
+```
+GLANCEVAULT_ALLOWED_APPS=dayglance,dayglance-bridge,glance-users,lastglance,lastglance-people,lifeglance,thingglance
+```
+
+Then recreate the container. A stop and start, or a restart, keeps the environment the container was created with and never re-reads `.env`:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+`GET /healthz` on the vault shows the list in effect. If `thingglance` is still missing:
+
+- `docker compose config | grep ALLOWED` shows what Compose resolved. No `GLANCEVAULT_ALLOWED_APPS` line means the compose file does not pass it through: add `GLANCEVAULT_ALLOWED_APPS: ${GLANCEVAULT_ALLOWED_APPS:-}` under the service's `environment:`. An empty value means `.env` is not beside the compose file, or the line is misspelled or still commented out.
+- A vault run from Portainer, Unraid or another stack UI takes its variables from that tool's settings, not from `.env`.
+
+The allowed origins travel the same road, so the same checks apply to `GLANCEVAULT_ALLOWED_ORIGINS`.
 
 ### End-to-end test
 

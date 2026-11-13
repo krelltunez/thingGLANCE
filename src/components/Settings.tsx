@@ -112,7 +112,7 @@ function Vault() {
       return false
     }
     if (r.appAllowed === false) {
-      setNote({ tone: 'warn', text: `Connected, but this server does not list "${APP_ID}" in its allowed apps yet. Add it to GLANCEVAULT_ALLOWED_APPS and restart the vault, then connect.` })
+      setNote({ tone: 'warn', text: `Connected, but this server does not list "${APP_ID}" in its allowed apps yet. Add it to GLANCEVAULT_ALLOWED_APPS (keep the apps already listed), then recreate the vault's container: a plain restart keeps the old settings. The server's /healthz page shows the list in effect.` })
       return false
     }
     setNote({ tone: 'ok', text: r.fresh ? 'Reachable. This account is new: your passphrase will set its encryption key.' : 'Reachable, and the account already has data. Use the same passphrase as your other GLANCE apps.' })
@@ -199,7 +199,7 @@ function Vault() {
               <button type="button" className="btn" disabled={!selfValid || busy} onClick={() => void test()}>{busy && <LoaderCircle size={15} className="animate-spin" />} Test</button>
               <button type="button" className="btn-primary" disabled={!selfValid || busy} onClick={() => void connectSelf()}>Connect</button>
             </div>
-            <p className="text-xs leading-relaxed text-faint">The server needs <span className="num text-dim">{APP_ID}</span> in GLANCEVAULT_ALLOWED_APPS, and this site's address ({window.location.origin}) in its allowed origins.</p>
+            <p className="text-xs leading-relaxed text-faint">The server needs <span className="num text-dim">{APP_ID}</span> in GLANCEVAULT_ALLOWED_APPS, and this site's address ({window.location.origin}) in its allowed origins. Its /healthz page lists the apps it accepts.</p>
           </div>
         )}
         {note && <p className={cx('mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed', TONES[note.tone].soft)}>{note.text}</p>}

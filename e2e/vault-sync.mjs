@@ -1,5 +1,6 @@
 // End-to-end: two browser contexts ("devices") syncing through a real
-// GLANCEvault, plus the shared roster and the dayGLANCE intent round-trip.
+// GLANCEvault, plus the shared roster, members and users (owner, responsible,
+// private) and the dayGLANCE intent round-trip.
 //
 // Needs the dev server (npm run dev) and a vault that allows this app and this
 // origin. A throwaway one from the sibling repo:
@@ -66,7 +67,16 @@ async function syncNow(page) {
   await page.keyboard.press('Enter')
   await page.waitForTimeout(2500)
 }
-const goto = async (page, name) => { await page.getByRole('tab', { name: new RegExp(`^${name}`) }).first().click(); await page.waitForTimeout(500) }
+const goto = async (page, name) => {
+  try {
+    await page.getByRole('tab', { name: new RegExp(`^${name}`) }).first().click({ timeout: 8000 })
+  } catch (err) {
+    // Something is covering the page: keep a picture of what.
+    await page.screenshot({ path: `${out}/e2e-stuck.png` }).catch(() => {})
+    throw err
+  }
+  await page.waitForTimeout(500)
+}
 
 // ── Device A: connect, set the passphrase, add a thing ───────────────────────
 const A = await device('A')
@@ -139,16 +149,71 @@ const household = async (page) => {
   await page.getByRole('button', { name: 'Household', exact: true }).click()
   await page.getByRole('switch').first().click()
 }
+const addMember = async (page, name) => {
+  await page.getByPlaceholder('Add a member').fill(name)
+  await page.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click()
+  await page.waitForTimeout(400)
+}
 await household(A)
-await A.getByPlaceholder('Add a member').fill('Alex')
-await A.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click()
+// The first member added on an unclaimed device is taken to be its user;
+// Casey is a member with no device at all.
+await addMember(A, 'Alex')
+await addMember(A, 'Casey')
+check('A: the first member added is this device', await A.getByText('Uses the app: this device').isVisible().catch(() => false))
 await A.waitForTimeout(4500)
 await A.keyboard.press('Escape')
 await household(B)
 await B.waitForTimeout(3000)
 check('B: member added on A arrives through glance-users', await B.getByText('Alex').first().isVisible().catch(() => false))
+check('B: sees that Alex uses the app (the device link synced)', await B.getByText(/Uses the app: .*Chrome on/).first().isVisible().catch(() => false))
+check('B: Casey is a member without a device', (await B.getByText('Does not use the app').count()) === 1)
+
+// ── Members and users: owner, responsible, private ──────────────────────────
+await addMember(B, 'Blake')
+await B.getByRole('dialog').getByRole('listitem').filter({ hasText: 'Blake' }).getByRole('button', { name: 'This is me' }).click()
+await B.waitForTimeout(4500)
 await B.screenshot({ path: `${out}/e2e-B-household.png` })
 await B.keyboard.press('Escape')
+
+const editLaptop = async (page) => {
+  await goto(page, 'Things')
+  await page.getByRole('button', { name: /E2E Laptop/ }).first().click()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  return page.getByRole('dialog').last()
+}
+const saveLaptop = async (page, form) => {
+  await form.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.waitForTimeout(700)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(4500) // debounced push
+}
+await syncNow(A)
+let form = await editLaptop(A)
+await form.getByRole('button', { name: 'Blake', exact: true }).click()
+const pickable = await form.getByLabel('Who deals with it?').locator('option').allTextContents()
+check('A: only members with a device can be responsible', pickable.includes('Blake') && pickable.some((o) => o.startsWith('Alex')) && !pickable.includes('Casey'), pickable.join(' | '))
+await form.getByLabel('Who deals with it?').selectOption({ label: 'Blake' })
+await saveLaptop(A, form)
+await syncNow(B)
+await goto(B, 'Things')
+check('B: owner set on A arrives', await B.getByRole('button', { name: /E2E Laptop.*Blake|Blake.*E2E Laptop/s }).first().isVisible().catch(() => false))
+
+// Private to Alex (A's member): B belongs to Blake, so it disappears there.
+form = await editLaptop(A)
+await form.getByRole('button', { name: 'Alex', exact: true }).click()
+await form.getByText('Private', { exact: true }).click()
+await saveLaptop(A, form)
+await syncNow(B)
+await goto(B, 'Things')
+check('B: a thing private to someone else is hidden', !(await B.getByText('E2E Laptop').first().isVisible().catch(() => false)))
+await goto(A, 'Things')
+check('A: its owner still sees it', await A.getByText('E2E Laptop').first().isVisible().catch(() => false))
+form = await editLaptop(A)
+await form.getByText('Private', { exact: true }).click()
+await saveLaptop(A, form)
+await syncNow(B)
+await goto(B, 'Things')
+check('B: shared again, it comes back', await B.getByText('E2E Laptop').first().isVisible().catch(() => false))
 
 // ── Intents: send to dayGLANCE, then play dayGLANCE's reply ──────────────────
 await A.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -172,6 +237,7 @@ const row = intents.parseIntentRow(listed.rows[listed.rows.length - 1])
 check('vault: the intent row is encrypted', row.envelope.encrypted === true)
 const env = await intents.parseEncryptedEnvelope(row.envelope, deriveKey)
 console.log('  create payload:', JSON.stringify(env.payload))
+check('vault: the task is assigned to whoever deals with the thing', Array.isArray(env.payload.assigned_user_ids) && env.payload.assigned_user_ids.length === 1)
 check('vault: decrypts to a create from app.thingglance', env.action === 'create' && env.payload.source_app === 'app.thingglance' && !!env.payload.source_entity_id && /^\d{4}-\d{2}-\d{2}$/.test(env.payload.due))
 
 const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')

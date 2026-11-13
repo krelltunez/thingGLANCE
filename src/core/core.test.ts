@@ -9,8 +9,8 @@ import { tMinus } from './dates'
 const REF = '2026-11-12'
 const stamp = '2026-01-01T00:00:00.000Z'
 
-const thing = (p: Partial<Thing>): Thing => ({ id: 't1', kind: 'thing', name: 'Phone', category: 'phone', status: 'active', ownerIds: [], createdAt: stamp, updatedAt: stamp, ...p })
-const sub = (p: Partial<Subscription>): Subscription => ({ id: 's1', kind: 'subscription', name: 'Plan', amount: 10, cycle: 'monthly', anchorDate: '2026-01-15', autoRenew: true, status: 'active', review: false, createdAt: stamp, updatedAt: stamp, ...p })
+const thing = (p: Partial<Thing>): Thing => ({ id: 't1', kind: 'thing', name: 'Phone', category: 'phone', status: 'active', ownerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: stamp, updatedAt: stamp, ...p })
+const sub = (p: Partial<Subscription>): Subscription => ({ id: 's1', kind: 'subscription', name: 'Plan', amount: 10, cycle: 'monthly', anchorDate: '2026-01-15', autoRenew: true, status: 'active', review: false, coversThingIds: [], coversMemberIds: [], payerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: stamp, updatedAt: stamp, ...p })
 const cov = (p: Partial<Coverage>): Coverage => ({ id: 'c1', kind: 'coverage', thingId: 't1', type: 'warranty', name: 'Warranty', endDate: '2026-11-24', createdAt: stamp, updatedAt: stamp, ...p })
 const data = (p: Partial<DataSet>): DataSet => ({ things: [], coverages: [], subscriptions: [], decisions: [], ...p })
 
@@ -98,18 +98,18 @@ describe('horizon', () => {
     expect(q[0].severity).toBe('past')
   })
   it('filters by household member', () => {
-    const d = data({ things: [thing({ id: 'a', ownerIds: ['u1'], purchaseDate: '2023-01-01', lifespanMonths: 48 }), thing({ id: 'b', ownerIds: ['u2'], purchaseDate: '2023-01-01', lifespanMonths: 48 })] })
-    expect(new Set(buildHorizon(d, { ref: REF, userId: 'u1' }).map((e) => e.thingId))).toEqual(new Set(['a']))
+    const d = data({ things: [thing({ id: 'a', ownerMemberId: 'u1', purchaseDate: '2023-01-01', lifespanMonths: 48 }), thing({ id: 'b', ownerMemberId: 'u2', purchaseDate: '2023-01-01', lifespanMonths: 48 })] })
+    expect(new Set(buildHorizon(d, { ref: REF, memberId: 'u1' }).map((e) => e.thingId))).toEqual(new Set(['a']))
   })
   it('ignores retired things and their plans', () => {
-    const d = data({ things: [thing({ status: 'retired', purchaseDate: '2023-01-01' })], subscriptions: [sub({ thingId: 't1', cycle: 'yearly' })] })
+    const d = data({ things: [thing({ status: 'retired', purchaseDate: '2023-01-01' })], subscriptions: [sub({ coversThingIds: ['t1'], cycle: 'yearly' })] })
     expect(buildHorizon(d, { ref: REF })).toEqual([])
   })
 })
 
 describe('snapshot', () => {
   it('is plain JSON a widget can render without the app', () => {
-    const snap = buildSnapshot(data({ things: [thing({ purchaseDate: '2025-11-24', lifespanMonths: 48, price: 800 })], coverages: [cov({})], subscriptions: [sub({})] }), { ref: REF })
+    const snap = buildSnapshot(data({ things: [thing({ purchaseDate: '2025-11-24', lifespanMonths: 48, price: 800 })], coverages: [cov({})], subscriptions: [sub({})] }), { ref: REF, viewerId: null })
     expect(snap.counts).toEqual({ things: 1, subscriptions: 1, attention: 1, urgent: 1 })
     expect(snap.burn.monthly).toBe(10)
     expect(JSON.parse(JSON.stringify(snap))).toEqual(snap)

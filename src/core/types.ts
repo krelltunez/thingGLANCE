@@ -36,7 +36,17 @@ export interface Thing {
   status: 'active' | 'retired'
   retiredAt?: Day
   resaleValue?: number
-  ownerIds: string[]
+  // Whose it is. Any household member, user of the app or not; null means the
+  // household (the TV, the router).
+  ownerMemberId: string | null
+  // Who deals with it: the member whose devices are asked about its dates.
+  // Null means nobody in particular, so everyone is asked.
+  responsibleMemberId: string | null
+  // 'private' hides it on every device that is not its owner's. A display
+  // rule, not encryption: every household device holds the same keys.
+  visibility: Visibility
+  // Earlier owners, oldest first. The current owner is ownerMemberId.
+  ownershipHistory?: OwnershipSpan[]
   notes?: string
   specs?: Spec[]
   imageUrl?: string
@@ -50,6 +60,14 @@ export interface Thing {
   updatedAt: Iso
   // Local only (never synced): part of the built-in sample set, untouched.
   sample?: boolean
+}
+
+export type Visibility = 'shared' | 'private'
+
+export interface OwnershipSpan {
+  memberId: string | null // null: the household
+  from?: Day
+  to: Day
 }
 
 export type CoverageType = 'warranty' | 'extended' | 'insurance'
@@ -75,9 +93,12 @@ export type Cycle = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 export interface Subscription {
   id: string
   kind: 'subscription'
-  // Optional: a subscription can stand alone (iCloud+) or hang off a thing
-  // (a phone plan, a camera cloud plan, AppleCare+ billed monthly).
-  thingId?: string | null
+  // The things it is attached to. Empty: it stands alone (iCloud+). One: a
+  // camera cloud plan, AppleCare+ billed monthly. Several: a carrier plan
+  // across the family's phones.
+  coversThingIds: string[]
+  // The people it serves. Empty says nothing in particular.
+  coversMemberIds: string[]
   name: string
   provider?: string
   amount: number
@@ -91,7 +112,12 @@ export interface Subscription {
   endDate?: Day
   // "Ask me before this renews." Annual plans ask anyway.
   review: boolean
-  payerId?: string | null
+  // Who pays; null means the household. Drives "what I pay".
+  payerMemberId: string | null
+  // Who is asked before it renews; null means everyone.
+  responsibleMemberId: string | null
+  // Private plans show only on the payer's devices.
+  visibility: Visibility
   notes?: string
   createdAt: Iso
   updatedAt: Iso
@@ -111,15 +137,31 @@ export interface Decision {
   updatedAt: Iso
 }
 
-// A household member. The roster is the shared `glance-users` vault app that
-// every GLANCE app reads and writes.
-export interface User {
+// A household member: anyone things are tracked for, whether or not they use
+// the app. The roster is the shared `glance-users` vault app every GLANCE app
+// reads and writes, and its row is exactly these three fields. The sibling
+// apps write it back as just these three, so nothing else may live on it.
+export interface Member {
   id: string
   name: string
   updatedAt: Iso
 }
 
-export type SyncEntity = Thing | Coverage | Subscription | Decision
+// "This device is that member." One row per device, written by the device
+// itself, with the device's own id as its id. A member with at least one of
+// these is a user. It lives in thingGLANCE's own vault app, not on the shared
+// roster row: being a user of thingGLANCE is a fact about thingGLANCE.
+export interface DeviceLink {
+  id: string // the device id (src/sync/deviceId.ts)
+  kind: 'device'
+  memberId: string
+  // "Chrome on macOS": enough to tell two of them apart in a list.
+  label?: string
+  createdAt: Iso
+  updatedAt: Iso
+}
+
+export type SyncEntity = Thing | Coverage | Subscription | Decision | DeviceLink
 
 export interface DataSet {
   things: Thing[]

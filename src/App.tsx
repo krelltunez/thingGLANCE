@@ -7,10 +7,10 @@ import { useData } from '@/state/data'
 import { DataProvider } from '@/state/DataProvider'
 import { UIContext, type Modal, type UI, type View } from '@/state/ui'
 import { useSync } from '@/state/sync'
-import { setUserFilter } from '@/multiuser/settings'
+import { setUserFilter, takeLegacyMeId } from '@/multiuser/settings'
 import { startSync } from '@/sync/manager'
-import { setBadge } from '@/native/platform'
-import { removeSamples } from '@/db/queries'
+import { describeDevice, setBadge } from '@/native/platform'
+import { attachThisDevice, removeSamples } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
 import { HorizonView } from '@/views/HorizonView'
 import { ThingsView } from '@/views/ThingsView'
@@ -193,6 +193,13 @@ export default function App() {
 
   // Engines start once; the page reloads after any vault config change.
   useEffect(() => { void startSync() }, [])
+
+  // v0.1 remembered "this is me" in localStorage. It is a synced row now, so
+  // the rest of the household can tell who uses the app: hand it over once.
+  useEffect(() => {
+    const legacy = takeLegacyMeId()
+    if (legacy) void attachThisDevice(legacy, describeDevice())
+  }, [])
 
   // A vault with no key on this device: ask for the passphrase once per load.
   const asked = useRef(false)

@@ -25,15 +25,22 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
   const coverages: Coverage[] = []
   const subscriptions: Subscription[] = []
 
-  const thing = (t: Omit<Thing, 'id' | 'kind' | 'status' | 'ownerIds' | 'createdAt' | 'updatedAt'> & Partial<Pick<Thing, 'status'>>): string => {
+  // Samples belong to the household and to nobody in particular: there is no
+  // roster to point at until someone builds one.
+  const shared = { responsibleMemberId: null, visibility: 'shared' as const }
+  const thing = (t: Omit<Thing, 'id' | 'kind' | 'status' | 'ownerMemberId' | 'responsibleMemberId' | 'visibility' | 'createdAt' | 'updatedAt'> & Partial<Pick<Thing, 'status'>>): string => {
     const tid = id('thing')
-    things.push({ status: 'active', ownerIds: [], ...t, id: tid, kind: 'thing', ...base })
+    things.push({ status: 'active', ownerMemberId: null, ...shared, ...t, id: tid, kind: 'thing', ...base })
     return tid
   }
   const cover = (thingId: string, c: Omit<Coverage, 'id' | 'kind' | 'thingId' | 'createdAt' | 'updatedAt'>) =>
     coverages.push({ ...c, id: id('cov'), kind: 'coverage', thingId, ...base })
-  const sub = (s: Omit<Subscription, 'id' | 'kind' | 'createdAt' | 'updatedAt' | 'autoRenew' | 'status' | 'review'> & Partial<Pick<Subscription, 'autoRenew' | 'status' | 'review'>>) =>
-    subscriptions.push({ autoRenew: true, status: 'active', review: false, ...s, id: id('sub'), kind: 'subscription', ...base })
+  type SubFields = 'name' | 'provider' | 'amount' | 'cycle' | 'anchorDate' | 'trialEnd' | 'endDate' | 'notes'
+  const sub = ({ thingId, ...s }: Pick<Subscription, SubFields> & Partial<Pick<Subscription, 'autoRenew' | 'status' | 'review'>> & { thingId?: string }) =>
+    subscriptions.push({
+      autoRenew: true, status: 'active', review: false, coversThingIds: thingId ? [thingId] : [], coversMemberIds: [], payerMemberId: null, ...shared,
+      ...s, id: id('sub'), kind: 'subscription', ...base,
+    })
 
   // Laptop: mid-life, extended coverage still running.
   const mbp = thing({

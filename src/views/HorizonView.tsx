@@ -52,7 +52,7 @@ export function HorizonView() {
     () => [...d.activeThings].sort((a, b) => (d.life.get(a.id)?.daysLeft ?? 1e9) - (d.life.get(b.id)?.daysLeft ?? 1e9)),
     [d.activeThings, d.life],
   )
-  const loose = d.visibleSubs.filter((s) => s.status !== 'cancelled' && (!s.thingId || !d.thingById.get(s.thingId)))
+  const loose = d.visibleSubs.filter((s) => s.status !== 'cancelled' && !s.coversThingIds.some((id) => d.thingById.get(id)))
     .sort((a, b) => b.amount * (b.cycle === 'yearly' ? 1 : 12) - a.amount * (a.cycle === 'yearly' ? 1 : 12))
 
   const agenda = useMemo(() => {

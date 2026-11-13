@@ -26,7 +26,7 @@ function ThingCard({ thing, i }: { thing: Thing; i: number }) {
   const next = nextEventFor(d.events, { thingId: thing.id })
   const NextIcon = next ? EVENT_ICONS[next.type] : null
   const own = ownership(thing, d.coveragesFor(thing.id), d.subsFor(thing.id))
-  const owners = d.multiUser ? thing.ownerIds.map((id) => d.userName(id)).filter(Boolean) : []
+  const owner = d.multiUser ? d.memberName(thing.ownerMemberId) : null
   return (
     <button
       type="button" onClick={() => ui.openThing(thing.id)} style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
@@ -54,7 +54,7 @@ function ThingCard({ thing, i }: { thing: Thing; i: number }) {
         {thing.status === 'active' && (life.covered
           ? <Chip tone="ok" icon={ShieldCheck}>until {fmtDay(life.warrantyEnd, 'MMM YYYY')}</Chip>
           : <Chip tone="dim" icon={ShieldOff}>No coverage</Chip>)}
-        {owners.map((n) => <Chip key={n} tone="dim">{n}</Chip>)}
+        {owner && <Chip tone="dim">{owner}</Chip>}
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-line/10 pt-3 text-xs">

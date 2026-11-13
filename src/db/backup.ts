@@ -1,12 +1,15 @@
 // JSON backup: the escape hatch for an app whose only sync road is the vault.
 
 import { db } from './client'
-import type { Coverage, Decision, Subscription, Thing, User } from '@/core/types'
+import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
+import { normalizeSubscription, normalizeThing } from '@/core/shape'
 import { markDirty } from '@/sync/dirtyTracker'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
 
 export const BACKUP_FORMAT = 'thingglance-backup'
-export const BACKUP_VERSION = 1
+// 2: the household shape (members, devices, one owner per thing). Version 1
+// files still import: their rows go through the shape readers.
+export const BACKUP_VERSION = 2
 
 export interface Backup {
   format: typeof BACKUP_FORMAT
@@ -17,7 +20,8 @@ export interface Backup {
   coverages: Coverage[]
   subscriptions: Subscription[]
   decisions: Decision[]
-  users: User[]
+  members: Member[]
+  devices: DeviceLink[]
 }
 
 export async function buildBackup(): Promise<Backup> {
@@ -31,7 +35,8 @@ export async function buildBackup(): Promise<Backup> {
     coverages: strip(await db.coverages.toArray()),
     subscriptions: strip(await db.subscriptions.toArray()),
     decisions: await db.decisions.toArray(),
-    users: await db.users.toArray(),
+    members: await db.members.toArray(),
+    devices: await db.devices.toArray(),
   }
 }
 
@@ -49,7 +54,8 @@ export async function downloadBackup(): Promise<void> {
 // Merge by id, newest updatedAt wins: importing an old backup never rolls a
 // row back, and importing twice changes nothing.
 export async function importBackup(text: string): Promise<{ added: number; updated: number }> {
-  const data = JSON.parse(text) as Partial<Backup>
+  // `users` is what version 1 called the roster.
+  const data = JSON.parse(text) as Partial<Backup> & { users?: Member[] }
   if (data.format !== BACKUP_FORMAT) throw new Error('This file is not a thingGLANCE backup.')
   if ((data.version ?? 0) > BACKUP_VERSION) throw new Error('This backup was made by a newer version of thingGLANCE.')
   let added = 0
@@ -58,27 +64,29 @@ export async function importBackup(text: string): Promise<{ added: number; updat
     table: { get: (id: string) => Promise<T | undefined>; put: (row: T) => Promise<unknown> },
     rows: T[] | undefined,
     mark: (id: string) => void,
+    read: (row: T) => T = (row) => row,
   ) => {
     for (const row of rows ?? []) {
       if (!row?.id || !row.updatedAt) continue
       const cur = await table.get(row.id)
       if (cur && cur.updatedAt >= row.updatedAt) continue
-      await table.put(row)
+      await table.put(read(row))
       mark(row.id)
       if (cur) updated++
       else added++
     }
   }
-  await merge(db.things, data.things, markDirty)
+  await merge(db.things, data.things, markDirty, normalizeThing)
   await merge(db.coverages, data.coverages, markDirty)
-  await merge(db.subscriptions, data.subscriptions, markDirty)
+  await merge(db.subscriptions, data.subscriptions, markDirty, normalizeSubscription)
   await merge(db.decisions, data.decisions, markDirty)
-  await merge(db.users, data.users, markRosterDirty)
+  await merge(db.devices, data.devices, markDirty)
+  await merge(db.members, data.members ?? data.users, markRosterDirty)
   return { added, updated }
 }
 
 export async function wipeLocalData(): Promise<void> {
-  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.users, db.tombstones], async () => {
-    await Promise.all([db.things.clear(), db.coverages.clear(), db.subscriptions.clear(), db.decisions.clear(), db.users.clear(), db.tombstones.clear()])
+  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.members, db.devices, db.tombstones], async () => {
+    await Promise.all([db.things.clear(), db.coverages.clear(), db.subscriptions.clear(), db.decisions.clear(), db.members.clear(), db.devices.clear(), db.tombstones.clear()])
   })
 }

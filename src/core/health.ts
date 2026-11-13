@@ -75,7 +75,10 @@ export interface Ownership {
 export function ownership(thing: Thing, coverages: Coverage[], subs: Subscription[], ref: Day = today()): Ownership {
   const hardware = thing.price ?? 0
   const coverage = coverages.filter((c) => c.thingId === thing.id).reduce((t, c) => t + (c.cost ?? 0), 0)
-  const subscriptionsPerYear = subs.filter((s) => s.thingId === thing.id).reduce((t, s) => t + yearlyCost(s), 0)
+  // A plan across several things is split evenly between them.
+  const subscriptionsPerYear = subs
+    .filter((s) => s.coversThingIds.includes(thing.id))
+    .reduce((t, s) => t + yearlyCost(s) / s.coversThingIds.length, 0)
   const life = lifecycle(thing, coverages, ref)
   const end = thing.status === 'retired' && thing.retiredAt ? thing.retiredAt : ref
   const owned = thing.purchaseDate ? Math.max(1, daysBetween(thing.purchaseDate, end)) : null

@@ -11,7 +11,8 @@ import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
 import { Chip, Field, Sheet } from './ui'
-import { cx, num } from './kit'
+import { cx, num, whoFields, type WhoDraft } from './kit'
+import { HouseholdFields } from './HouseholdFields'
 import { categoryIcon } from './icons'
 
 interface Draft {
@@ -25,7 +26,7 @@ interface Draft {
   lifespanYears: string
   supportEnd: string
   supportBasis: Thing['supportBasis']
-  ownerIds: string[]
+  who: WhoDraft
   notes: string
   resaleValue: string
   // Carried from the web lookup, not typed.
@@ -38,7 +39,9 @@ interface Draft {
   eolRelease?: string
 }
 
-const fromThing = (t: Thing | undefined, cat?: CategoryId): Draft => ({
+// A new thing belongs to the household until told otherwise, and whoever adds
+// it is the one who deals with it.
+const fromThing = (t: Thing | undefined, cat: CategoryId | undefined, meId: string | null): Draft => ({
   name: t?.name ?? '',
   category: t?.category ?? cat ?? 'phone',
   brand: t?.brand ?? '',
@@ -49,7 +52,9 @@ const fromThing = (t: Thing | undefined, cat?: CategoryId): Draft => ({
   lifespanYears: t?.lifespanMonths ? String(+(t.lifespanMonths / 12).toFixed(1)) : '',
   supportEnd: t?.supportEnd ?? '',
   supportBasis: t?.supportBasis,
-  ownerIds: t?.ownerIds ?? [],
+  who: t
+    ? { holder: t.ownerMemberId ?? '', responsible: t.responsibleMemberId ?? '', isPrivate: t.visibility === 'private' }
+    : { holder: '', responsible: meId ?? '', isPrivate: false },
   notes: t?.notes ?? '',
   resaleValue: t?.resaleValue != null ? String(t.resaleValue) : '',
   releaseDate: t?.releaseDate,
@@ -153,7 +158,7 @@ export function ThingForm({ id, initialCategory }: { id?: string; initialCategor
   const ui = useUI()
   const { webLookup, currency } = useSettings()
   const existing = id ? d.thingById.get(id) : undefined
-  const [f, setF] = useState<Draft>(() => fromThing(existing, initialCategory))
+  const [f, setF] = useState<Draft>(() => fromThing(existing, initialCategory, d.meId))
   const [warrantyYears, setWarrantyYears] = useState(1)
   const [supportNote, setSupportNote] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
@@ -200,6 +205,7 @@ export function ThingForm({ id, initialCategory }: { id?: string; initialCategor
     if (!f.name.trim() || saving) return
     setSaving(true)
     const years = num(f.lifespanYears)
+    const who = whoFields(f.who)
     const input: ThingInput = {
       name: f.name.trim(),
       category: f.category,
@@ -215,7 +221,9 @@ export function ThingForm({ id, initialCategory }: { id?: string; initialCategor
       status: existing?.status ?? 'active',
       retiredAt: existing?.retiredAt,
       resaleValue: existing?.status === 'retired' ? num(f.resaleValue) : undefined,
-      ownerIds: f.ownerIds,
+      ownerMemberId: who.holder,
+      responsibleMemberId: who.responsibleMemberId,
+      visibility: who.visibility,
       notes: f.notes.trim() || undefined,
       specs: f.specs,
       imageUrl: f.imageUrl,
@@ -325,23 +333,10 @@ export function ThingForm({ id, initialCategory }: { id?: string; initialCategor
           <Field label={`Sold for (${currency})`}><input className="input num" inputMode="decimal" value={f.resaleValue} onChange={(e) => set('resaleValue', e.target.value)} placeholder="0" /></Field>
         )}
 
-        {d.multiUser && d.users.length > 0 && (
-          <div>
-            <span className="label mb-1.5 block">Whose is it?</span>
-            <div className="flex flex-wrap gap-1.5">
-              {d.users.map((u) => {
-                const on = f.ownerIds.includes(u.id)
-                return (
-                  <button key={u.id} type="button" onClick={() => set('ownerIds', on ? f.ownerIds.filter((x) => x !== u.id) : [...f.ownerIds, u.id])}
-                    className={cx('h-8 rounded-full border px-3 text-[13px] font-medium transition', on ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line/10 bg-bg/40 text-dim hover:text-ink')}>
-                    {u.name}
-                  </button>
-                )
-              })}
-            </div>
-            <p className="mt-1.5 text-xs text-faint">Nobody selected means it belongs to the household.</p>
-          </div>
-        )}
+        <HouseholdFields
+          value={f.who} onChange={(who) => set('who', who)} noun="thing" holderLabel="Whose is it?"
+          holderHint={existing && (existing.ownerMemberId ?? '') !== f.who.holder ? 'Handing it on keeps its dates, coverage and plans, and remembers who had it before.' : undefined}
+        />
 
         <Field label="Notes">
           <textarea className="input" rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Serial number, battery health, quirks…" />

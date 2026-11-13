@@ -8,13 +8,14 @@ import { CURRENCIES } from '@/core/money'
 import { buildSnapshot } from '@/core/snapshot'
 import { downloadBackup, importBackup, wipeLocalData } from '@/db/backup'
 import { loadSamples } from '@/db/demo'
-import { addUser, removeSamples, removeUser, renameUser } from '@/db/queries'
+import { addMember, attachThisDevice, detachDevice, removeMember, removeSamples, renameMember } from '@/db/queries'
+import { describeTies, memberTies } from '@/core/household'
 import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/config'
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
-import { setMeUserId, setMultiUserEnabled, setUserFilter } from '@/multiuser/settings'
+import { setMultiUserEnabled } from '@/multiuser/settings'
 import { syncRosterSoon } from '@/multiuser/rosterDirtyTracker'
-import { promptInstall } from '@/native/platform'
+import { describeDevice, promptInstall } from '@/native/platform'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { syncErrorText, syncNow } from '@/sync/manager'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, testVaultConnection } from '@/sync/vaultConnect'
@@ -219,42 +220,74 @@ function Household() {
   }
   const add = async () => {
     if (!name.trim()) return
-    const u = await addUser(name)
+    const first = d.members.length === 0
+    const m = await addMember(name)
     setName('')
-    if (!d.meId && d.users.length === 0) setMeUserId(u.id)
+    // The first person added on a device nobody has claimed is, nearly always,
+    // the person holding it.
+    if (first && !d.meId) await attachThisDevice(m.id, describeDevice())
+  }
+  const remove = async (id: string, who: string) => {
+    if (await removeMember(id)) return
+    toast({ title: `${who} still ${describeTies(memberTies(id, d))}`, body: 'Give those to someone else first, then remove them.', tone: 'bad' })
   }
 
   return (
     <div className="space-y-3">
       <Block title="Multi-user">
         <Toggle checked={d.multiUser} onChange={toggle} label="This is a shared household"
-          hint="Give things an owner and plans a payer, and switch between your own view and everyone's. The member list is the same roster dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account." />
+          hint="Track things for everyone in the house, whether or not they use the app. The member list is the same roster dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account." />
       </Block>
       {d.multiUser && (
         <>
-          <Block title="Members" hint={sync.phase === 'off' ? 'Not connected to GLANCEvault: members stay on this device for now.' : sync.rosterUnsupported ? 'This vault does not offer the shared roster yet: members stay on this device.' : 'Shared with your other GLANCE apps through the vault.'}>
+          <Block title="Members" hint={`A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'This vault does not offer the shared roster yet, so members stay on this device.' : 'Shared with your other GLANCE apps through the vault.'}`}>
             <ul className="divide-y divide-line/[0.07]">
-              {d.users.map((u) => (
-                <li key={u.id} className="flex items-center gap-2 py-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-xs font-semibold uppercase text-accent">{u.name[0]}</span>
-                  {editing?.id === u.id
-                    ? <input className="input h-8 flex-1" autoFocus value={editing.name} onChange={(e) => setEditing({ id: u.id, name: e.target.value })}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && editing.name.trim()) { void renameUser(u.id, editing.name); setEditing(null) } }}
-                        onBlur={() => { if (editing.name.trim() && editing.name !== u.name) void renameUser(u.id, editing.name); setEditing(null) }} />
-                    : <span className="min-w-0 flex-1 truncate text-sm text-ink">{u.name}{u.id === d.meId && <span className="ml-2 text-xs text-accent">you</span>}</span>}
-                  {u.id !== d.meId && <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => setMeUserId(u.id)}>This is me</button>}
-                  <button type="button" className="icon-btn h-8 w-8" title="Rename" onClick={() => setEditing({ id: u.id, name: u.name })}><Pencil size={13} /></button>
-                  <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title="Remove" onClick={() => { void removeUser(u.id); if (u.id === d.meId) { setMeUserId(null); setUserFilter('all') } }}><Trash2 size={13} /></button>
-                </li>
-              ))}
-              {d.users.length === 0 && <li className="py-3 text-sm text-dim">No members yet.</li>}
+              {d.members.map((m) => {
+                const links = d.devices.filter((l) => l.memberId === m.id)
+                const me = m.id === d.meId
+                return (
+                  <li key={m.id} className="flex items-center gap-2 py-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-xs font-semibold uppercase text-accent">{m.name[0]}</span>
+                    {editing?.id === m.id
+                      ? <input className="input h-8 flex-1" autoFocus value={editing.name} onChange={(e) => setEditing({ id: m.id, name: e.target.value })}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && editing.name.trim()) { void renameMember(m.id, editing.name); setEditing(null) } }}
+                          onBlur={() => { if (editing.name.trim() && editing.name !== m.name) void renameMember(m.id, editing.name); setEditing(null) }} />
+                      : (
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-ink">{m.name}{me && <span className="ml-2 text-xs text-accent">you</span>}</span>
+                          <span className="block truncate text-xs text-faint">
+                            {links.length === 0 ? 'Does not use the app' : `Uses the app: ${links.map((l) => (l.id === d.deviceId ? 'this device' : l.label ?? 'a device')).join(', ')}`}
+                          </span>
+                        </span>
+                      )}
+                    {me
+                      ? <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void detachDevice()}>Not me</button>
+                      : <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void attachThisDevice(m.id, describeDevice())}>This is me</button>}
+                    <button type="button" className="icon-btn h-8 w-8" title="Rename" onClick={() => setEditing({ id: m.id, name: m.name })}><Pencil size={13} /></button>
+                    <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title="Remove" onClick={() => void remove(m.id, m.name)}><Trash2 size={13} /></button>
+                  </li>
+                )
+              })}
+              {d.members.length === 0 && <li className="py-3 text-sm text-dim">No members yet.</li>}
             </ul>
             <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add() }}>
               <input className="input" placeholder="Add a member" value={name} onChange={(e) => setName(e.target.value)} />
               <button type="submit" className="btn shrink-0" disabled={!name.trim()}>Add</button>
             </form>
           </Block>
-          {!d.meId && d.users.length > 0 && <p className="px-1 text-xs text-warn">Pick which member this device belongs to, to unlock the Mine / Everyone switch in the header.</p>}
+          {!d.meId && d.members.length > 0 && <p className="px-1 text-xs text-warn">Pick which member this device belongs to. It unlocks the Mine / Everyone switch in the header, and lets things be handed to you to deal with.</p>}
+          {d.devices.some((l) => l.id !== d.deviceId) && (
+            <Block title="Other devices" hint="Detaching a device stops it counting as that person. It does not sign the device out of the vault.">
+              <ul className="divide-y divide-line/[0.07]">
+                {d.devices.filter((l) => l.id !== d.deviceId).map((l) => (
+                  <li key={l.id} className="flex items-center gap-2 py-2">
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label ?? 'A device'} <span className="text-xs text-faint">· {d.memberName(l.memberId) ?? 'someone no longer on the list'} · since {dayjs(l.createdAt).format('MMM D, YYYY')}</span></span>
+                    <button type="button" className="btn-ghost h-8 px-2 text-xs hover:!text-bad" onClick={() => void detachDevice(l.id)}>Detach</button>
+                  </li>
+                ))}
+              </ul>
+            </Block>
+          )}
         </>
       )}
     </div>
@@ -329,13 +362,14 @@ function Integrations() {
 
 function SnapshotPeek() {
   const d = useData()
-  const snap = buildSnapshot(d, { userId: d.filter === 'mine' ? d.meId : null, limit: 3 })
+  const scope = { viewerId: d.meId, memberId: d.filter === 'mine' ? d.meId : null }
+  const snap = buildSnapshot(d, { ...scope, limit: 3 })
   return (
     <>
       <pre className="scrollbar-thin max-h-44 select-text overflow-auto rounded-lg border border-line/10 bg-bg/70 p-3 font-mono text-[10.5px] leading-relaxed text-dim">
         {JSON.stringify({ counts: snap.counts, burn: { monthly: +snap.burn.monthly.toFixed(2), replacementMonthly: +snap.burn.replacementMonthly.toFixed(2) }, attention: snap.attention.map((e) => ({ days: e.days, title: e.title, detail: e.detail })) }, null, 2)}
       </pre>
-      <button type="button" className="btn mt-2 h-8 text-xs" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(buildSnapshot(d), null, 2)); toast({ title: 'Full snapshot copied', tone: 'ok' }) }}><Copy size={13} /> Copy full snapshot</button>
+      <button type="button" className="btn mt-2 h-8 text-xs" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(buildSnapshot(d, scope), null, 2)); toast({ title: 'Full snapshot copied', tone: 'ok' }) }}><Copy size={13} /> Copy full snapshot</button>
     </>
   )
 }

@@ -30,10 +30,32 @@ Ideas that are in and worth a look:
 ```bash
 npm install
 npm run dev        # http://localhost:5190
-npm test           # unit tests for the date, cost and lookup logic
+npm run lint
+npm test           # unit tests for the date, cost, lookup and live-sync logic
 npm run build      # type-check + production build + service worker
 npm run gen:icons  # re-render the PWA icons from public/icons/*.svg
 ```
+
+## Self-hosting
+
+thingGLANCE is a static web app, so the image is nginx and files: no Node process, no database, nothing to configure in the container. Your data lives in the browser and, if you connect one, in your GLANCEvault.
+
+```yaml
+services:
+  app:
+    image: ghcr.io/krelltunez/thingglance:latest
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+```
+
+Or build it yourself with `docker compose up -d --build`. The container answers `GET /healthz` for health checks.
+
+Three things to get right when it sits behind your own domain:
+
+- **HTTPS.** The service worker, install prompt and encryption all need a secure context. Terminate TLS at your reverse proxy.
+- **Your vault must allow it.** Add the app's address (for example `https://things.example.com`) to the vault's `GLANCEVAULT_ALLOWED_ORIGINS`, and `thingglance` to `GLANCEVAULT_ALLOWED_APPS`. A vault served over plain HTTP cannot be reached from an HTTPS page.
+- **Do not buffer the vault's event stream.** Live updates arrive over `GET /events` on the vault. If the proxy in front of the *vault* buffers responses, the stream opens and stays silent; Settings → GLANCEvault will say so, and sync falls back to checking every few minutes. For nginx that means `proxy_buffering off;` on that location.
 
 ## Sync: GLANCEvault only
 
@@ -43,11 +65,12 @@ Unlike its siblings, thingGLANCE has exactly one sync road: **GLANCEvault**, end
 - **Connect** with a GLANCEvault Pro account key (the app enrolls the device) or a self-hosted URL + account id + device token, same as lastGLANCE.
 - **Entities:** `thing`, `coverage`, `subscription`, `decision`. Local shape equals sync shape; ids are UUIDs that double as vault entity ids; every entity carries a `kind`.
 - **Multi-user** uses the shared `glance-users` vault app, the same roster the other apps read and write. Things have owners, plans have a payer, and the header gets a Mine / Everyone switch.
+- **Live updates.** The app holds the vault's `/events` stream open while it is visible and syncs the moment another device writes. Polling (every five minutes, on focus, and three seconds after a local write) keeps running underneath as the backstop.
 - **Intents** go over the vault's `intents` endpoints, always encrypted. thingGLANCE emits `create` (source app `app.thingglance`, `source_entity_id` = the horizon event key) and consumes the `notify` that comes back, so completing the task in dayGLANCE clears the item here on every device.
 
 ### End-to-end test
 
-`npm run test:e2e` drives two browser contexts against a real vault: connect, passphrase (and a wrong one), create / edit / delete across devices, the shared roster, and the intent round-trip. Setup is in the header of [e2e/vault-sync.mjs](e2e/vault-sync.mjs). dayGLANCE itself is not in the loop; the script plays its part.
+`npm run test:e2e` drives two browser contexts against a real vault: connect, passphrase (and a wrong one), create / edit / delete across devices, live push, the shared roster, and the intent round-trip. Setup is in the header of [e2e/vault-sync.mjs](e2e/vault-sync.mjs). dayGLANCE itself is not in the loop; the script plays its part.
 
 ## Built for what comes next
 
@@ -75,7 +98,7 @@ src/
 
 ## Not done yet
 
-Deliberately out of scope for the prototype: i18n (strings are inline English), the vault event stream (sync runs on a 5-minute cadence, on focus, and 3 seconds after a write), local notifications, currency conversion (one currency for everything), receipt or photo attachments, and billing.
+Deliberately out of scope for the prototype: i18n (strings are inline English), local notifications, currency conversion (one currency for everything), receipt or photo attachments, and billing.
 
 ## License
 

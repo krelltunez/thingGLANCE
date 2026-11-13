@@ -3,7 +3,8 @@ import {
   Cloud, CloudAlert, CloudOff, LayoutDashboard, Lock, Package, Plus, RefreshCw, Repeat, Search,
   Settings as SettingsIcon, Sparkles, Telescope, type LucideIcon,
 } from 'lucide-react'
-import { DataProvider, useData } from '@/state/data'
+import { useData } from '@/state/data'
+import { DataProvider } from '@/state/DataProvider'
 import { UIContext, type Modal, type UI, type View } from '@/state/ui'
 import { useSync } from '@/state/sync'
 import { setUserFilter } from '@/multiuser/settings'
@@ -18,8 +19,10 @@ import { ThingDetail } from '@/components/ThingDetail'
 import { ThingForm } from '@/components/ThingForm'
 import { CoverageForm, SubscriptionForm } from '@/components/PlanForms'
 import { Settings } from '@/components/Settings'
-import { CommandPalette, PassphraseModal, Welcome, needsWelcome } from '@/components/Overlays'
-import { Segmented, Toasts, Wordmark, cx } from '@/components/ui'
+import { CommandPalette, PassphraseModal, Welcome } from '@/components/Overlays'
+import { needsWelcome } from '@/state/welcome'
+import { Segmented, Toasts, Wordmark } from '@/components/ui'
+import { cx } from '@/components/kit'
 
 const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: 'glance', label: 'Glance', icon: LayoutDashboard },

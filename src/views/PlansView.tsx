@@ -12,7 +12,8 @@ import { patchSubscription } from '@/db/queries'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
-import { Chip, Empty, TBadge, cx, type Tone } from '@/components/ui'
+import { Chip, Empty, TBadge } from '@/components/ui'
+import { cx, type Tone } from '@/components/kit'
 
 function nextDate(s: Subscription): { day: string; label: string } | null {
   if (s.status === 'cancelled') return s.endDate ? { day: s.endDate, label: 'access ends' } : null
@@ -128,7 +129,7 @@ export function PlansView() {
                   {m.items.slice(0, 6).map((it) => <p key={it.id + it.date} className="truncate text-[11px] text-dim">{it.name} <span className="num text-faint">{money(it.amount, currency)}</span></p>)}
                   {m.items.length > 6 && <p className="text-[11px] text-faint">+{m.items.length - 6} more</p>}
                 </div>
-                <span className="num hidden text-[10px] text-faint sm:block">{m.total > 0 ? money(m.total, currency).replace(/\.\d+$/, '') : ''}</span>
+                <span className="num hidden text-[10px] text-faint sm:block">{m.total > 0 ? money(Math.round(m.total), currency) : ''}</span>
                 <div className={cx('w-full rounded-t-md transition-all duration-700 group-hover:brightness-125', i === 0 ? 'bg-sub' : 'bg-sub/35')} style={{ height: `${Math.max(2, (m.total / max) * 78)}%` }} />
                 <span className="label !text-[9px]">{dayjs(m.month).format('MMM')}</span>
               </div>

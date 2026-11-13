@@ -14,8 +14,10 @@ import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
-import { Chip, Ring, TBadge, TONES, cx, severityTone, useEscape, type Tone } from './ui'
-import { EventRow, ThingAvatar, VerdictChip, verdictTone } from './parts'
+import { Chip, Ring, TBadge } from './ui'
+import { TONES, cx, severityTone, useEscape, type Tone } from './kit'
+import { EventRow, ThingAvatar, VerdictChip } from './parts'
+import { verdictTone } from './kit'
 
 // The big lifecycle track: purchase to end of window, with labelled markers.
 function LifeTrack({ life, thing }: { life: Lifecycle; thing: Thing }) {

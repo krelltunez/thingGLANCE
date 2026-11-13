@@ -24,7 +24,8 @@ import { updateSettings, useSettings, type ThemePref } from '@/state/settings'
 import { useCanInstall, useIntentsVersion, useSync } from '@/state/sync'
 import { toast } from '@/state/toast'
 import { useUI, type SettingsSection } from '@/state/ui'
-import { Chip, Field, Segmented, Sheet, TONES, Toggle, Wordmark, cx, type Tone } from './ui'
+import { Chip, Field, Segmented, Sheet, Toggle, Wordmark } from './ui'
+import { TONES, cx, type Tone } from './kit'
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Cloud }[] = [
   { id: 'general', label: 'General', icon: Palette },
@@ -141,6 +142,16 @@ function Vault() {
             {sync.lastSynced && <span className="text-xs text-dim">Last synced {dayjs(sync.lastSynced).format('MMM D, h:mm A')}</span>}
             {sync.pending > 0 && <span className="num text-xs text-faint">{sync.pending} waiting to upload</span>}
           </div>
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-dim">
+            <span className={cx('h-1.5 w-1.5 rounded-full', sync.live === 'on' ? 'bg-ok' : sync.live === 'stalled' ? 'bg-warn' : 'bg-faint')} />
+            {{
+              on: 'Live: changes from your other devices arrive within seconds.',
+              connecting: 'Connecting live updates. Until then it checks every few minutes.',
+              stalled: 'Live updates are blocked, probably by a reverse proxy buffering /events. It still checks every few minutes.',
+              unsupported: 'This vault server is too old for live updates. It checks every few minutes.',
+              off: 'Checks every few minutes, and whenever you return to the app.',
+            }[sync.live]}
+          </p>
           {sync.phase === 'error' && <p className="mt-3 rounded-lg border border-bad/25 bg-bad/10 px-3 py-2 text-xs leading-relaxed text-bad">{syncErrorText(sync.errorCode, sync.errorMessage)}</p>}
           {sync.skipped > 0 && <p className="mt-3 text-xs text-warn">{sync.skipped} rows could not be decrypted and were skipped.</p>}
           {sync.rosterUnsupported && <p className="mt-3 text-xs text-dim">This server does not offer the shared household roster (glance-users) yet, so members stay on this device.</p>}

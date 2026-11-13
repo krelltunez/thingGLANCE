@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Type-checks, then builds the app and its service worker.
+      - name: Build
+        run: npm run build
+
+  # The self-hosting image has to keep building. Nothing is pushed from here;
+  # publishing is the release workflow's job.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: thingglance:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Serve and probe
+        run: |
+          docker run -d --name tg -p 8080:80 thingglance:ci
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsS http://localhost:8080/healthz && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/manifest.json | grep -q thingGLANCE
+          curl -fsSI http://localhost:8080/sw.js | grep -qi 'cache-control: no-cache'
+          # An unknown path is the app, not a 404: deep links depend on it.
+          curl -fsS http://localhost:8080/some/deep/link | grep -q '<div id="root">'

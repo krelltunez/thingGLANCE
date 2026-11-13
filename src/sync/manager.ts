@@ -12,6 +12,7 @@ import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { drainIntents, startIntentsPoller } from '@/intents/receive'
+import { createNudgeCoalescer, createVaultEventClient, detectSseTransport, openWebSseStream, type SseClientState } from './vaultEventStream'
 
 export type SyncPhase = 'off' | 'locked' | 'idle' | 'syncing' | 'synced' | 'error'
 
@@ -26,11 +27,14 @@ export interface SyncState {
   rosterUnsupported: boolean
   skipped: number
   pending: number
+  // Live push from the vault's event stream. 'off' means polling only, which
+  // is always running underneath regardless.
+  live: 'off' | 'connecting' | 'on' | 'stalled' | 'unsupported'
 }
 
 let state: SyncState = {
   phase: 'off', pro: false, lastSynced: null, errorCode: null, errorMessage: null,
-  unsupported: false, rosterUnsupported: false, skipped: 0, pending: 0,
+  unsupported: false, rosterUnsupported: false, skipped: 0, pending: 0, live: 'off',
 }
 const listeners = new Set<() => void>()
 const set = (patch: Partial<SyncState>) => {
@@ -120,9 +124,70 @@ export async function startSync(): Promise<void> {
 
   void cycle()
   startIntentsPoller()
+  startEventStream()
   setInterval(() => void cycle(), CADENCE_MS)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void cycle() })
   window.addEventListener('online', () => void cycle())
+}
+
+// ── Live push ────────────────────────────────────────────────────────────────
+// Purely additive: a nudge runs the SAME drains the cadence runs, which re-read
+// their own cursors and no-op when there is nothing new. Open while the page
+// is visible, closed while hidden; the reconnect's `ready` frame reconciles
+// whatever was missed.
+function startEventStream(): void {
+  if (detectSseTransport() !== 'web') return
+
+  // Inspectable in a packaged build with no devtools open: the same
+  // `window.__glanceVaultSse` the sibling apps expose. Many connects with few
+  // events is a reconnect storm; `stalled` is a buffering reverse proxy.
+  const diag = { state: 'idle' as SseClientState | 'idle', connects: 0, events: 0, drains: 0, lastEventSeq: null as number | null, lastError: null as string | null, lastConnectedAt: null as string | null }
+  ;(window as unknown as Record<string, unknown>).__glanceVaultSse = diag
+
+  const coalescer = createNudgeCoalescer({
+    onDrain: () => { diag.drains += 1; void syncNow() },
+    onDrainError: (err) => console.warn('[thingglance] live sync drain failed:', err),
+  })
+
+  const client = createVaultEventClient({
+    getConnection: () => {
+      const c = getVaultConfig()
+      return c && c.vaultUrl && c.vaultToken && c.accountId ? { vaultUrl: c.vaultUrl, vaultToken: c.vaultToken, accountId: c.accountId } : null
+    },
+    openStream: openWebSseStream,
+    onEvent: (evt) => {
+      diag.events += 1
+      const seq = (evt as { seq?: number } | null)?.seq
+      if (typeof seq === 'number') diag.lastEventSeq = seq
+      // The first frame proves the path end to end; 'open' alone does not.
+      if (state.live !== 'on') set({ live: 'on' })
+      coalescer.handleEvent(evt)
+    },
+    onStateChange: (s, detail) => {
+      diag.state = s
+      if (s === 'connecting') { diag.connects += 1; if (state.live === 'off') set({ live: 'connecting' }) }
+      else if (s === 'open') diag.lastConnectedAt = new Date().toISOString()
+      else if (s === 'stalled') {
+        set({ live: 'stalled' })
+        console.warn('[thingglance] live sync: the stream opened but nothing arrived. A reverse proxy is probably buffering /events; polling is covering.')
+      } else if (s === 'unsupported-server') {
+        set({ live: 'unsupported' })
+      } else if (s === 'error') {
+        diag.lastError = detail instanceof Error ? detail.message : String(detail ?? 'error')
+        if (state.live === 'on') set({ live: 'connecting' })
+      } else if (s === 'closed' && state.live === 'on') {
+        set({ live: 'connecting' })
+      } else if (s === 'stopped') {
+        set({ live: 'off' })
+      }
+    },
+  })
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') client.start()
+    else { client.stop(); coalescer.cancel() }
+  })
+  if (document.visibilityState !== 'hidden') client.start()
 }
 
 // Resolves to null on success, or a message to show under the passphrase field.

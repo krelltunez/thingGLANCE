@@ -2,6 +2,8 @@
 
 Written 2026-11-12 against v0.1 (web app + PWA). The model is lastGLANCE, minus the sync roads thingGLANCE does not have.
 
+Updated 2026-11-13: household members and users added as [Phase 0.5](#phase-05-household-members-and-users-l-in-stages), from [household-members.md](household-members.md).
+
 Most of what follows is drawn from lastGLANCE's own docs and code (`../lastGLANCE/docs/`), plus dayGLANCE for MCP, since lastGLANCE's MCP and Stream Deck are still a plan (`../lastGLANCE/docs/mcp-and-stream-deck.md`) and dayGLANCE's are shipped. Where this document states a store rule, it is repeating your notes in `../lastGLANCE/CLAUDE.md` unless it says otherwise.
 
 Sizes are relative: **S** is days, **M** is a week or two, **L** is several weeks.
@@ -11,6 +13,7 @@ Sizes are relative: **S** is days, **M** is a week or two, **L** is several week
 | Surface | What ships |
 | --- | --- |
 | Web / PWA | Self-hostable Docker image, live sync |
+| Household | Things and plans for everyone in the house, whether or not they use the app: owner, responsible user, shared or private, on a roster every GLANCE app shares |
 | Android | Capacitor app, home-screen widgets, notifications, shortcuts, Quick Settings tiles, share target, Tasker intents, GLANCElauncher provider with headless refresh |
 | iOS | Capacitor app, WidgetKit widgets (home, lock screen, Control Center), App Shortcuts for Siri and Spotlight, share extension, notifications |
 | macOS, Windows, Linux | Electron app, menu bar / tray popup, global shortcuts, notifications, deep links |
@@ -54,9 +57,11 @@ See [Pricing](#pricing-paywall-or-paid) at the end. The short version: **create 
 
 The moment real data goes into a vault, the entity shapes in `src/core/types.ts` (`thing`, `coverage`, `subscription`, `decision`) become a contract every future build has to read. Before loading real data, settle the tweaks that would rename or restructure fields. Adding optional fields later is safe; renaming is not.
 
+The household spec already calls for three such changes: `Thing.ownerIds` becomes `ownerMemberId`, `Subscription.payerId` becomes `payerMemberId`, and `Subscription.thingId` becomes `coversThingIds`. That is stage A of Phase 0.5, and it is the part worth doing early.
+
 ## Phase 0: self-hosted with real data (S)
 
-> Status, 2026-11-12: the Docker image, CI workflows, lint and live sync are done in this repo. The vault allowlist change (in `glance-vault`) and the test against your real vault and dayGLANCE are still open.
+> Status, 2026-11-13: the Docker image, CI workflows, lint and live sync are done and merged. The vault allowlist change (in `glance-vault`) and the test against your real vault and dayGLANCE are still open.
 
 The goal is the thing you asked for first: the app on your own server, pointed at your real vault.
 
@@ -68,6 +73,59 @@ The goal is the thing you asked for first: the app on your own server, pointed a
 
 Done when: the image runs on your server, two of your devices sync through your real vault, and a task sent from the queue appears in your real dayGLANCE. That last step has only been tested against a script playing dayGLANCE's part.
 
+## Phase 0.5: household members and users (L, in stages)
+
+The spec is [household-members.md](household-members.md). Its last section compares the spec with the roster code as it stands and is the source for the decisions below. The spec asks not to interrupt current work, so only stage A has any urgency; the rest can follow the UI feedback round.
+
+The idea in one line: a **member** is anyone the household tracks things for, a **user** is a member who runs the app on a device, and every thing and plan says whose it is, who handles it and who can see it.
+
+### Settle first
+
+Two design points the comparison turned up. Both are recommendations waiting for a yes.
+
+- **Keep `glance-users` as it is and add a companion record.** The sibling apps write a member back as `{ id, name, updatedAt }` and nothing else, so any new field placed on that row is erased the next time someone renames a person in dayGLANCE or lastGLANCE. The new core fields (colour, relationship, the device link, `mergedInto`) go in a companion record keyed by the same member id, in a vault app the household package owns. It also gives a merged member somewhere to keep its `mergedInto` pointer, which a soft-deleted row cannot hold.
+- **Link a member to devices by `deviceId`, not credential id.** A self-hosted device is never told its credential id; every device already knows its device id, and it survives re-enrollment.
+
+### Stage A: the wire shape (S). Before much real data.
+
+- `Thing`: `ownerIds[]` becomes `ownerMemberId` (null means Household); add `responsibleMemberId`, `visibility`, `ownershipHistory`.
+- `Subscription`: `payerId` becomes `payerMemberId`, `thingId` becomes `coversThingIds[]`; add `coversMemberIds`, `responsibleMemberId`, `visibility`.
+- `User` becomes `Member` in `src/core/types.ts`. `Coverage` and `Decision` do not change.
+- A reader for v0.1 rows, in the Dexie upgrade and in the remote-apply path, so anything loaded before this lands is carried forward: one owner maps across, none or several becomes Household, `thingId` becomes a one-item list.
+- No new UI. The existing owner and payer pickers keep working against the new fields.
+
+Trying the app with real data before stage A is fine. The reader exists for exactly that, and it is one household's vault. What to avoid is months of data in the old shape on several devices.
+
+### Stage B: `@glance-apps/household` (M)
+
+- A new repo beside `glance-sync` and `glance-billing`. Surface as the spec suggests: list and get, create, update, link and unlink a device, merge, `resolve(id)` that follows `mergedInto`, and a change subscription.
+- Storage and transport are injected, so the package runs with no vault at all (local-only mode), in the web app, and later in a headless refresh or Electron main. No React, no Dexie inside it.
+- It owns both records: the legacy `glance-users` row and the companion. `src/multiuser/rosterVault.ts` here shrinks to an adapter.
+- Tests include a "legacy writer" that plays an old sibling app renaming a member, proving the companion fields survive.
+
+### Stage C: the roster in the app (M)
+
+- Settings → Household: add a member by name alone, "this is me" on a device (writes the link), unlink a device, remove a member (blocked while they own, pay for or are responsible for anything, with a reassign prompt first).
+- Hand-me-down: change owner on a thing, keep everything else, append to `ownershipHistory`.
+- Merge, with a suggestion when two members share a name and a warning that the other GLANCE apps will not follow the merge until they adopt the package.
+- Pickers: owner lists every member plus Household; responsible lists users only.
+- Onboarding: "Found your household: 4 people. Use them?" on first sync when a roster exists; otherwise add yourself and anyone else, skippable.
+- Roster export and import as a small file, for local-only households.
+
+### Stage D: views (M)
+
+- A member filter on Glance, Horizon, Things and Plans. It replaces the Mine / Everyone switch, and the device-local "multi-user" toggle goes away: owners show whenever the roster has more than one member.
+- Upgrade fund per member plus the household total. Plan totals for the household and "what I pay".
+- Private items hidden on every device that is not the owner's, with copy that says plainly this is hiding, not encryption.
+- A "needs someone" prompt for items with no responsible user.
+
+### Stage E: who gets told (S, lands with the reminder logic in Phase 1)
+
+- The decision queue and reminders take the device's member as an input: responsible user only, everyone for unassigned items, owner's devices only for private ones. This lives in `src/core` with the rest of the reminder rules.
+- `buildSnapshot()` is built for the device's member, so widgets, the tray, the launcher and MCP never show a private item on someone else's device. That is a `SNAPSHOT_VERSION` bump.
+
+Done when: a thing owned by a member with no device shows up on two users' devices with the right one being asked about it; a hand-me-down keeps its history; a merge survives a late-syncing device; a rename from an old sibling app loses nothing; and all of it works with sync switched off. `npm run test:e2e` grows to cover the synced cases.
+
 ## Phase 1: foundations every shell needs (M)
 
 Each of these is built once in the web app and reused by every shell. Doing them before the first shell is the main lesson in lastGLANCE's and dayGLANCE's docs.
@@ -76,8 +134,8 @@ Each of these is built once in the web app and reused by every shell. Doing them
 - **One inbound dispatcher.** A `handleIntent` that applies an external write (from a widget, the launcher, the tray, Tasker, MCP) through the same functions the forms use, with a `clientId` ledger so a re-sent write is never applied twice. Build the idempotency in from the start: every external write carries a caller-supplied id.
 - **Injectable network.** Route every vault request through one `shellFetchImpl()` so Capacitor, Electron main and the headless refresh can each substitute their own transport. The prototype calls `fetch` directly in a few places (`src/sync/vaultConnect.ts`, `src/intents/transport.ts`).
 - **Secure config shim.** Keep the vault token and derived keys out of plain localStorage on shells that have a keystore. lastGLANCE: `src/sync/secureConfigShim.ts`, `src/sync/nativeKeyHooks.ts`.
-- **Reminders as pure logic.** Decide in `src/core` which horizon events notify and when (the lead windows already exist in `horizon.ts`), so each platform only has to schedule what core tells it to.
-- **Freeze the snapshot.** `buildSnapshot()` is the object widgets, the tray, the launcher and MCP will read. Review its fields against what each surface needs, then treat it as versioned.
+- **Reminders as pure logic.** Decide in `src/core` which horizon events notify and when (the lead windows already exist in `horizon.ts`), so each platform only has to schedule what core tells it to. The household rules about who is told (Phase 0.5, stage E) belong in the same place.
+- **Freeze the snapshot.** `buildSnapshot()` is the object widgets, the tray, the launcher and MCP will read. Review its fields against what each surface needs, then treat it as versioned. Freeze it after the member dimension is in, not before.
 - **i18n.** Move strings to i18next as the siblings do. It is far cheaper before native code starts carrying its own string catalogs. Remember locale JSON has to be in the service worker precache.
 
 ## Phase 2: Android (L)
@@ -191,7 +249,10 @@ A first tool set, following the `<app>_<verb>_<noun>` convention:
 | `thingglance_list_plans` | `thingglance_create_plan` |
 | `thingglance_list_upcoming` | `thingglance_update_plan` |
 | `thingglance_list_queue` | `thingglance_decide_event` |
+| `thingglance_list_members` | `thingglance_reassign_thing` |
 | | `thingglance_list_mcp_writes` |
+
+The server answers as the member the desktop app belongs to, so private items of other members stay out of every tool result.
 
 This is an unusually good fit for an assistant: "what should I cancel?", "what is out of support?", "I just bought a Pixel 9, add it".
 
@@ -212,6 +273,9 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 | Repo | Change | Needed by |
 | --- | --- | --- |
 | `glance-vault` | Add `thingglance` to the default allowed apps; roll to Pro | Phase 0 |
+| `glance-vault` | Allow the household companion app (for example `glance-household`), ideally in the same release | Phase 0.5, stage B |
+| `glance-household` (new) | The `@glance-apps/household` package | Phase 0.5, stage B |
+| `lastGLANCE`, `day-planner`, `lifeGLANCE` | Adopt the household package so merges and the richer member record carry across | Later, separately |
 | `glance-intents` | Add `THINGGLANCE` to `SOURCE_APPS` (the schema already accepts the value) | Any time |
 | `day-planner` | A thingGLANCE badge on tasks it created, like the lastGLANCE one | After Phase 0 |
 | `GLANCElauncher` | A `GlanceClient` for thingGLANCE and its card | Phase 3 |
@@ -222,11 +286,12 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 ## Suggested order
 
 1. Phase 0, so you are using it with real data while everything else is built.
-2. Phase 1, before any shell.
-3. Android scaffold far enough to create the Play listing and start the closed-test clock, then the rest of Phase 2.
-4. Phase 5 (desktop) or Phase 4 (iOS), whichever you will use more. Desktop unlocks MCP.
-5. Phase 3 (launcher) once the Android snapshot is stable.
-6. Phase 6, then Phase 7.
+2. Phase 0.5 stage A alongside the first round of UI tweaks, since both touch the data model. Then stages B to D.
+3. Phase 1, before any shell, with stage E of Phase 0.5 folded into the reminder work.
+4. Android scaffold far enough to create the Play listing and start the closed-test clock, then the rest of Phase 2.
+5. Phase 5 (desktop) or Phase 4 (iOS), whichever you will use more. Desktop unlocks MCP.
+6. Phase 3 (launcher) once the Android snapshot is stable.
+7. Phase 6, then Phase 7.
 
 Android first and desktop second matches where the family already has the most reusable code.
 
@@ -287,4 +352,9 @@ A cheap precaution covers both: from the first paid release, record an "owned si
 - Should plans be creatable from other apps by intent, for example dayGLANCE sending "I subscribed to X"?
 - Does lifeGLANCE want a milestone when a thing is bought or retired?
 - Which locales ship first?
+- Household: is "private is hidden, not encrypted" acceptable for v1? (The spec recommends yes.)
+- Household: what happens to a member's private items when their last device is unlinked?
+- Household: companion record and `deviceId` link, as recommended in Phase 0.5, or the spec's original single record with `credentialIds`?
+- Household: when an item is sent to dayGLANCE, should the task go to the responsible member there?
+- Household: should a member be able to cut a device off the vault from inside the app? Today that is an operator route on the server.
 - Is a Microsoft Store build wanted? dayGLANCE's repo has MSIX handling that could be reused.

@@ -91,9 +91,13 @@ export function CommandPalette() {
     return all.filter((c) => `${c.label} ${c.hint ?? ''}`.toLowerCase().includes(needle)).slice(0, 14)
   }, [q, d.visibleThings, d.visibleSubs, ui, currency])
 
-  useEffect(() => { setIndex(0) }, [q])
   useEffect(() => { listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [index])
 
+  // The highlight follows the keyboard, and the pointer only once it actually
+  // moves: a pointer that happens to be resting where the list opens must not
+  // pick a row, or Enter runs something the user never chose. The query and
+  // the highlight change together so a fast Enter never sees one without the
+  // other.
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setIndex((i) => Math.min(commands.length - 1, i + 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setIndex((i) => Math.max(0, i - 1)) }
@@ -107,7 +111,7 @@ export function CommandPalette() {
       <div className="panel hud relative w-full max-w-xl animate-pop overflow-hidden !bg-panel shadow-2xl">
         <div className="flex items-center gap-3 border-b border-line/10 px-4">
           <Search size={17} className="text-accent" />
-          <input className="h-12 flex-1 bg-transparent text-[15px] text-ink placeholder:text-faint focus:outline-none" autoFocus placeholder="Search things and plans, or run a command…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} />
+          <input className="h-12 flex-1 bg-transparent text-[15px] text-ink placeholder:text-faint focus:outline-none" autoFocus placeholder="Search things and plans, or run a command…" value={q} onChange={(e) => { setQ(e.target.value); setIndex(0) }} onKeyDown={onKey} />
           <kbd className="label rounded border border-line/15 px-1.5 py-0.5">esc</kbd>
         </div>
         <div ref={listRef} className="scrollbar-thin max-h-[52vh] overflow-y-auto p-2">
@@ -118,7 +122,7 @@ export function CommandPalette() {
             return (
               <div key={c.id}>
                 {header && <p className="label px-3 pb-1 pt-2">{c.group}</p>}
-                <button type="button" data-active={i === index} onMouseEnter={() => setIndex(i)} onClick={c.run}
+                <button type="button" data-active={i === index} onMouseMove={() => { if (i !== index) setIndex(i) }} onClick={c.run}
                   className={cx('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition', i === index ? 'bg-accent/15' : '')}>
                   <c.icon size={16} className={i === index ? 'text-accent' : 'text-faint'} />
                   <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.label}</span>

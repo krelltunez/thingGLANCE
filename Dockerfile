@@ -5,7 +5,11 @@
 # thingGLANCE syncs only through GLANCEvault, which the browser talks to
 # directly.
 
-FROM node:20-alpine AS builder
+# The build stage runs on the machine doing the build, whatever the image is
+# for: its output is static files, the same on every architecture. Without
+# this a multi-arch build repeats npm ci and the Vite build under QEMU for
+# each foreign platform, which is slow and has been known to hang.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json .npmrc ./
 RUN npm ci

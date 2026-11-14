@@ -71,6 +71,12 @@ export interface HorizonOptions {
   // Only what concerns one household member (see core/household.ts). This is
   // a filter, not privacy: pass data through visibleTo() first for that.
   memberId?: string | null
+  // Every thing in the household, including ones this viewer may not see.
+  // Used for one question only: is anything a plan is attached to still in
+  // service? Without it a plan on someone's private (and since retired)
+  // phone would keep asking on every other device. Nothing from these rows
+  // is ever put into an event.
+  allThings?: Thing[]
 }
 
 export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonEvent[] {
@@ -79,6 +85,7 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
   const to = opts.to ?? addDays(ref, 365 * 6)
   const decided = latestDecisions(data.decisions)
   const thingsById = new Map(data.things.map((t) => [t.id, t]))
+  const everyThing = opts.allThings ? new Map(opts.allThings.map((t) => [t.id, t])) : thingsById
   const out: HorizonEvent[] = []
 
   const push = (e: Omit<HorizonEvent, 'key' | 'days' | 'severity' | 'lead' | 'attention' | 'decision'> & { entityId: string; lead?: number }) => {
@@ -122,9 +129,10 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
   for (const s of data.subscriptions) {
     // A plan follows the things it is attached to: once every one of them is
     // retired it stops asking. The first active one is where a tap leads.
-    const attached = s.coversThingIds.map((id) => thingsById.get(id)).filter((t): t is Thing => !!t)
-    const live = attached.filter((t) => t.status === 'active')
-    if (attached.length > 0 && live.length === 0) continue
+    const attached = s.coversThingIds.map((id) => everyThing.get(id)).filter((t): t is Thing => !!t)
+    if (attached.length > 0 && !attached.some((t) => t.status === 'active')) continue
+    // Only what this viewer can see is named or linked to.
+    const live = s.coversThingIds.map((id) => thingsById.get(id)).filter((t): t is Thing => !!t && t.status === 'active')
     if (opts.memberId && !concernsPlan(s, opts.memberId, thingsById)) continue
     const thing = live[0]
     const where = thing ? (live.length > 1 ? tr('event.detail.andMore', { name: thing.name, count: live.length - 1 }) : thing.name) : s.provider ?? tr('event.detail.subscription')

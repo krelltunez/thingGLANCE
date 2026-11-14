@@ -16,7 +16,7 @@ export type Modal =
   | { type: 'coverage'; thingId: string; id?: string }
   | { type: 'settings'; section?: SettingsSection }
   | { type: 'passphrase' }
-  | { type: 'palette' }
+  | { type: 'palette'; query?: string }
   | null
 
 export interface UI {

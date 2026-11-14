@@ -7,13 +7,28 @@ export const DAY = 'YYYY-MM-DD'
 export const today = (): Day => dayjs().format(DAY)
 export const nowIso = (): string => new Date().toISOString()
 
-export const isDay = (v: unknown): v is Day => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+// A real calendar date, written YYYY-MM-DD, in a range this app can reason
+// about. The shape alone is not enough: "2027-13-45" has it, and anything
+// that parses dates strictly (a native widget) would refuse the row.
+export const isDay = (v: unknown): v is Day => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  const [y, m, d] = v.split('-').map(Number)
+  if (y < 1970 || y > 2200 || m < 1 || m > 12 || d < 1) return false
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate()
+}
 
 export const addDays = (d: Day, n: number): Day => dayjs(d).add(n, 'day').format(DAY)
 export const addMonths = (d: Day, n: number): Day => dayjs(d).add(n, 'month').format(DAY)
 
-// Whole calendar days from a to b (positive when b is later).
-export const daysBetween = (a: Day, b: Day): number => dayjs(b).startOf('day').diff(dayjs(a).startOf('day'), 'day')
+// Whole calendar days from a to b (positive when b is later). Counted on the
+// calendar, not the clock: a local midnight does not exist on the day clocks
+// go forward at midnight (Cairo, Santiago), and a clock-based count comes up a
+// day short there.
+const dayNumber = (d: Day): number => {
+  const [y, m, day] = d.split('-').map(Number)
+  return Math.round(Date.UTC(y, (m || 1) - 1, day || 1) / 86_400_000)
+}
+export const daysBetween = (a: Day, b: Day): number => dayNumber(b) - dayNumber(a)
 
 export const daysFromToday = (d: Day, ref: Day = today()): number => daysBetween(ref, d)
 

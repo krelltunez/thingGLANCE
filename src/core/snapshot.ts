@@ -52,6 +52,8 @@ export interface GlanceSnapshot {
   reminders: Reminder[]
 }
 
+export type SnapshotEventState = 'open' | 'sent' | 'done' | 'dismissed'
+
 export interface SnapshotEvent {
   key: string
   type: EventType
@@ -65,6 +67,11 @@ export interface SnapshotEvent {
   amount?: number
   // The member who deals with it, or null when it falls to nobody.
   handlerId: string | null
+  // Where the decision stands: nothing done yet, handed to dayGLANCE as a
+  // task, done, or dismissed. `attention` holds open and sent dates (the app
+  // keeps a sent one in view until its task is completed); `upcoming` holds
+  // every date still ahead, whatever its state.
+  state: SnapshotEventState
   // What a tap opens (core/links.ts).
   link: string
 }
@@ -108,14 +115,17 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
   const limit = opts.limit ?? 8
   const users = new Set(opts.userIds ?? [])
   const data = visibleTo(all, opts.viewerId)
-  const events = buildHorizon(data, { ref, memberId: opts.memberId })
+  const events = buildHorizon(data, { ref, memberId: opts.memberId, allThings: all.things })
   const queue = attentionQueue(events)
-  const thingById = new Map<string, Thing>(data.things.map((t) => [t.id, t]))
+  // Over everything, so who deals with a date reads the same on every device
+  // (see reminders.ts). Only the handler's id comes out of it.
+  const thingById = new Map<string, Thing>(all.things.map((t) => [t.id, t]))
   const subById = new Map<string, Subscription>(data.subscriptions.map((s) => [s.id, s]))
   const slim = (e: (typeof events)[number]): SnapshotEvent => ({
     key: e.key, type: e.type, date: e.date, days: e.days, severity: e.severity, title: e.title, detail: e.detail,
     thingId: e.thingId, subscriptionId: e.subscriptionId, amount: e.amount,
     handlerId: handlerOfEvent(e, thingById, subById, users),
+    state: e.decision?.state ?? 'open',
     link: eventLink(e.key),
   })
   const active = data.things.filter((t) => t.status === 'active')

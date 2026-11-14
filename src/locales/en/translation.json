@@ -189,7 +189,8 @@
       "pausing": "Sync is pausing briefly and will resume on its own.",
       "verifier": "This vault server is too old to verify the encryption key. Update the server.",
       "unknownApp": "This vault does not accept thingGLANCE yet. Add \"thingglance\" to the server's allowed apps (GLANCEVAULT_ALLOWED_APPS) and recreate its container.",
-      "failed": "Sync failed."
+      "failed": "Sync failed.",
+      "keystore": "This device's secure storage did not answer, so the saved connection could not be read and sync is paused. Close the app and open it again. Changes you make meanwhile are kept and will sync then."
     },
     "passphrase": {
       "wrong": "That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.",

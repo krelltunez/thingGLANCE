@@ -49,7 +49,15 @@ A link to something this device cannot see (removed, or private to another membe
 | `open` | `link` | Nothing. The link goes through the router above |
 | `query` | Nothing | `snapshot` |
 
-Dates are `YYYY-MM-DD`. A failure answers `success: false` with a `code` (`invalid`, `not_found`, `unavailable`, `client_id_required`, `unknown_action` or `failed`) and an `error` a person can read.
+What a value may be:
+
+- **Dates** are real calendar dates written `YYYY-MM-DD`, from 1970 to 2200. `2027-02-31` is refused.
+- **Amounts** (`price`, `cost`, `amount`) are numbers from 0 to 1,000,000,000. `lifespan_months` is a whole number from 1 to 1200. A plain decimal written as text (`"9.99"`) is accepted, since automation tools hand everything over as text; anything else is refused.
+- **`category`** is one of `phone`, `laptop`, `desktop`, `tablet`, `watch`, `audio`, `tv`, `display`, `console`, `camera`, `security`, `network`, `storage`, `smarthome`, `printer`, `accessory`, `software`, `other`. Left out, it is guessed from the name.
+- **`cycle`** is `weekly`, `monthly` (the default), `quarterly` or `yearly`. **`status`** is `active` (the default) or `trial`, and a trial needs `trial_end`.
+- Text is trimmed; names are at most 200 characters and notes 2000.
+
+A failure answers `success: false` with a `code` (`invalid`, `not_found`, `unavailable`, `client_id_required`, `unknown_action` or `failed`) and an `error` a person can read.
 
 There is no delete, on purpose.
 
@@ -58,6 +66,10 @@ There is no delete, on purpose.
 - **Every write needs a `clientId`**: an id the caller chooses and sends again unchanged if it retries. A write whose id was already applied answers `deduped: true` with the same entity id and changes nothing. `open` and `query` need none.
 - **A UUID `clientId` becomes the new row's own id** on a create. The same write arriving on another device then makes the same row, not a second one.
 - **A write that was refused is not remembered**, so a corrected retry with the same id goes through.
+- **One id names one write.** The same `clientId` on a different action is refused as `invalid`, not answered as "already done".
+- **A repeat answers what the first did**, including the `state` a decision was left in. Sending a different payload under the same id changes nothing.
+- **A retried create is told it landed before its payload is looked at.** If the thing it pointed at has since been deleted, the answer is still `deduped: true`, so an outbox waiting to see its write land can stop.
+- **The limit of that:** the ledger is per device and holds the last 500 writes. A create with a UUID id is also recognised by its row. A row the user has since deleted is not remembered, so a create replayed after that, with no ledger entry, makes the row again. Do not replay across devices or after long gaps.
 - **Writes use the same functions the forms use** (`src/db/queries.ts`): they are stamped, marked for sync, and promote sample rows.
 - **A caller acts as this device's member.** It cannot see, add coverage to, clear or send anything that is private to someone else.
 - After a write that changed something, `tg:external-write` fires on `window`, so a shell can push a fresh snapshot.

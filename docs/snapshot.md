@@ -48,7 +48,8 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `title`, `detail` | string | Two lines of display text. |
 | `thingId`, `subscriptionId` | string, optional | What a tap should open. |
 | `amount` | number, optional | In `currency`. |
-| `handlerId` | member id or null | Who deals with it. Null when it falls to nobody. |
+| `handlerId` | member id or null | Who deals with it. Null when it falls to nobody. The same on every device, including for a plan attached to a thing this device may not see. |
+| `state` | string | Where the decision stands: `open`, `sent` (handed to dayGLANCE as a task), `done` or `dismissed`. `attention` holds `open` and `sent` dates, since the app keeps a sent one in view until its task is completed; mark or hide those as you see fit. `upcoming` holds every date still ahead, whatever its state. |
 | `link` | string | What a tap opens: a `thingglance://event/<key>` link. Hand it to the app as it is. |
 
 ### A thing
@@ -78,5 +79,6 @@ The list is capped (56 by default, under the iOS limit of 64 pending per app) an
 - **Two nudges at most per date.** A heads-up when the date enters its lead window, which is the moment it joins the queue, and a last call closer in: 7 days for coverage, 30 for support ending and a planned replacement, 3 for a renewal or a plan ending, 2 for a trial.
 - **No catching up.** A nudge whose moment has passed is not sent late. The date is already in the queue.
 - **Nothing for what is settled.** A date that was cleared, or sent to dayGLANCE, gets no reminder. Neither does a routine monthly renewal nobody asked to review.
+- **A plan under review is reminded every cycle.** Lists show only its next renewal, but reminders are planned for each one in the window, so a phone that is not opened for a month is still told about the one after. A weekly plan gets one nudge a week (the last call), not two.
 - **Who is told.** If someone deals with the date, only their devices. If it falls to nobody, every device. A device nobody has claimed hears only about those. A private item is its owner's alone.
-- **When in the day.** 9:00 local time unless the device prefers otherwise.
+- **When in the day.** 9:00 local time unless the device prefers otherwise. The preference lives in the device's settings (`reminders`: `enabled`, `hour`, `minute`, and `kinds` to switch a type off) and is what `query` and `buildSnapshot()` plan with. A value out of range falls back to the default; it never moves a reminder to another day.

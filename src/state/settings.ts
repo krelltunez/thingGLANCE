@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { defaultCurrency } from '@/core/money'
+import { normalizeReminderPrefs, type ReminderPrefs } from '@/core/reminders'
 
 export type ThemePref = 'system' | 'dark' | 'light'
 
@@ -9,6 +10,9 @@ export interface Settings {
   theme: ThemePref
   currency: string
   webLookup: boolean
+  // When this device is reminded, and about what (core/reminders.ts). Nothing
+  // on the web notifies yet; a shell reads these and offers the controls.
+  reminders: ReminderPrefs
 }
 
 const KEY = 'tg_settings'
@@ -19,7 +23,7 @@ function read(): Settings {
   if (cache) return cache
   let stored: Partial<Settings> = {}
   try { stored = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Settings> } catch { /* defaults */ }
-  cache = { theme: 'system', currency: defaultCurrency(), webLookup: true, ...stored }
+  cache = { theme: 'system', currency: defaultCurrency(), webLookup: true, ...stored, reminders: normalizeReminderPrefs(stored.reminders) }
   return cache
 }
 
@@ -27,6 +31,7 @@ export const getSettings = (): Settings => read()
 
 export function updateSettings(patch: Partial<Settings>): void {
   cache = { ...read(), ...patch }
+  if (patch.reminders) cache.reminders = normalizeReminderPrefs(patch.reminders)
   localStorage.setItem(KEY, JSON.stringify(cache))
   if (patch.theme) applyTheme()
   listeners.forEach((fn) => fn())

@@ -74,10 +74,38 @@ export function resetVaultSyncState(): void {
     ...streamKeys(`${APP_ID}-glance-users`),
     'tg_intents_receive_cursor',
     'tg_intents_receive_failures',
+    // Changes held for an engine belong to the stream they were made on.
+    'tg_dirty_waiting',
+    'tg_roster_dirty_waiting',
+    STREAM_OWNER_KEY,
   ]
   for (const key of keys) {
     try { localStorage.removeItem(key) } catch { /* nothing to clear */ }
   }
+}
+
+// Which account the stream state above belongs to. The token can live in a
+// keystore that commits at once, while these keys live in localStorage, which
+// a WebView flushes lazily: a process killed between the two would otherwise
+// come back with one account's token and another's cursors. Checked at every
+// start; a mismatch is treated as the account change it is.
+const STREAM_OWNER_KEY = 'tg_stream_for'
+
+export const vaultAccountTag = (c: Pick<VaultConfig, 'vaultUrl' | 'accountId'> | null = getVaultConfig()): string =>
+  c ? `${c.vaultUrl.trim()}|${c.accountId.trim()}` : ''
+
+// Answers true when the stream state was left by a different account and has
+// been cleared. A device with no owner recorded yet (every install from before
+// this check) simply adopts the current account.
+export function settleStreamOwner(): boolean {
+  const tag = vaultAccountTag()
+  if (!tag) return false
+  let owner: string | null = null
+  try { owner = localStorage.getItem(STREAM_OWNER_KEY) } catch { return false }
+  const stale = owner !== null && owner !== tag
+  if (stale) resetVaultSyncState()
+  if (owner !== tag) { try { localStorage.setItem(STREAM_OWNER_KEY, tag) } catch { /* storage unavailable */ } }
+  return stale
 }
 
 export function vaultIdentityChanged(

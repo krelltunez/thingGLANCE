@@ -65,12 +65,12 @@ export function PassphraseModal() {
 type CommandGroup = 'actions' | 'goto' | 'things' | 'plans'
 interface Command { id: string; label: string; hint?: string; icon: LucideIcon; run: () => void; group: CommandGroup }
 
-export function CommandPalette() {
+export function CommandPalette({ initialQuery = '' }: { initialQuery?: string }) {
   const { t } = useTranslation()
   const d = useData()
   const ui = useUI()
   const { currency } = useSettings()
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(initialQuery)
   const [index, setIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   useEscape(ui.close)

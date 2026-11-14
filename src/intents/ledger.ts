@@ -14,6 +14,9 @@ export interface HandledWrite {
   action: string
   // What the write made or changed, when it has one.
   entityId: string | null
+  // Anything else the first answer carried that a repeat should carry too
+  // (the state a decision was left in).
+  extra?: Record<string, string>
   at: string
 }
 

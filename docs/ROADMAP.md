@@ -61,7 +61,7 @@ The household spec already calls for three such changes: `Thing.ownerIds` become
 
 ## Phase 0: self-hosted with real data (S)
 
-> Status, 2026-11-13: the Docker image, CI workflows, lint and live sync are done and merged. The vault allowlist change (in `glance-vault`) and the test against your real vault and dayGLANCE are still open.
+> Status, 2026-11-14: done except two things. The app runs from the Docker image against the real vault, with the roster shared. Still open: `thingglance` in the vault's default app list (in `glance-vault`), and one task sent from the queue seen arriving in the real dayGLANCE.
 
 The goal is the thing you asked for first: the app on your own server, pointed at your real vault.
 
@@ -143,6 +143,8 @@ Each of these is built once in the web app and reused by every shell. Doing them
 - **Reminders as pure logic.** Done: `planReminders()` in `src/core/reminders.ts` says which dates notify, when, and on whose device, with stable ids a shell can diff against what the platform has pending. The household rule about who is told is in the same place. Nothing schedules them yet; that is each shell's job. The rules are written out in [snapshot.md](snapshot.md#reminder-rules).
 - **Freeze the snapshot.** Done: version 1 is frozen, documented in [snapshot.md](snapshot.md) and pinned by a test. The review added the currency, whose device it was built for, who each date falls to, each thing's owner and days left, and the device's pending reminders.
 - **i18n.** Done: every word comes from `src/locales/<tag>/translation.json` through i18next, with typed keys, a lint rule that fails on text in a component, and a test that keeps the code and the catalog in step. Catalogs are bundled rather than fetched, so the precache has them without a special case. English is the only language so far; adding one is adding a file. See [i18n.md](i18n.md).
+
+A review before Phase 2 went through these as the first shell would use them and found what only a real keystore and a real native transport would have shown: a keystore that refuses, hangs or cannot be read; deadlines that depended on the transport honouring a cancel signal; values from outside that were the right shape and nonsense; and a snapshot that could not say what was already handled. Those are fixed and tested. [shells.md](shells.md), [snapshot.md](snapshot.md) and [links-and-intents.md](links-and-intents.md) describe what a shell can now rely on.
 
 ## Phase 2: Android (L)
 

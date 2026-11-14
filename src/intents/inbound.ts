@@ -42,12 +42,12 @@ async function view() {
 export function liveContext(): IntentContext {
   return {
     getThing: async (id) => (await view()).data.things.find((t) => t.id === id) ?? null,
-    entityExists: async (id) => !!((await db.things.get(id)) ?? (await db.coverages.get(id)) ?? (await db.subscriptions.get(id))),
+    entityExists: async (id, kind) => !!(await (kind === 'thing' ? db.things : kind === 'coverage' ? db.coverages : db.subscriptions).get(id)),
     members: () => db.members.toArray(),
     createThing: (input, id) => createThing(input, id),
     saveCoverage: (input, id) => saveCoverage(input, id),
     savePlan: (input, id) => saveSubscription(input, id),
-    findEvent: async (key) => buildHorizon((await view()).data).find((e) => e.key === key) ?? null,
+    findEvent: async (key) => { const v = await view(); return buildHorizon(v.data, { allThings: v.all.things }).find((e) => e.key === key) ?? null },
     decide: async (key, state) => { await decide(key, state) },
     undecide: (key) => undecide(key),
     send: async (event) => {
@@ -57,7 +57,8 @@ export function liveContext(): IntentContext {
     navigate: (target) => openLink(formatLink(target)),
     snapshot: async () => {
       const v = await view()
-      return buildSnapshot(v.all, { viewerId: v.meId, userIds: userIds(v.devices, v.members), currency: getSettings().currency })
+      const settings = getSettings()
+      return buildSnapshot(v.all, { viewerId: v.meId, userIds: userIds(v.devices, v.members), currency: settings.currency, reminderPrefs: settings.reminders })
     },
   }
 }

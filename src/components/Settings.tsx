@@ -180,6 +180,7 @@ function Vault() {
 
   return (
     <div className="space-y-3">
+      {sync.errorCode === 'KEYSTORE_UNREADABLE' && <p className="rounded-lg border border-bad/25 bg-bad/10 px-3 py-2 text-xs leading-relaxed text-bad">{syncErrorText(sync.errorCode, null)}</p>}
       <Block title={t('settings.vault.syncWith')} hint={t('settings.vault.syncWithHint')}>
         <Segmented value={mode} onChange={(m) => { setMode(m); setNote(null) }} options={[
           { id: 'self', label: t('settings.vault.selfHosted') },
@@ -442,8 +443,8 @@ function Integrations() {
 function SnapshotPeek() {
   const { t } = useTranslation()
   const d = useData()
-  const { currency } = useSettings()
-  const scope = { viewerId: d.meId, memberId: d.focusId, userIds: d.userIds, currency }
+  const { currency, reminders } = useSettings()
+  const scope = { viewerId: d.meId, memberId: d.focusId, userIds: d.userIds, currency, reminderPrefs: reminders }
   const snap = buildSnapshot(d, { ...scope, limit: 3 })
   const peek = {
     counts: snap.counts,

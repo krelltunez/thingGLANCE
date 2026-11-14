@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { eventLink, formatLink, parseLink, type LinkTarget } from './links'
+import { eventTarget as eventTargetOf } from './links'
 
 describe('reading a link', () => {
   it('reads each place the app can be opened at', () => {
@@ -60,5 +61,30 @@ describe('writing a link', () => {
   it('writes the canonical scheme', () => {
     expect(formatLink({ kind: 'thing', id: 'abc' })).toBe('thingglance://thing/abc')
     expect(eventLink('renewal:s1:2026-12-01')).toBe('thingglance://event/renewal%3As1%3A2026-12-01')
+  })
+})
+
+describe('what a date leads to', () => {
+  const known = {
+    hasThing: (id: string) => id === 't1',
+    hasPlan: (id: string) => id === 's1',
+    coverageThing: (id: string) => (id === 'c1' ? 't1' : undefined),
+  }
+  it('opens a plan\'s date on the plan and a thing\'s on the thing', () => {
+    expect(eventTargetOf('renewal:s1:2027-01-15', known)).toEqual({ kind: 'plan', id: 's1' })
+    expect(eventTargetOf('support-end:t1:2027-01-15', known)).toEqual({ kind: 'thing', id: 't1' })
+  })
+  it('finds a warranty\'s thing from the key alone, with no date on screen to help', () => {
+    // The member filter can hide the date; the reminder for it still opens.
+    expect(eventTargetOf('coverage-end:c1:2027-01-15', known)).toEqual({ kind: 'thing', id: 't1' })
+    expect(eventTargetOf('coverage-end:c1:2027-01-15', known, null)).toEqual({ kind: 'thing', id: 't1' })
+  })
+  it('answers nothing for what is not on this device', () => {
+    expect(eventTargetOf('coverage-end:hidden:2027-01-15', known)).toBeNull()
+    expect(eventTargetOf('renewal:gone:2027-01-15', known)).toBeNull()
+    expect(eventTargetOf('nonsense', known)).toBeNull()
+  })
+  it('prefers the plan when the date on screen names both', () => {
+    expect(eventTargetOf('renewal:s1:2027-01-15', known, { subscriptionId: 's1', thingId: 't1' })).toEqual({ kind: 'plan', id: 's1' })
   })
 })

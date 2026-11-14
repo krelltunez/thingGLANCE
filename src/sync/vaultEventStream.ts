@@ -21,6 +21,7 @@
 // createBridgeSseClient does. Until then a shell falls back to polling.
 
 import { shell } from '@/native/platform'
+import { hasShellTransport } from '@/native/shell'
 
 // ─── SSE frame parsing ───────────────────────────────────────────────────────
 
@@ -71,7 +72,9 @@ export type SseTransport = 'web' | 'none'
 
 export function detectSseTransport(): SseTransport {
   if (typeof window === 'undefined') return 'none'
-  if (shell() !== 'web') return 'none' // a shell will bring its own reader
+  // A shell brings its own reader: this one reads a streaming response on
+  // the page's own fetch, which a shell either forbids or cannot stream.
+  if (shell() !== 'web' || hasShellTransport()) return 'none'
   return typeof fetch === 'function' && typeof ReadableStream !== 'undefined' ? 'web' : 'none'
 }
 

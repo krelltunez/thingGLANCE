@@ -9,7 +9,8 @@ import { createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './
 import { dbCryptoConfig } from './keyHooks'
 import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
 import { registerDbEngine } from './dirtyTracker'
-import { getVaultConfig, isVaultEnabled } from './vaultConfig'
+import { secretsUnreadable } from './secrets'
+import { getVaultConfig, isVaultEnabled, settleStreamOwner, vaultAccountTag } from './vaultConfig'
 import { probeAllowedApps } from './vaultConnect'
 import { ROSTER_VAULT_APP, createRosterDbEngine } from '@/multiuser/rosterVault'
 import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
@@ -82,12 +83,14 @@ async function probeRoster(): Promise<void> {
 
 // "Check again" in Settings: ask the server afresh, then read the roster.
 export async function recheckRoster(): Promise<void> {
-  await probeRoster()
+  // Bounded: a server that is slow to answer must not hold up the first sync.
+  await Promise.race([probeRoster(), new Promise((resolve) => setTimeout(resolve, ROSTER_PROBE_WAIT_MS))])
   await roster?.dbSyncCycle().catch(() => { /* reported through onError */ })
 }
 let started = false
 
 const CADENCE_MS = 5 * 60 * 1000
+const ROSTER_PROBE_WAIT_MS = 4000
 
 export function syncErrorText(code: string | null, message: string | null): string {
   switch (code) {
@@ -101,6 +104,7 @@ export function syncErrorText(code: string | null, message: string | null): stri
     case 'SYNC_SUPPRESSED': return tr('sync.error.pausing')
     case 'VERIFIER_UNSUPPORTED': return tr('sync.error.verifier')
     case 'UNKNOWN_APP': return tr('sync.error.unknownApp')
+    case 'KEYSTORE_UNREADABLE': return tr('sync.error.keystore')
     default: return message || tr('sync.error.failed')
   }
 }
@@ -124,7 +128,15 @@ export async function syncNow(): Promise<void> {
 export async function startSync(): Promise<void> {
   if (started) return
   started = true
-  if (!isVaultEnabled()) { set({ phase: 'off' }); return }
+  if (!isVaultEnabled()) {
+    // "Could not read the keystore" is not "not connected": say so, and leave
+    // local edits to the hold in dirtyHold.ts until a launch that can read it.
+    set(secretsUnreadable() ? { phase: 'error', errorCode: 'KEYSTORE_UNREADABLE', errorMessage: null } : { phase: 'off' })
+    return
+  }
+  // Cursors left by another account (a change of connection that was cut
+  // short) are dropped before any engine reads them.
+  settleStreamOwner()
   set({ pro: !!getVaultConfig()?.pro })
   navigator.storage?.persist?.().catch(() => {})
 
@@ -254,7 +266,7 @@ const REKEY_FLAG = 'tg_rekey_pending'
 // Once a sibling has confirmed the cached key for this account there is no
 // need to ask the vault again on every start.
 const CONFIRMED_KEY = 'tg_key_confirmed_for'
-const accountTag = (): string => { const c = getVaultConfig(); return c ? `${c.vaultUrl}|${c.accountId}` : '' }
+const accountTag = (): string => vaultAccountTag()
 
 async function cachedKeyConflicts(): Promise<boolean> {
   if (localStorage.getItem(CONFIRMED_KEY) === accountTag()) return false

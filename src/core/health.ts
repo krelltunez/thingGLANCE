@@ -4,6 +4,9 @@ import { category } from './categories'
 import { yearlyCost } from './money'
 import { tr } from './text'
 
+// A century. Past this a "replace by" date means nothing.
+export const MAX_LIFESPAN_MONTHS = 1200
+
 export type Verdict = 'prime' | 'solid' | 'watch' | 'replace' | 'overdue' | 'retired' | 'unknown'
 
 export interface Lifecycle {
@@ -37,7 +40,10 @@ export const verdictHint = (v: Verdict): string => tr(`verdict.${v}.hint`)
 export function lifecycle(thing: Thing, coverages: Coverage[] = [], ref: Day = today()): Lifecycle {
   const start = thing.purchaseDate ?? thing.releaseDate ?? null
   const ageDays = start ? Math.max(0, daysBetween(start, ref)) : null
-  const months = thing.lifespanMonths ?? category(thing.category).lifespanMonths
+  // Bounded: a row can arrive from anywhere, and a lifespan of a million
+  // months has no date to land on.
+  const wanted = thing.lifespanMonths ?? category(thing.category).lifespanMonths
+  const months = Number.isFinite(wanted) && wanted > 0 ? Math.min(Math.round(wanted), MAX_LIFESPAN_MONTHS) : category(thing.category).lifespanMonths
   const replaceBy = thing.purchaseDate ? addMonths(thing.purchaseDate, months) : null
   const supportEnd = thing.supportEnd ?? null
 

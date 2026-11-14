@@ -45,6 +45,8 @@ internal data class WidgetLabels(
     val nextTitle: String,
     val nextEmpty: String,
     val today: String,
+    // What the button on a row is called, for screen readers.
+    val done: String,
     val days: String,
     val months: String,
     val years: String,
@@ -60,6 +62,9 @@ internal data class WidgetData(
 ) {
     // The date that matters most right now: what needs a decision first, else
     // the nearest one ahead.
+    fun without(cleared: Set<String>): WidgetData =
+        if (cleared.isEmpty()) this else copy(attention = attention.filter { it.key !in cleared }, upcoming = upcoming.filter { it.key !in cleared })
+
     // One that was cleared or done is no longer "next".
     val next: WidgetEvent? get() = attention.firstOrNull()
         ?: upcoming.firstOrNull { daysUntil(it.date) >= 0 && it.state != "done" && it.state != "dismissed" }
@@ -73,6 +78,7 @@ private val FALLBACK_LABELS = WidgetLabels(
     nextTitle = "Next up",
     nextEmpty = "Open thingGLANCE to load your dates",
     today = "today",
+    done = "Done with this",
     days = "{{n}}d",
     months = "{{n}}mo",
     years = "{{n}}y",
@@ -88,7 +94,11 @@ internal fun rememberWidgetData(context: Context): WidgetData {
 }
 
 internal object WidgetSnapshot {
-    fun read(context: Context): WidgetData = parse(SharedDataStore.readWidgetPayload(context))
+    // What the app last wrote, less any date the user has since cleared from
+    // the home screen: that write is still waiting for the app, and the row
+    // should not sit there until it runs.
+    fun read(context: Context): WidgetData =
+        parse(SharedDataStore.readWidgetPayload(context)).without(SharedDataStore.pendingDecideKeys(context))
 
     // A payload that is missing or unreadable draws as "not loaded", never as a
     // crash: a widget that throws shows the system's error tile.
@@ -109,6 +119,7 @@ internal object WidgetSnapshot {
                     nextTitle = text("nextTitle", FALLBACK_LABELS.nextTitle),
                     nextEmpty = text("nextEmpty", "Nothing coming up"),
                     today = text("today", FALLBACK_LABELS.today),
+                    done = text("done", FALLBACK_LABELS.done),
                     days = text("days", FALLBACK_LABELS.days),
                     months = text("months", FALLBACK_LABELS.months),
                     years = text("years", FALLBACK_LABELS.years),

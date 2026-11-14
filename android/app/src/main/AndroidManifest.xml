@@ -26,6 +26,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Shared from another app (a product page, a name): becomes
+                 "add a thing" with that name (LaunchLinks). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+
             <!-- thingglance:// links: a widget tap, a notification, a shortcut.
                  They only ever navigate (docs/links-and-intents.md). The web
                  app takes them from @capacitor/app and routes them itself. -->

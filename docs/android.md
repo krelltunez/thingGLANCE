@@ -34,9 +34,11 @@ To open the project in Android Studio: `npx cap open android`.
 - requests go out on the native HTTP stack, so the vault needs no CORS entry for the app;
 - no service worker is registered;
 - `thingglance://` links open the right place, warm and with a filled-in form;
+- something shared from another app opens the add form with its name, and the app icon has its shortcuts;
 - the back button closes the keyboard, then the sheet, then returns to the first screen, then leaves the app without closing it;
 - a thing added on the phone reaches a web device through a real vault, and the other way;
-- both widgets can be placed, show the right date and countdown, open the app on a tap, and empty when the date is cleared;
+- both widgets can be placed, show the right date and countdown, and open the app on a tap;
+- the tick on a widget row clears the date with the app not running, the write waits in a queue, and the app applies it once when it next runs;
 - a reminder is scheduled at the chosen time, delivered by Android with the app in the background, and "Done with this" on it clears the date;
 - after being killed, the app is still connected and asks for no passphrase.
 
@@ -47,6 +49,8 @@ npm run dev                      # the web device it syncs against
 # a throwaway vault, as in the header of e2e/vault-sync.mjs
 node scripts/android-check.mjs emulator-5554
 ```
+
+`QUICK=1` in front skips the part that waits several minutes for Android to deliver a notification.
 
 **It wipes the app's data on its target, so it refuses anything that is not an emulator.** If a real phone is plugged in too, always pass the emulator's serial to `adb` (`-s emulator-5554`): a bare `adb install` with two devices attached fails, and with one attached it goes to the phone.
 
@@ -63,10 +67,16 @@ Everything goes through the seams in [shells.md](shells.md). The Android side of
 | --- | --- |
 | Keystore | `SecureStorePlugin` and `SecureStore` (`android/app/src/main/java/com/thingglance/app`). AES-GCM values in a private preferences file, the key in the Android Keystore. Nothing stored answers `null`; a Keystore that cannot be used rejects, and the web side tells the two apart. An entry that can never be read again (restored onto another device) is dropped. |
 | Network | `CapacitorHttp` replaces `window.fetch` with the native HTTP stack. `src/native/capacitor.ts` registers it as the shell's transport, which also puts the app's deadlines on it (it ignores `AbortSignal` by itself). |
-| Links | The manifest takes `thingglance://` URLs. `@capacitor/app` hands them to `openLink()`, both when the app is running and when a link starts it. |
+| Links | The manifest takes `thingglance://` URLs. `@capacitor/app` hands them to `openLink()`, both when the app is running and when a link starts it. `LaunchLinks` turns every other way of starting the app into such a link first, so the web side still has one router. |
 | Back button | `src/native/backStack.ts`: the app registers what "back" closes; the shell leaves the app only when nothing was closed. |
 | Status bar | Transparent, with icons that follow the app's theme. The layout keeps clear of it with the safe-area insets. |
 | Service worker | Never registered in the WebView. |
+
+## Other ways in
+
+- **Sharing into the app.** Share a product page or a name from any app and the add form opens with it filled in. The page title wins; failing that, the shared text without its links; a bare address names nothing, so the form opens empty. It becomes an ordinary `thingglance://action/add?name=` link (`LaunchLinks`).
+- **Shortcuts on the app icon** (long-press): Add a thing, Add a plan, Needs a decision. Each is a link (`res/xml/shortcuts.xml`).
+- **An old start is not replayed.** When Android rebuilds the app after killing it, or reopens it from Recents, it hands over the intent that first started it. `LaunchLinks` strips a link or a share from such a replay, so a form closed hours ago does not reopen.
 
 ## Widgets
 
@@ -74,7 +84,7 @@ Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/
 
 | Widget | Shows |
 | --- | --- |
-| **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the title opens the queue. |
+| **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the tick at its end clears it without opening the app; the title opens the queue. |
 | **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. |
 
 How they get their content:
@@ -83,11 +93,13 @@ How they get their content:
 - **Countdowns are worked out when the widget draws**, from each date, not baked in. A widget is drawn hours after the app last ran; "T-12d" has to be right then. The system redraws them every six hours even if the app is never opened.
 - **A widget reads the payload inside its composition** (`rememberWidgetData`). Reading it once before composing is the obvious thing and is wrong: Glance keeps a drawn widget's composition alive for a while, and an update only recomposes it with what it read at the start.
 - **A missing or unreadable payload draws as "open the app"**, never as the system's error tile. Rows without a key or a real date are left out.
-- **A tap is a `thingglance://` link** (the snapshot carries one for every date), so widgets cannot change anything; they only open the app somewhere.
+- **A tap on a row is a `thingglance://` link** (the snapshot carries one for every date): it opens the app somewhere and changes nothing.
+- **The tick is the one thing a widget can change, and it does not change it itself.** A widget cannot run the app, so `ClearDateAction` queues a write in `SharedDataStore`, in the shape the app's one door for outside writes takes (`{ action, payload, clientId }`), with an id it mints. The row leaves the widget at once, because a widget hides any date with a write waiting. The app collects the queue when it starts, when it comes to the front, and straight away if it happens to be running (`collectWidgetWrites` in `src/native/widgetBridge.ts`), and applies each through `dispatchExternalWrite`, so a write collected twice is applied once. A write is taken off the queue only after the widgets have been handed a snapshot that reflects it; the other way round, the row would flash back.
+- **Until the app has run, only the widget knows.** The date's reminder is still scheduled and other devices still show it. A background refresh would close that gap; it is not built yet.
 
 Settings has an "add to home screen" button for each (Android 8 and later, where the launcher supports it).
 
-`WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation and feeds the parser broken payloads. The device check places both widgets on the emulator's home screen, reads what they show, taps a row, and clears a date in the app to see them empty.
+`WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation, feeds the parser broken payloads, and checks the write queue. The device check places both widgets on the emulator's home screen, reads what they show, taps a row, then kills the app and taps a tick.
 
 ## Reminders
 
@@ -112,7 +124,7 @@ Other choices worth knowing:
 ## Not there yet
 
 - **Live updates.** The web app holds the vault's event stream open; the phone does not yet. A change made elsewhere arrives when the app is opened, every five minutes while it is open, or after a local edit. A native stream reader is in the roadmap's hardening step.
-- **More widgets** (a single thing, plans this month, an add tile) and **action buttons on widgets** (clearing a date from the home screen).
-- **"Send to dayGLANCE" on a notification**, shortcuts, the share target, Quick Settings tiles, Tasker.
+- **More widgets** (a single thing, plans this month, an add tile).
+- **"Send to dayGLANCE" on a notification**, Quick Settings tiles, Tasker.
 - **A background refresh.** If the app is not opened for days, the widgets keep counting down correctly but do not learn of dates that have since entered their window.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

@@ -31,6 +31,29 @@ class WidgetBridgePlugin : Plugin() {
         call.resolve()
     }
 
+    // Writes made on the home screen that the app has not applied yet, as a
+    // JSON array of { action, payload, clientId }. They stay queued until
+    // acknowledged.
+    @PluginMethod
+    fun pendingWrites(call: PluginCall) {
+        call.resolve(JSObject().put("writes", SharedDataStore.readPendingWrites(context)))
+    }
+
+    // The app has applied these (or been told they cannot be): drop them.
+    @PluginMethod
+    fun acknowledgeWrites(call: PluginCall) {
+        val ids = HashSet<String>()
+        val given = call.getArray("clientIds")
+        if (given != null) for (i in 0 until given.length()) ids.add(given.optString(i))
+        SharedDataStore.acknowledge(context, ids)
+        refreshAll(context)
+        call.resolve()
+    }
+
+    override fun load() {
+        live = java.lang.ref.WeakReference(this)
+    }
+
     // Asks the launcher to offer a widget for the home screen (Android 8+; a
     // launcher may not support it). The user still confirms in the launcher.
     @PluginMethod
@@ -43,6 +66,14 @@ class WidgetBridgePlugin : Plugin() {
     }
 
     companion object {
+        private var live: java.lang.ref.WeakReference<WidgetBridgePlugin>? = null
+
+        // Tells a running app there is something to collect. With no app
+        // running there is nobody to tell; it collects on its next start.
+        fun announcePendingWrites() {
+            live?.get()?.notifyListeners("pendingWrites", JSObject())
+        }
+
         private val RECEIVERS: Map<String, Class<*>> = mapOf(
             "decide" to DecideWidgetReceiver::class.java,
             "next" to NextUpWidgetReceiver::class.java,

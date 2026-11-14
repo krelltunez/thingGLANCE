@@ -4,7 +4,14 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
+import androidx.glance.Image
+import androidx.glance.ImageProvider
+import androidx.glance.action.actionParametersOf
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.layout.size
+import com.thingglance.app.R
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.action.clickable
@@ -99,6 +106,16 @@ class DecideWidget : GlanceAppWidget() {
                     style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
                 )
             }
+            // Clears the date without opening the app (ClearDateAction).
+            Image(
+                provider = ImageProvider(R.drawable.ic_widget_check),
+                contentDescription = data.labels.done,
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+                modifier = GlanceModifier
+                    .size(36.dp)
+                    .padding(8.dp)
+                    .clickable(actionRunCallback<ClearDateAction>(actionParametersOf(ClearDateAction.EVENT_KEY to event.key))),
+            )
         }
     }
 }

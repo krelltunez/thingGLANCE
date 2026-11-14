@@ -10,4 +10,8 @@
     <string name="widget_decide_description">The dates waiting on you, each with its countdown.</string>
     <string name="widget_next_label">Next up</string>
     <string name="widget_next_description">The one date that matters most right now.</string>
+    <!-- Long-press shortcuts on the app icon. -->
+    <string name="shortcut_add_thing">Add a thing</string>
+    <string name="shortcut_add_plan">Add a plan</string>
+    <string name="shortcut_queue">Needs a decision</string>
 </resources>

@@ -11,7 +11,7 @@ import java.util.GregorianCalendar
 // These pin that against the web app's own rules (src/core/dates.ts) and
 // against payloads that are missing, old or broken.
 class WidgetDataTest {
-    private val labels = WidgetLabels("Needs a decision", "Nothing", "Next up", "Nothing", "today", "{{n}}d", "{{n}}mo", "{{n}}y")
+    private val labels = WidgetLabels("Needs a decision", "Nothing", "Next up", "Nothing", "today", "Done with this", "{{n}}d", "{{n}}mo", "{{n}}y")
 
     @Test
     fun aDayIsARealCalendarDate() {
@@ -100,6 +100,32 @@ class WidgetDataTest {
         // And a date already behind us is not "next" either.
         val past = WidgetSnapshot.parse("{\"snapshot\":{\"upcoming\":[{\"key\":\"old\",\"date\":\"1999-01-15\",\"title\":\"old\"}]}}")
         assertNull(past.next)
+    }
+
+    @Test
+    fun aDateClearedOnTheHomeScreenLeavesAtOnce() {
+        val data = WidgetSnapshot.parse(payload)
+        val cleared = data.without(setOf("coverage-end:c1:2027-01-15"))
+        assertTrue(cleared.attention.isEmpty())
+        assertEquals("iCloud+ renews", cleared.next?.title)
+        // Nothing waiting: the same object, untouched.
+        assertTrue(data.without(emptySet()) === data)
+    }
+
+    @Test
+    fun theQueueOfWritesNamesItsDatesAndStaysSmall() {
+        val queue = org.json.JSONArray()
+        for (i in 1..60) {
+            queue.put(org.json.JSONObject().put("action", "decide").put("clientId", "widget:$i").put("payload", org.json.JSONObject().put("event_key", "k$i").put("state", "done")))
+        }
+        queue.put(org.json.JSONObject().put("action", "something_else").put("payload", org.json.JSONObject().put("event_key", "not-a-decide")))
+        val keys = com.thingglance.app.SharedDataStore.pendingDecideKeys(queue)
+        assertEquals(60, keys.size)
+        assertFalse(keys.contains("not-a-decide"))
+        // The oldest are dropped first.
+        val kept = com.thingglance.app.SharedDataStore.trimmed(queue)
+        assertEquals(50, kept.length())
+        assertEquals("widget:12", kept.getJSONObject(0).getString("clientId"))
     }
 
     @Test

@@ -61,6 +61,8 @@ A failure answers `success: false` with a `code` (`invalid`, `not_found`, `unava
 
 There is no delete, on purpose.
 
+The first real caller is the Android home-screen widget: its tick queues `decide` natively and the app applies it on its next run ([android.md](android.md#widgets)). A notification's "Done with this" is the second.
+
 ### Rules every caller gets
 
 - **Every write needs a `clientId`**: an id the caller chooses and sends again unchanged if it retries. A write whose id was already applied answers `deduped: true` with the same entity id and changes nothing. `open` and `query` need none.

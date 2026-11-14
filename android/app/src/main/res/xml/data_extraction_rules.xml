@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup and transfer rules for Android 12+ (API 31).
+
+     Cloud backup leaves out:
+     - app_webview/: the WebView profile, which holds all of the web app's
+       storage (things, plans, the household, sync cursors). User content stays
+       out of cloud backups, and a partly restored WebView profile is worse
+       than none. The vault, or the in-app backup file, is how data moves.
+     - thingglance_secure_store.xml: Keystore-encrypted credentials. They could
+       not be decrypted on another device anyway.
+     - thingglance_shared.xml: what widgets show. It carries names and dates,
+       and the app rebuilds it on first open.
+
+     A direct device-to-device transfer is left unrestricted: it never lands on
+     a server. Credentials still do not survive it (the Keystore key stays
+     behind), so the new device asks to connect again. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="app_webview/" />
+        <exclude domain="sharedpref" path="thingglance_secure_store.xml" />
+        <exclude domain="sharedpref" path="thingglance_shared.xml" />
+    </cloud-backup>
+</data-extraction-rules>

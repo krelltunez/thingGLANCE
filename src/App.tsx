@@ -14,6 +14,7 @@ import { getWhoAsked, householdSnapshot, setFocusMemberId, setWhoAsked, subscrib
 import { startSync } from '@/sync/manager'
 import { dispatchExternalWrite } from '@/intents/inbound'
 import { openLink } from '@/native/links'
+import { setBackHandler } from '@/native/backStack'
 import { describeDevice, setBadge } from '@/native/platform'
 import { attachThisDevice, removeSamples } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
@@ -269,6 +270,18 @@ export default function App() {
     thingId, openThing: setThingId,
     modal, open: setModal, close: () => setModal(null),
   }), [view, setView, thingId, modal])
+
+  // The hardware back button (a shell asks through native/backStack.ts): close
+  // what is on top, one thing per press, then fall back to the first screen.
+  useEffect(() => {
+    setBackHandler(() => {
+      if (modal) { setModal(null); return true }
+      if (thingId) { setThingId(null); return true }
+      if (view !== 'glance') { setView('glance'); return true }
+      return false
+    })
+    return () => setBackHandler(null)
+  }, [modal, thingId, view, setView])
 
   // Engines start once; the page reloads after any vault config change.
   useEffect(() => { void startSync() }, [])

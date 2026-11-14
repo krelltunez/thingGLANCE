@@ -4,7 +4,7 @@
 
 thingGLANCE is the fourth GLANCE app (dayGLANCE is orange, lastGLANCE green, lifeGLANCE purple, this one sky blue). It is **not** a home inventory. It tracks the handful of things you own that carry dates: when the warranty lapses, when a plan renews, when security updates stop, and when you said you would replace it.
 
-> Status: prototype (v0.1). Web app + PWA. Native shells, widgets, the desktop app and MCP come later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
+> Status: prototype (v0.1). Web app + PWA, and an Android app that runs but has no widgets or notifications yet ([docs/android.md](docs/android.md)). iOS, the desktop app and MCP come later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
 
 ## What it does
 
@@ -34,6 +34,7 @@ npm run lint
 npm test           # unit tests for the date, cost, lookup and live-sync logic
 npm run build      # type-check + production build + service worker
 npm run gen:icons  # re-render the PWA icons from public/icons/*.svg
+./build-android.sh # a debug APK (needs JDK 21 and the Android SDK; see docs/android.md)
 ```
 
 ## Self-hosting

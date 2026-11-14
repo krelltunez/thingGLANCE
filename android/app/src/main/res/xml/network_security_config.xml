@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext http is permitted so a self-hosted GLANCEvault on the user's own
+  network works (http://192.168.x.x:8080, a Tailscale address, a .local name).
+  Android blocks cleartext by default, and a domain-config cannot express IP
+  ranges, so it cannot be scoped to the LAN. The same choice lastGLANCE made.
+  Everything the app sends to a vault is end-to-end encrypted before it leaves;
+  what cleartext exposes is the device token, so use HTTPS for a vault that is
+  reachable from outside the home network.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

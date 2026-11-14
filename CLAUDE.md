@@ -4,7 +4,7 @@ Working notes for AI-assisted sessions in this repo.
 
 ## What this is
 
-thingGLANCE: the GLANCE family's tracker for things that carry dates (warranties, subscriptions, support windows, planned replacement). Sky blue. Web app + PWA today; Capacitor, Electron (tray, MCP) and GLANCElauncher integration are expected later. It is NOT a home inventory: resist features that only catalogue.
+thingGLANCE: the GLANCE family's tracker for things that carry dates (warranties, subscriptions, support windows, planned replacement). Sky blue. Web app + PWA, and an Android app (Capacitor 8, `android/`, app id `com.thingglance.app`) that is being built out; iOS, Electron (tray, MCP) and GLANCElauncher integration are expected later. It will be a paid app ($9.99) with no paywall, so there is no billing code. It is NOT a home inventory: resist features that only catalogue.
 
 Sibling repos sit next to this one (`../lastGLANCE` is the closest model: same stack, TypeScript, Dexie, Tailwind). When wiring anything family-shaped (vault, roster, intents, shells), read how lastGLANCE does it first and match the wire contract.
 
@@ -36,4 +36,5 @@ Sibling repos sit next to this one (`../lastGLANCE` is the closest model: same s
 - `npm run lint` (zero warnings allowed), `npm test` (unit), `npx tsc -b` (types), `npm run build` (includes the service worker). CI runs all four and builds the Docker image.
 - Component files export components only (the fast-refresh lint rule). Helpers live beside them: `components/kit.ts`, `components/useEventActions.ts`, `state/data.ts`.
 - `npm run test:e2e` for anything touching sync, the roster or intents. It needs the dev server and a local vault; the header of `e2e/vault-sync.mjs` has the one-liner that starts one from `../glance-vault` with `thingglance` allowed.
+- Android: `./build-android.sh --webview-debug`, install on an emulator, then `node scripts/android-check.mjs emulator-5554` for anything touching the shell seams, the keystore, links or the back button (`docs/android.md`). It needs the dev server and a local vault, like `test:e2e`. **Always pass `-s emulator-5554` to `adb`**: a real phone is often plugged into this machine too, and the check wipes the app's data.
 - Dev server is on port 5190 (`.claude/launch.json`), deliberately not Vite's default so its localStorage never shares an origin with a sibling app's dev server.

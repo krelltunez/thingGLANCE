@@ -8,6 +8,7 @@ import { i18nReady } from './i18n'
 import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
+import { settleKeyStorage } from './sync/keyHooks'
 import { hydrateSecrets } from './sync/secrets'
 
 // crypto.randomUUID() only exists in secure contexts (HTTPS / localhost). This
@@ -38,7 +39,7 @@ settleServiceWorker()
 // keeps in its keystore: the sync engines read the connection as they mount.
 // And the starting language, so nothing paints in English first. On the web,
 // in English, both resolve at once.
-void Promise.allSettled([hydrateSecrets(), i18nReady]).then(() => {
+void Promise.allSettled([hydrateSecrets().then(settleKeyStorage), i18nReady]).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

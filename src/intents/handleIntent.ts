@@ -21,6 +21,7 @@
 import type { CategoryId, CoverageType, Cycle, HorizonEvent, Member, Thing } from '@/core/types'
 import { CATEGORIES, guessCategory } from '@/core/categories'
 import { isDay, today } from '@/core/dates'
+import { MAX_LIFESPAN_MONTHS } from '@/core/health'
 import { parseLink, type LinkTarget } from '@/core/links'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import type { CoverageInput, SubscriptionInput, ThingInput } from '@/db/queries'
@@ -75,11 +76,13 @@ export interface ExternalWrite {
   clientId?: string
 }
 
+export type EntityKind = 'thing' | 'coverage' | 'plan'
+
 export interface IntentContext {
   // A thing as this device may see it (another member's private thing is not there).
   getThing?: (id: string) => Promise<Thing | null>
-  // Whether any thing, coverage or plan already has this id.
-  entityExists?: (id: string) => Promise<boolean>
+  // Whether a row of this kind already has this id.
+  entityExists?: (id: string, kind: EntityKind) => Promise<boolean>
   members?: () => Promise<Member[]>
   createThing?: (input: ThingInput, id?: string) => Promise<{ id: string }>
   saveCoverage?: (input: CoverageInput, id?: string) => Promise<{ id: string }>
@@ -116,15 +119,22 @@ function reader(p: Record<string, unknown>) {
       if (v.length > max) return invalid(`"${k}" is too long`)
       return v.trim()
     },
-    num(k: string, required = false): number | undefined {
+    // A number, or text that is nothing but a plain decimal (automation
+    // tools hand everything over as text). Bounded, so nothing downstream has
+    // to cope with a figure no date or total can hold.
+    num(k: string, required = false, opts: { max?: number; min?: number; whole?: boolean } = {}): number | undefined {
       if (!has(k)) return required ? invalid(`"${k}" is required`) : undefined
-      const v = typeof p[k] === 'string' ? Number(p[k]) : p[k]
-      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return invalid(`"${k}" must be a number, zero or more`)
+      const raw = p[k]
+      const v = typeof raw === 'string' && /^\d+(\.\d+)?$/.test(raw.trim()) ? Number(raw) : raw
+      const min = opts.min ?? 0
+      const max = opts.max ?? MAX_AMOUNT
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) return invalid(`"${k}" must be a number from ${min} to ${max}`)
+      if (opts.whole && !Number.isInteger(v)) return invalid(`"${k}" must be a whole number`)
       return v
     },
     day(k: string, required = false): string | undefined {
       if (!has(k)) return required ? invalid(`"${k}" is required`) : undefined
-      return isDay(p[k]) ? p[k] : invalid(`"${k}" must be a date like 2027-01-15`)
+      return isDay(p[k]) ? p[k] : invalid(`"${k}" must be a real date like 2027-01-15`)
     },
     bool(k: string): boolean | undefined {
       if (!has(k)) return undefined
@@ -143,6 +153,10 @@ function reader(p: Record<string, unknown>) {
   }
 }
 
+// The most any amount of money may be. Far above any real price, far below
+// where totals stop being exact.
+export const MAX_AMOUNT = 1_000_000_000
+
 const isUuid = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 
 async function memberOrRefuse(id: string | undefined, key: string, ctx: IntentContext): Promise<string | null> {
@@ -157,14 +171,18 @@ const CATEGORY_IDS = CATEGORIES.map((c) => c.id) as readonly CategoryId[]
 const COVERAGE_TYPES: readonly CoverageType[] = ['warranty', 'extended', 'insurance']
 const CYCLES: readonly Cycle[] = ['weekly', 'monthly', 'quarterly', 'yearly']
 
-// A create whose caller-chosen id is a UUID uses it as the row's id. If that
-// row is already there, the write has landed (here or on another device).
-async function claimId(clientId: string, ctx: IntentContext): Promise<{ id?: string; exists: boolean }> {
+// A create whose caller-chosen id is a UUID uses it as the row's id. If a row
+// of that kind is already there, the write has landed (here or on another
+// device). Asked before anything in the payload is looked at: a retry has to
+// be told its write landed even if what it pointed at has since gone.
+async function claimId(clientId: string, kind: EntityKind, ctx: IntentContext): Promise<{ id?: string; exists: boolean }> {
   if (!isUuid(clientId)) return { exists: false }
-  return { id: clientId, exists: !!(await ctx.entityExists?.(clientId)) }
+  return { id: clientId, exists: !!(await ctx.entityExists?.(clientId, kind)) }
 }
 
 async function createThing(p: Record<string, unknown>, clientId: string, ctx: IntentContext): Promise<IntentResult> {
+  const { id, exists } = await claimId(clientId, 'thing', ctx)
+  if (exists) return { success: true, deduped: true, thing_id: id }
   const r = reader(p)
   const name = r.str('name', true)!
   const supportEnd = r.day('support_end')
@@ -173,19 +191,19 @@ async function createThing(p: Record<string, unknown>, clientId: string, ctx: In
     category: r.oneOf('category', CATEGORY_IDS) ?? guessCategory(name) ?? 'other',
     status: 'active',
     brand: r.str('brand'), model: r.str('model'), retailer: r.str('retailer'), notes: r.str('notes', false, 2000),
-    purchaseDate: r.day('purchase_date'), price: r.num('price'), lifespanMonths: r.num('lifespan_months'),
+    purchaseDate: r.day('purchase_date'), price: r.num('price'), lifespanMonths: r.num('lifespan_months', false, { min: 1, max: MAX_LIFESPAN_MONTHS, whole: true }),
     supportEnd, supportBasis: supportEnd ? 'manual' : undefined,
     ownerMemberId: await memberOrRefuse(r.str('owner_member_id'), 'owner_member_id', ctx),
     responsibleMemberId: null,
     visibility: 'shared',
   }
-  const { id, exists } = await claimId(clientId, ctx)
-  if (exists) return { success: true, deduped: true, thing_id: id }
   if (!ctx.createThing) return { success: true, thing_id: id }
   return { success: true, thing_id: (await ctx.createThing(input, id)).id }
 }
 
 async function addCoverage(p: Record<string, unknown>, clientId: string, ctx: IntentContext): Promise<IntentResult> {
+  const { id, exists } = await claimId(clientId, 'coverage', ctx)
+  if (exists) return { success: true, deduped: true, coverage_id: id }
   const r = reader(p)
   const thingId = r.str('thing_id', true)!
   const input: CoverageInput = {
@@ -195,13 +213,13 @@ async function addCoverage(p: Record<string, unknown>, clientId: string, ctx: In
   }
   if (input.startDate && input.startDate > input.endDate) invalid('"start_date" is after "end_date"')
   if (ctx.getThing && !(await ctx.getThing(thingId))) throw new Refused('not_found', 'No thing with that id on this device')
-  const { id, exists } = await claimId(clientId, ctx)
-  if (exists) return { success: true, deduped: true, coverage_id: id }
   if (!ctx.saveCoverage) return { success: true, coverage_id: id }
   return { success: true, coverage_id: (await ctx.saveCoverage(input, id)).id }
 }
 
 async function createPlan(p: Record<string, unknown>, clientId: string, ctx: IntentContext): Promise<IntentResult> {
+  const { id, exists } = await claimId(clientId, 'plan', ctx)
+  if (exists) return { success: true, deduped: true, plan_id: id }
   const r = reader(p)
   const status = r.oneOf('status', ['active', 'trial'] as const) ?? 'active'
   const trialEnd = r.day('trial_end')
@@ -221,8 +239,6 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
     visibility: 'shared',
   }
   if (ctx.getThing) for (const id of thingIds) if (!(await ctx.getThing(id))) throw new Refused('not_found', `"thing_ids": no thing with id ${id} on this device`)
-  const { id, exists } = await claimId(clientId, ctx)
-  if (exists) return { success: true, deduped: true, plan_id: id }
   if (!ctx.savePlan) return { success: true, plan_id: id }
   return { success: true, plan_id: (await ctx.savePlan(input, id)).id }
 }
@@ -280,6 +296,7 @@ const inFlight = new Map<string, Promise<IntentResult>>()
 const refused = (code: IntentErrorCode, error: string): IntentResult => ({ success: false, code, error })
 
 export async function handleIntent(write: ExternalWrite, ctx: IntentContext = {}, io: LedgerIO = {}): Promise<IntentResult> {
+  if (!write || typeof write !== 'object') return refused('invalid', 'A write is an object with an action')
   const { action, clientId } = write
   const payload = write.payload && typeof write.payload === 'object' ? write.payload : {}
   if (!KNOWN.has(action)) return refused('unknown_action', `Unknown action: ${String(action)}`)
@@ -311,7 +328,10 @@ export async function handleIntent(write: ExternalWrite, ctx: IntentContext = {}
   const ledger = io.ledger ?? readLedger()
   const prior = findHandled(ledger, clientId)
   if (prior) {
-    const again: IntentResult = { success: true, deduped: true }
+    // One id names one write. The same id on a different action is a caller's
+    // mistake, and answering "already done" would hide that nothing happened.
+    if (prior.action !== action) return refused('invalid', `This clientId was already used for "${prior.action}". Every write needs its own.`)
+    const again: IntentResult = { success: true, deduped: true, ...(prior.extra ?? {}) }
     const key = ENTITY_KEY[prior.action]
     if (key && prior.entityId) again[key] = prior.entityId
     return again
@@ -322,7 +342,8 @@ export async function handleIntent(write: ExternalWrite, ctx: IntentContext = {}
       const entityId = result[ENTITY_KEY[action]]
       const persist = io.persist ?? ((next: HandledWrite[]) => writeLedger(next))
       // Read again: another write may have been recorded while this one ran.
-      persist(recordHandled(io.ledger ?? readLedger(), { clientId, action, entityId: typeof entityId === 'string' ? entityId : null, at: new Date().toISOString() }))
+      const extra = typeof result.state === 'string' ? { state: result.state } : undefined
+      persist(recordHandled(io.ledger ?? readLedger(), { clientId, action, entityId: typeof entityId === 'string' ? entityId : null, at: new Date().toISOString(), ...(extra ? { extra } : {}) }))
     }
     return result
   }).finally(() => inFlight.delete(clientId))

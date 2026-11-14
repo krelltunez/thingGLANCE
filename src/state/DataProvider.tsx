@@ -66,7 +66,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const life = new Map<string, Lifecycle>()
     for (const t of d.things) life.set(t.id, lifecycle(t, byThing.get(t.id) ?? []))
 
-    const events = buildHorizon(d, { memberId: focusId })
+    const events = buildHorizon(d, { memberId: focusId, allThings: all.things })
+    // Who deals with a date is worked out over everything, so it reads the
+    // same on every device; nothing but the handler's id comes out of it.
+    const everyThing = new Map(all.things.map((t) => [t.id, t]))
     const names = new Map(all.members.map((m) => [m.id, m.name]))
     const users = userIds(all.devices, all.members)
 
@@ -91,8 +94,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       subById,
       coveragesFor: (id) => byThing.get(id) ?? [],
       subsFor: (id) => subsByThing.get(id) ?? [],
-      handlerOf: (e) => handlerOfEvent(e, thingById, subById, users),
-      needsSomeone: (e) => needsSomeone(handlerOfEvent(e, thingById, subById, users), users),
+      handlerOf: (e) => handlerOfEvent(e, everyThing, subById, users),
+      needsSomeone: (e) => needsSomeone(handlerOfEvent(e, everyThing, subById, users), users),
       memberName: (id) => (id ? names.get(id) ?? null : null),
     }
     // `mu` is the household-preferences snapshot string, and `language` the

@@ -8,6 +8,7 @@
 //             worker, tray popup rendered from the same bundle with ?tray=1
 
 import { tr } from '@/core/text'
+import { shellBridge } from './shell'
 
 export type Shell = 'web' | 'native' | 'desktop'
 
@@ -45,7 +46,8 @@ export const isStandalone = (): boolean =>
 // src/native/serviceWorker.ts), so a shell removes any worker it finds.
 export function settleServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return
-  if (shell() === 'web') {
+  // A bridge on the page means a shell, however it announced itself.
+  if (shell() === 'web' && !shellBridge()) {
     if (import.meta.env.PROD) {
       window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {}) })
     }

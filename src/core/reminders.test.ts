@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import dayjs from 'dayjs'
 import type { Coverage, DataSet, Decision, Subscription, Thing } from './types'
 import { eventKey } from './horizon'
-import { DEFAULT_REMINDER_PREFS, capReminders, planReminders, reminderNumericId, tellsDevice, type Reminder } from './reminders'
+import { DEFAULT_REMINDER_PREFS, capReminders, normalizeReminderPrefs, planReminders, reminderNumericId, tellsDevice, type Reminder, type ReminderPrefs } from './reminders'
 
 const stamp = '2026-01-01T00:00:00.000Z'
 // Local wall-clock times, so the tests read the same in any time zone.
@@ -55,11 +55,33 @@ describe('what is worth a reminder', () => {
       expect(planReminders({ ...warranty, decisions: [decision(key, state)] }, solo)).toEqual([])
     }
   })
-  it('leaves a routine monthly plan alone, and reminds once for one under review', () => {
+  it('leaves a routine monthly plan alone, and reminds for every month of one under review', () => {
     const monthly = sub({ cycle: 'monthly', anchorDate: '2026-11-20', amount: 10 })
     expect(planReminders(data({ subscriptions: [monthly] }), solo)).toEqual([])
     const reviewed = planReminders(data({ subscriptions: [{ ...monthly, review: true }] }), solo)
-    expect(reviewed.map((r) => [r.stage, r.day, r.eventDate])).toEqual([['heads-up', '2026-11-13', '2026-11-20'], ['last-call', '2026-11-17', '2026-11-20']])
+    // Not only the next one: a phone that is not opened for a month still has
+    // to be told about the one after.
+    expect(reviewed.slice(0, 4).map((r) => [r.stage, r.day, r.eventDate])).toEqual([
+      ['heads-up', '2026-11-13', '2026-11-20'], ['last-call', '2026-11-17', '2026-11-20'],
+      ['heads-up', '2026-12-13', '2026-12-20'], ['last-call', '2026-12-17', '2026-12-20'],
+    ])
+    expect(new Set(reviewed.map((r) => r.eventDate)).size).toBeGreaterThanOrEqual(12)
+    expect(new Set(reviewed.map((r) => r.id)).size).toBe(reviewed.length)
+  })
+  it('nudges once a week, not twice, for a weekly plan under review', () => {
+    const weekly = sub({ cycle: 'weekly', anchorDate: '2026-11-16', amount: 5, review: true })
+    const plan = planReminders(data({ subscriptions: [weekly] }), { ...solo, horizonDays: 30 })
+    expect(plan.every((r) => r.stage === 'last-call' && r.daysBefore === 3)).toBe(true)
+    expect(plan.slice(0, 3).map((r) => [r.day, r.eventDate])).toEqual([['2026-11-13', '2026-11-16'], ['2026-11-20', '2026-11-23'], ['2026-11-27', '2026-11-30']])
+  })
+  it('reads preferences from anywhere without being thrown by them', () => {
+    expect(normalizeReminderPrefs(undefined)).toEqual(DEFAULT_REMINDER_PREFS)
+    expect(normalizeReminderPrefs({ hour: 24, minute: 60 })).toEqual(DEFAULT_REMINDER_PREFS)
+    expect(normalizeReminderPrefs({ hour: NaN, minute: 7.5, enabled: false })).toEqual({ ...DEFAULT_REMINDER_PREFS, enabled: false })
+    expect(normalizeReminderPrefs({ hour: 18, minute: 30, kinds: { renewal: false, replace: true, nonsense: false } })).toEqual({ enabled: true, hour: 18, minute: 30, kinds: { renewal: false } })
+    // Out of range or partial, the plan still lands on the right day at 9:00.
+    const odd = planReminders(warranty, { ...solo, prefs: { hour: 24 } as unknown as ReminderPrefs })
+    expect(odd.map((r) => [r.day, when(r)])).toEqual([['2026-12-01', '2026-12-01 09:00'], ['2027-01-08', '2027-01-08 09:00']])
   })
   it('respects the switch and the per-kind switches', () => {
     expect(planReminders(warranty, { ...solo, prefs: { ...DEFAULT_REMINDER_PREFS, enabled: false } })).toEqual([])

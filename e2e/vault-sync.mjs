@@ -329,7 +329,7 @@ await shellCtx.addInitScript((vault) => {
   let inShell = false
   window.fetch = (input, init) => {
     const u = url(input)
-    if (u.startsWith(vault) && !inShell && !u.includes('/events')) window.__seam.bypassed.push(u.slice(vault.length))
+    if (u.startsWith(vault) && !inShell) window.__seam.bypassed.push(u.slice(vault.length))
     return real(input, init)
   }
   const key = (k) => `keystore:${k}`
@@ -363,12 +363,14 @@ const seam = await C.evaluate(async (token) => {
     configInLocalStorage: localStorage.getItem('thingglance-vault-config') !== null,
     configInKeystore: (sessionStorage.getItem('keystore:thingglance-vault-config') ?? '').includes(token),
     rootKeyInKeystore: sessionStorage.getItem('keystore:crypto.db-root-key') !== null,
-    rootKeyDatabase: dbs.filter((n) => n && n.startsWith('thingglance-crypto')),
+    // Any database holding key material: the sync package's and the one the
+    // dayGLANCE key used to have. With a keystore neither may exist.
+    rootKeyDatabase: dbs.filter((n) => n && n.includes('crypto')),
   }
 }, TOKEN)
 check('C (shell): every vault request went out on the shell\'s transport', seam.viaShell > 0 && seam.bypassed.length === 0, `via shell ${seam.viaShell}, bypassed ${JSON.stringify(seam.bypassed)}`)
 check('C (shell): the vault token is in the keystore and not in localStorage', seam.configInKeystore && !seam.tokenInLocalStorage && !seam.configInLocalStorage)
-check('C (shell): the root key is in the keystore and not in IndexedDB', seam.rootKeyInKeystore && seam.rootKeyDatabase.length === 0, JSON.stringify(seam.rootKeyDatabase))
+check('C (shell): the root key is in the keystore, and no key of any kind is in IndexedDB', seam.rootKeyInKeystore && seam.rootKeyDatabase.length === 0, JSON.stringify(seam.rootKeyDatabase))
 await C.reload()
 await C.waitForTimeout(3000)
 check('C (shell): after a reload it is still connected and asks for no passphrase', !(await C.getByRole('textbox', { name: 'Passphrase' }).isVisible().catch(() => false)) && await C.getByRole('button', { name: /Synced|Up to date|Sync/ }).first().isVisible().catch(() => false))

@@ -228,7 +228,7 @@ function Shell({ ui }: { ui: UI }) {
       {modal?.type === 'coverage' && <CoverageForm key={`cover-${modal.id ?? 'new'}`} thingId={modal.thingId} id={modal.id} />}
       {modal?.type === 'settings' && <Settings key={`settings-${modal.section ?? 'general'}`} section={modal.section} />}
       {modal?.type === 'passphrase' && <PassphraseModal />}
-      {modal?.type === 'palette' && <CommandPalette />}
+      {modal?.type === 'palette' && <CommandPalette initialQuery={modal.query} />}
       <Toasts />
     </div>
   )

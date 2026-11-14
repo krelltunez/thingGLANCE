@@ -175,3 +175,66 @@ describe('the ledger', () => {
     expect(() => writeLedger([entry(1)], { getItem: () => null, setItem: () => { throw new Error('full') } })).not.toThrow()
   })
 })
+
+describe('what a write may carry', () => {
+  const tryThing = (ctx: IntentContext, payload: Record<string, unknown>) => handleIntent({ action: 'create_thing', clientId: crypto.randomUUID(), payload: { name: 'X', ...payload } }, ctx, memory())
+
+  it('refuses a date that is the right shape and not a real day', async () => {
+    const ctx = fakes()
+    for (const end_date of ['2027-13-45', '2027-02-31', '0000-00-00', '9999-99-99']) {
+      expect(await handleIntent({ action: 'add_coverage', clientId: crypto.randomUUID(), payload: { thing_id: 't1', name: 'W', end_date } }, ctx, memory()), end_date).toMatchObject({ success: false, code: 'invalid' })
+    }
+    expect(ctx.saveCoverage).not.toHaveBeenCalled()
+  })
+  it('refuses figures no date or total could hold', async () => {
+    const ctx = fakes()
+    expect(await tryThing(ctx, { purchase_date: '2026-01-01', lifespan_months: 1e9 })).toMatchObject({ code: 'invalid' })
+    expect(await tryThing(ctx, { lifespan_months: 0 })).toMatchObject({ code: 'invalid' })
+    expect(await tryThing(ctx, { lifespan_months: 30.5 })).toMatchObject({ code: 'invalid' })
+    expect(await tryThing(ctx, { price: 1e308 })).toMatchObject({ code: 'invalid' })
+    expect(await tryThing(ctx, { price: '0x10' })).toMatchObject({ code: 'invalid' })
+    expect(await tryThing(ctx, { price: '1e5' })).toMatchObject({ code: 'invalid' })
+    expect(await handleIntent({ action: 'create_plan', clientId: 'big', payload: { name: 'X', amount: 1e308, cycle: 'weekly' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
+    expect(ctx.createThing).not.toHaveBeenCalled()
+    expect(ctx.savePlan).not.toHaveBeenCalled()
+  })
+  it('still takes a plain number written as text', async () => {
+    const ctx = fakes()
+    expect(await tryThing(ctx, { price: '999.50', lifespan_months: '48' })).toMatchObject({ success: true })
+    expect(vi.mocked(ctx.createThing).mock.calls[0][0]).toMatchObject({ price: 999.5, lifespanMonths: 48 })
+  })
+  it('answers something that is not a write at all', async () => {
+    expect(await handleIntent(null as never)).toMatchObject({ success: false, code: 'invalid' })
+  })
+})
+
+describe('one id, one write', () => {
+  it('refuses an id that was already used for a different action', async () => {
+    const ctx = fakes(); const io = memory()
+    expect(await handleIntent({ action: 'create_thing', payload: { name: 'Pixel 9' }, clientId: 'same' }, ctx, io)).toMatchObject({ success: true, thing_id: 'new-thing' })
+    const second = await handleIntent({ action: 'add_coverage', payload: { thing_id: 't1', name: 'W', end_date: '2028-01-15' }, clientId: 'same' }, ctx, io)
+    expect(second).toMatchObject({ success: false, code: 'invalid' })
+    expect(second.thing_id).toBeUndefined()
+    expect(ctx.saveCoverage).not.toHaveBeenCalled()
+  })
+  it('asks for a row of the right kind when deciding a create has landed', async () => {
+    // A thing has this id. That says nothing about a coverage with it.
+    const ctx = fakes({ entityExists: vi.fn(async (_id: string, kind: string) => kind === 'thing') })
+    const r = await handleIntent({ action: 'add_coverage', payload: { thing_id: 't1', name: 'W', end_date: '2028-01-15' }, clientId: UUID }, ctx, memory())
+    expect(r).toEqual({ success: true, coverage_id: UUID })
+    expect(ctx.entityExists).toHaveBeenCalledWith(UUID, 'coverage')
+    expect(ctx.saveCoverage).toHaveBeenCalledOnce()
+  })
+  it('tells a retry its create landed even when what it pointed at has since gone', async () => {
+    const ctx = fakes({ entityExists: vi.fn(async () => true), getThing: vi.fn(async () => null), members: vi.fn(async () => []) })
+    expect(await handleIntent({ action: 'add_coverage', payload: { thing_id: 'deleted', name: 'W', end_date: '2028-01-15' }, clientId: UUID }, ctx, memory())).toEqual({ success: true, deduped: true, coverage_id: UUID })
+    expect(await handleIntent({ action: 'create_plan', payload: { name: 'X', amount: 1, thing_ids: ['deleted'] }, clientId: UUID }, ctx, memory())).toEqual({ success: true, deduped: true, plan_id: UUID })
+    expect(await handleIntent({ action: 'create_thing', payload: { name: 'X', owner_member_id: 'removed' }, clientId: UUID }, ctx, memory())).toEqual({ success: true, deduped: true, thing_id: UUID })
+  })
+  it('repeats what a decision was left as', async () => {
+    const ctx = fakes(); const io = memory()
+    await handleIntent({ action: 'decide', clientId: 'd', payload: { event_key: event.key, state: 'dismissed' } }, ctx, io)
+    expect(await handleIntent({ action: 'decide', clientId: 'd', payload: { event_key: event.key, state: 'dismissed' } }, ctx, io)).toEqual({ success: true, deduped: true, event_key: event.key, state: 'dismissed' })
+    expect(ctx.decide).toHaveBeenCalledOnce()
+  })
+})

@@ -44,6 +44,25 @@ export interface ReminderPrefs {
 
 export const DEFAULT_REMINDER_PREFS: ReminderPrefs = { enabled: true, hour: 9, minute: 0, kinds: {} }
 
+// Preferences as they come from wherever a shell keeps them: possibly partial,
+// possibly out of range. Anything unusable falls back to the default, so a
+// stray value can never move a reminder to the wrong day or break the plan.
+export function normalizeReminderPrefs(input: unknown): ReminderPrefs {
+  const p = (input && typeof input === 'object' ? input : {}) as Partial<ReminderPrefs>
+  const whole = (v: unknown, max: number, fallback: number): number =>
+    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : fallback
+  const kinds: ReminderPrefs['kinds'] = {}
+  if (p.kinds && typeof p.kinds === 'object') {
+    for (const type of Object.keys(LAST_CALL_DAYS) as EventType[]) if (p.kinds[type] === false) kinds[type] = false
+  }
+  return {
+    enabled: p.enabled !== false,
+    hour: whole(p.hour, 23, DEFAULT_REMINDER_PREFS.hour),
+    minute: whole(p.minute, 59, DEFAULT_REMINDER_PREFS.minute),
+    kinds,
+  }
+}
+
 export interface Reminder {
   // Stable across runs: the event's key plus the stage. Scheduling the same
   // reminder twice replaces it; a reminder missing from the next plan is
@@ -91,10 +110,12 @@ export function tellsDevice(handler: string | null, meId: string | null): boolea
 
 // A reminder would be noise for a date that is already settled, was handed to
 // dayGLANCE (which reminds in its own way), is a routine renewal nobody asked
-// to review, or is a later occurrence of a short-cycle plan.
+// to review. (A later occurrence of a short-cycle plan under review is kept:
+// lists show only the next one, but a phone that is not opened for a month
+// still has to be told about the one after.)
 function worthReminding(e: HorizonEvent, prefs: ReminderPrefs): boolean {
   if (prefs.kinds[e.type] === false) return false
-  if (e.quiet || e.repeat || e.lead < 0 || e.days < 0) return false
+  if (e.quiet || e.lead < 0 || e.days < 0) return false
   const state = e.decision?.state
   return state !== 'dismissed' && state !== 'done' && state !== 'sent'
 }
@@ -105,21 +126,28 @@ function text(e: HorizonEvent, daysBefore: number): { title: string; body: strin
 }
 
 export function planReminders(all: DataSet, ctx: ReminderContext): Reminder[] {
-  const prefs = ctx.prefs ?? DEFAULT_REMINDER_PREFS
+  const prefs = normalizeReminderPrefs(ctx.prefs)
   if (!prefs.enabled) return []
   const now = ctx.now ?? Date.now()
   const ref = dayjs(now).format(DAY)
   const data = visibleTo(all, ctx.meId)
-  const thingById = new Map<string, Thing>(data.things.map((t) => [t.id, t]))
+  // Who deals with a plan can depend on a thing this device may not see (a
+  // shared plan on someone's private phone). The answer has to be the same on
+  // every device, so it is worked out over everything; only the handler's id
+  // comes out of it.
+  const thingById = new Map<string, Thing>(all.things.map((t) => [t.id, t]))
   const subById = new Map<string, Subscription>(data.subscriptions.map((s) => [s.id, s]))
-  const events = buildHorizon(data, { ref, from: ref, to: addDays(ref, ctx.horizonDays ?? 400) })
+  const events = buildHorizon(data, { ref, from: ref, to: addDays(ref, ctx.horizonDays ?? 400), allThings: all.things })
 
   const out: Reminder[] = []
   for (const e of events) {
     if (!worthReminding(e, prefs)) continue
     if (!tellsDevice(handlerOfEvent(e, thingById, subById, ctx.users), ctx.meId)) continue
     const lastCall = LAST_CALL_DAYS[e.type]
-    const stages: [ReminderStage, number][] = lastCall < e.lead ? [['heads-up', e.lead], ['last-call', lastCall]] : [['last-call', Math.min(lastCall, e.lead)]]
+    // A weekly plan's lead window is the whole week: its heads-up would land
+    // on the previous renewal. One nudge a week is the most that is useful.
+    const weekly = e.type === 'renewal' && (e.subscriptionId ? subById.get(e.subscriptionId)?.cycle : undefined) === 'weekly'
+    const stages: [ReminderStage, number][] = lastCall < e.lead && !weekly ? [['heads-up', e.lead], ['last-call', lastCall]] : [['last-call', Math.min(lastCall, e.lead)]]
     for (const [stage, daysBefore] of stages) {
       const day = addDays(e.date, -daysBefore)
       const at = dayjs(day).hour(prefs.hour).minute(prefs.minute).second(0).millisecond(0).valueOf()

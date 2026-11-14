@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { registerShell } from '@/native/shell'
-import { netFetch, shellFetchImpl } from './shellFetch'
+import { SHELL_REQUEST_TIMEOUT_MS, netFetch, shellFetchImpl } from './shellFetch'
 
-afterEach(() => { registerShell(null); vi.unstubAllGlobals() })
+afterEach(() => { registerShell(null); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the way out to the network', () => {
   it('uses the platform fetch when no shell supplies one', async () => {
@@ -19,9 +19,50 @@ describe('the way out to the network', () => {
     const shell = vi.fn(async () => new Response('shell'))
     vi.stubGlobal('fetch', platform)
     registerShell({ fetch: shell as unknown as typeof fetch })
-    expect(shellFetchImpl()).toBe(shell)
+    expect(await (await shellFetchImpl()!('https://vault.example/salt/home')).text()).toBe('shell')
     expect(await (await netFetch('https://vault.example/healthz')).text()).toBe('shell')
+    expect(shell).toHaveBeenCalledTimes(2)
     expect(platform).not.toHaveBeenCalled()
+  })
+})
+
+// A native transport may ignore the signal it is handed (Capacitor's does).
+// The app's timeouts must hold anyway.
+describe('deadlines do not depend on the transport', () => {
+  const deaf = () => vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch
+
+  it('settles a request by its own signal, even on a transport that ignores it', async () => {
+    registerShell({ fetch: deaf() })
+    const controller = new AbortController()
+    const request = netFetch('https://vault.example/healthz', { signal: controller.signal })
+    controller.abort(new Error('gave up'))
+    await expect(request).rejects.toThrow('gave up')
+  })
+  it('refuses at once when the signal has already fired', async () => {
+    const shell = deaf()
+    registerShell({ fetch: shell })
+    await expect(netFetch('https://vault.example/healthz', { signal: AbortSignal.abort(new Error('too late')) })).rejects.toThrow('too late')
+    expect(shell).not.toHaveBeenCalled()
+  })
+  it('puts a ceiling on a shell request that carries no deadline of its own', async () => {
+    vi.useFakeTimers()
+    registerShell({ fetch: deaf() })
+    let failed: unknown = null
+    const request = shellFetchImpl()!('https://vault.example/sync').catch((err) => { failed = err })
+    await vi.advanceTimersByTimeAsync(SHELL_REQUEST_TIMEOUT_MS - 1)
+    expect(failed).toBeNull()
+    await vi.advanceTimersByTimeAsync(2)
+    await request
+    expect((failed as Error).name).toBe('TimeoutError')
+  })
+  it('adds no ceiling of its own in the browser', async () => {
+    vi.useFakeTimers()
+    let answer: (r: Response) => void = () => {}
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { answer = resolve })))
+    const request = netFetch('https://vault.example/healthz')
+    await vi.advanceTimersByTimeAsync(SHELL_REQUEST_TIMEOUT_MS * 3)
+    answer(new Response('slow'))
+    expect(await (await request).text()).toBe('slow')
   })
 })
 

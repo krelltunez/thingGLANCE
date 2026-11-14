@@ -127,3 +127,28 @@ export function formatLink(t: LinkTarget): string {
 // the plan or the thing it belongs to. Used on snapshot events and reminders,
 // so a widget row or a notification only has to open what it was given.
 export const eventLink = (key: string): string => formatLink({ kind: 'event', key })
+
+// What a date's key leads to: its plan if it is a plan's, else its thing.
+//
+// The key says what it belongs to (type:entityId:date), so the answer does
+// not depend on the date still being on the horizon, or on anything narrowing
+// the list of dates on screen (the member filter): a reminder for a date
+// keeps opening it for as long as the thing or plan is there. A warranty's
+// key names the coverage, which leads to its thing.
+export interface EventLookups {
+  hasThing(id: string): boolean
+  hasPlan(id: string): boolean
+  // The thing a coverage belongs to, if this device can see it.
+  coverageThing(id: string): string | undefined
+}
+
+export function eventTarget(
+  key: string, known: EventLookups, hint?: { thingId?: string; subscriptionId?: string } | null,
+): { kind: 'plan' | 'thing'; id: string } | null {
+  const [type, entityId] = key.split(':')
+  const viaCoverage = type === 'coverage-end' && entityId ? known.coverageThing(entityId) : undefined
+  const plan = [hint?.subscriptionId, entityId].find((id): id is string => !!id && known.hasPlan(id))
+  if (plan) return { kind: 'plan', id: plan }
+  const thing = [hint?.thingId, viaCoverage, entityId].find((id): id is string => !!id && known.hasThing(id))
+  return thing ? { kind: 'thing', id: thing } : null
+}

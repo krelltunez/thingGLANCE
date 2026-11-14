@@ -40,3 +40,8 @@ export function shellBridge(): ShellBridge | null {
 }
 
 export const secureStore = (): SecureStore | null => shellBridge()?.secureStore ?? null
+
+// True when a shell carries the app's requests. "Is this a browser tab" has
+// to be answered the same way everywhere: by the platform (native/platform.ts:
+// shell()) or by a bridge being present, whichever says so first.
+export const hasShellTransport = (): boolean => typeof shellBridge()?.fetch === 'function'

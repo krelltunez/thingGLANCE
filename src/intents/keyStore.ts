@@ -1,10 +1,20 @@
 // The vault intents root key: derived from the sync passphrase and the
-// account's vault salt (src/intents/setup.ts), cached non-extractably in its
-// own IndexedDB database so the passphrase is not needed again. Any GLANCE app
-// deriving from the same passphrase and salt gets the identical key, which is
-// what lets dayGLANCE read what thingGLANCE sends.
+// account's vault salt (src/intents/setup.ts). Any GLANCE app deriving from
+// the same passphrase and salt gets the identical key, which is what lets
+// dayGLANCE read what thingGLANCE sends.
+//
+// It is also the same 32 bytes as the vault's root key (same derivation, same
+// inputs). So where it is kept follows the root key:
+//   - On the web it is cached non-extractably in its own IndexedDB database,
+//     so the passphrase is not needed again.
+//   - With a shell's keystore it is never stored at all. It is rebuilt from
+//     the root key record in the keystore (src/sync/keyHooks.ts), so there is
+//     one copy of the key on the device and it is in the keystore.
 
-const DB_NAME = 'thingglance-vault-intents-crypto'
+import { secureStore } from '@/native/shell'
+import { INTENTS_CRYPTO_DB, keptRootRecord } from '@/sync/keyHooks'
+
+const DB_NAME = INTENTS_CRYPTO_DB
 const STORE = 'keys'
 const KEY_ID = 'root-key'
 
@@ -29,13 +39,32 @@ function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<
   }))
 }
 
+// The root key record as the sync package writes it: base64 of JSON holding
+// the raw bytes. Imported exactly as deriveIntentsRootKey() imports its own.
+async function fromRootRecord(record: string): Promise<CryptoKey | null> {
+  try {
+    const parsed = JSON.parse(atob(record)) as { rootBytes?: unknown }
+    if (!Array.isArray(parsed.rootBytes) || parsed.rootBytes.length !== 32) return null
+    return await crypto.subtle.importKey('raw', new Uint8Array(parsed.rootBytes as number[]), 'HKDF', false, ['deriveKey'])
+  } catch {
+    return null
+  }
+}
+
 export async function storeIntentsRootKey(key: CryptoKey): Promise<void> {
   cached = key
+  // With a keystore the root key record is the stored copy.
+  if (secureStore()) return
   await run('readwrite', (s) => s.put(key, KEY_ID))
 }
 
 export async function loadIntentsRootKey(): Promise<CryptoKey | null> {
   if (cached) return cached
+  if (secureStore()) {
+    const record = await keptRootRecord()
+    cached = record ? await fromRootRecord(record) : null
+    return cached
+  }
   try {
     cached = ((await run('readonly', (s) => s.get(KEY_ID))) as CryptoKey | undefined) ?? null
   } catch {
@@ -46,5 +75,8 @@ export async function loadIntentsRootKey(): Promise<CryptoKey | null> {
 
 export async function clearIntentsRootKey(): Promise<void> {
   cached = null
+  // With a keystore there is nothing of its own to clear: it goes when the
+  // root key does.
+  if (secureStore()) return
   try { await run('readwrite', (s) => s.delete(KEY_ID)) } catch { /* nothing cached */ }
 }

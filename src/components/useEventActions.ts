@@ -1,6 +1,7 @@
 // What can be done with a horizon event from any list it appears in.
 
 import type { HorizonEvent } from '@/core/types'
+import { tr } from '@/core/text'
 import { decide, patchSubscription, undecide, updateThing } from '@/db/queries'
 import { IntentsUnavailableError, sendEventToDayglance } from '@/intents/emit'
 import { useData } from '@/state/data'
@@ -17,7 +18,7 @@ export function useEventActions() {
     },
     dismiss: async (e: HorizonEvent) => {
       await decide(e.key, 'dismissed')
-      toast({ title: 'Cleared from your queue', body: e.title, tone: 'ok', action: { label: 'Undo', run: () => void undecide(e.key) } })
+      toast({ title: tr('toast.cleared'), body: e.title, tone: 'ok', action: { label: tr('toast.undo'), run: () => void undecide(e.key) } })
     },
     restore: (e: HorizonEvent) => undecide(e.key),
     // "I'll deal with this": this device's member becomes the one responsible
@@ -26,21 +27,21 @@ export function useEventActions() {
       if (!meId) return
       if (e.subscriptionId) await patchSubscription(e.subscriptionId, { responsibleMemberId: meId })
       else if (e.thingId) await updateThing(e.thingId, { responsibleMemberId: meId })
-      toast({ title: 'Yours to deal with now', body: e.detail, tone: 'ok' })
+      toast({ title: tr('toast.yours'), body: e.detail, tone: 'ok' })
     },
     send: async (e: HorizonEvent) => {
       try {
         await sendEventToDayglance(e, e.thingId ? thingById.get(e.thingId) : null)
-        toast({ title: 'Sent to dayGLANCE', body: e.title, tone: 'ok' })
+        toast({ title: tr('toast.sent'), body: e.title, tone: 'ok' })
       } catch (err) {
         if (err instanceof IntentsUnavailableError) {
           toast({
-            title: err.reason === 'disabled' ? 'dayGLANCE is not connected yet' : 'Enter your sync passphrase first',
-            body: 'Tasks travel through GLANCEvault, end-to-end encrypted.',
-            action: { label: 'Set up', run: () => ui.open({ type: 'settings', section: err.reason === 'disabled' ? 'integrations' : 'vault' }) },
+            title: err.reason === 'disabled' ? tr('toast.notConnected') : tr('toast.passphraseFirst'),
+            body: tr('toast.tasksTravel'),
+            action: { label: tr('toast.setUp'), run: () => ui.open({ type: 'settings', section: err.reason === 'disabled' ? 'integrations' : 'vault' }) },
           })
         } else {
-          toast({ title: 'Could not reach GLANCEvault', body: 'The task was not sent. Try again in a moment.', tone: 'bad' })
+          toast({ title: tr('toast.unreachable'), body: tr('toast.notSent'), tone: 'bad' })
         }
       }
     },

@@ -142,7 +142,7 @@ Each of these is built once in the web app and reused by every shell. Doing them
 - **Secure config shim.** Done, as a seam and not a shim: thingGLANCE owns its config code, so nothing has to patch `Storage`. With a secure store registered, the vault token is held in memory and written through (`src/sync/secrets.ts`) and the root key goes through the sync package's hooks (`src/sync/keyHooks.ts`). On the web nothing changes. [shells.md](shells.md) lists every place a shell plugs in.
 - **Reminders as pure logic.** Done: `planReminders()` in `src/core/reminders.ts` says which dates notify, when, and on whose device, with stable ids a shell can diff against what the platform has pending. The household rule about who is told is in the same place. Nothing schedules them yet; that is each shell's job. The rules are written out in [snapshot.md](snapshot.md#reminder-rules).
 - **Freeze the snapshot.** Done: version 1 is frozen, documented in [snapshot.md](snapshot.md) and pinned by a test. The review added the currency, whose device it was built for, who each date falls to, each thing's owner and days left, and the device's pending reminders.
-- **i18n.** Move strings to i18next as the siblings do. It is far cheaper before native code starts carrying its own string catalogs. Remember locale JSON has to be in the service worker precache.
+- **i18n.** Done: every word comes from `src/locales/<tag>/translation.json` through i18next, with typed keys, a lint rule that fails on text in a component, and a test that keeps the code and the catalog in step. Catalogs are bundled rather than fetched, so the precache has them without a special case. English is the only language so far; adding one is adding a file. See [i18n.md](i18n.md).
 
 ## Phase 2: Android (L)
 

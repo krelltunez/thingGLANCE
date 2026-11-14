@@ -15,6 +15,7 @@ import { createDbSyncEngine } from '@glance-apps/sync'
 import type { DbSyncEngine, DbSyncResult, SyncErrorCode } from '@glance-apps/sync'
 import { db } from '@/db/client'
 import type { Member } from '@/core/types'
+import { tr } from '@/core/text'
 import { APP_ID, getVaultConfig, isVaultEnabled } from '@/sync/vaultConfig'
 import { getDeviceId } from '@/sync/deviceId'
 import { isUnknownAppError } from '@/sync/dbEngine'
@@ -160,7 +161,7 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
       if (!unsupported) callbacks.onChecked?.({ error: failed, skipped: result?.skipped ?? 0, rejected, ran })
       return result
     } catch (err) {
-      callbacks.onChecked?.({ error: failed ?? (err instanceof Error ? err.message : 'The roster could not be read.'), skipped: 0, rejected, ran: false })
+      callbacks.onChecked?.({ error: failed ?? (err instanceof Error ? err.message : tr('sync.roster.unreadable')), skipped: 0, rejected, ran: false })
       throw err
     }
   }

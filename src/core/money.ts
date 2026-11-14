@@ -1,16 +1,19 @@
 import dayjs from 'dayjs'
 import type { Cycle, Day, Subscription } from './types'
 import { DAY, today } from './dates'
+import { textLocale, tr } from './text'
 
-export const CYCLES: { id: Cycle; label: string; short: string; perYear: number }[] = [
-  { id: 'weekly', label: 'Weekly', short: 'wk', perYear: 52 },
-  { id: 'monthly', label: 'Monthly', short: 'mo', perYear: 12 },
-  { id: 'quarterly', label: 'Quarterly', short: 'qtr', perYear: 4 },
-  { id: 'yearly', label: 'Yearly', short: 'yr', perYear: 1 },
+export const CYCLES: { id: Cycle; perYear: number }[] = [
+  { id: 'weekly', perYear: 52 },
+  { id: 'monthly', perYear: 12 },
+  { id: 'quarterly', perYear: 4 },
+  { id: 'yearly', perYear: 1 },
 ]
 
 const perYear = (c: Cycle): number => CYCLES.find((x) => x.id === c)!.perYear
-export const cycleShort = (c: Cycle): string => CYCLES.find((x) => x.id === c)!.short
+// "Monthly" and the "mo" in "$9.99/mo", in the language in use.
+export const cycleLabel = (c: Cycle): string => tr(`cycle.${c}.label`)
+export const cycleShort = (c: Cycle): string => tr(`cycle.${c}.short`)
 
 // A subscription that still costs money going forward.
 export const isBilling = (s: Subscription): boolean => s.status === 'active' && s.autoRenew
@@ -78,7 +81,7 @@ export function money(amount: number | undefined | null, currency: string, opts:
   if (amount == null || Number.isNaN(amount)) return '—'
   const cents = opts.cents ?? (Math.abs(amount) < 100 && amount % 1 !== 0)
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(textLocale(), {
       style: 'currency',
       currency,
       notation: opts.compact && Math.abs(amount) >= 10000 ? 'compact' : 'standard',

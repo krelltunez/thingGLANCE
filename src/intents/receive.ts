@@ -10,6 +10,7 @@ import {
 import type { Envelope, IntentEventRow } from '@glance-apps/intents'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { decide, undecide } from '@/db/queries'
+import { tr } from '@/core/text'
 import {
   SOURCE_APP, addActivity, clearReceiveFailure, getIntentsConfig, getReceiveCursor,
   isIntentsEnabled, recordReceiveFailure, setReceiveCursor,
@@ -28,15 +29,15 @@ export async function handleEnvelope(envelope: Envelope): Promise<void> {
   switch (p.event) {
     case EVENTS.COMPLETED:
       await decide(key, 'done', p.task_id)
-      addActivity({ type: 'received', message: `"${p.title}" was completed in dayGLANCE` })
+      addActivity({ type: 'received', message: tr('intents.activity.completed', { title: p.title }) })
       break
     case EVENTS.UNCOMPLETED:
       await decide(key, 'sent', p.task_id)
-      addActivity({ type: 'received', message: `"${p.title}" was reopened in dayGLANCE` })
+      addActivity({ type: 'received', message: tr('intents.activity.reopened', { title: p.title }) })
       break
     case EVENTS.DELETED:
       await undecide(key)
-      addActivity({ type: 'received', message: `"${p.title}" was deleted in dayGLANCE` })
+      addActivity({ type: 'received', message: tr('intents.activity.deleted', { title: p.title }) })
       break
     default:
       // rescheduled / updated: the task still exists; remember its id.
@@ -48,7 +49,7 @@ async function processRow(row: IntentEventRow): Promise<void> {
   const data = row.envelope as Record<string, unknown> | null
   if (!data || data.encrypted !== true) {
     // Plaintext on the vault is a contract violation: never route it.
-    addActivity({ type: 'error', message: `Rejected non-encrypted intent ${row.eventId}` })
+    addActivity({ type: 'error', message: tr('intents.activity.notEncrypted', { id: row.eventId }) })
     return
   }
   const rootKey = await loadIntentsRootKey()
@@ -60,7 +61,7 @@ async function processRow(row: IntentEventRow): Promise<void> {
     // Key present but the row will not decrypt: terminal, advance past it.
     // Quiet for malformed rows; other apps' traffic is not our problem to report.
     if (!(err instanceof MalformedEnvelopeError)) {
-      addActivity({ type: 'warning', message: `Could not decrypt intent ${row.eventId}`, detail: err instanceof Error ? err.message : String(err) })
+      addActivity({ type: 'warning', message: tr('intents.activity.undecryptable', { id: row.eventId }), detail: err instanceof Error ? err.message : String(err) })
     }
     return
   }
@@ -89,14 +90,14 @@ async function poll(): Promise<void> {
       clearFailure: clearReceiveFailure,
       onGiveUp: (row, err, failures) => addActivity({
         type: 'error',
-        message: `Dropped intent ${row.eventId} after ${failures} attempts (limit ${MAX_INTENT_RETRIES})`,
+        message: tr('intents.activity.dropped', { id: row.eventId, failures, limit: MAX_INTENT_RETRIES }),
         detail: err instanceof KeyNotAvailableError
-          ? 'No intents encryption key on this device. Re-enter your sync passphrase in Settings.'
+          ? tr('intents.activity.droppedNoKey')
           : err instanceof Error ? err.message : String(err),
       }),
     })
   } catch (err) {
-    addActivity({ type: 'error', message: 'Could not check GLANCEvault for intents', detail: err instanceof Error ? err.message : String(err) })
+    addActivity({ type: 'error', message: tr('intents.activity.checkFailed'), detail: err instanceof Error ? err.message : String(err) })
   } finally {
     draining = false
   }

@@ -16,6 +16,7 @@ import {
   KEYCHECK_ENTITY_ID, KEYCHECK_PAYLOAD, clearDbRootKey, createVaultClient, decryptEntity, encryptEntity, setupDbRootKey,
 } from '@glance-apps/sync'
 import type { DbCryptoConfig } from './keyHooks'
+import { tr } from '@/core/text'
 import { shellFetchImpl } from './shellFetch'
 import { APP_ID, getVaultConfig } from './vaultConfig'
 
@@ -30,7 +31,7 @@ export type SiblingKeyCheck = 'match' | 'mismatch' | 'none'
 
 const client = () => {
   const cfg = getVaultConfig()
-  if (!cfg) throw new Error('The vault is not connected.')
+  if (!cfg) throw new Error(tr('sync.passphrase.notConnected'))
   return { vault: createVaultClient({ vaultUrl: cfg.vaultUrl, vaultToken: cfg.vaultToken, brake: false, fetchImpl: shellFetchImpl() }), accountId: cfg.accountId }
 }
 

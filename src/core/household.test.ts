@@ -154,7 +154,7 @@ describe('removing a member', () => {
     const ties = memberTies('emma', d)
     expect(ties).toEqual({ owns: 1, pays: 1, responsible: 1 })
     expect(isTied(ties)).toBe(true)
-    expect(describeTies(ties)).toBe('owns 1 thing, pays for 1 plan and is responsible for 1 item')
+    expect(describeTies(ties)).toBe('owns 1 thing, pays for 1 plan, and is responsible for 1 item')
     expect(isTied(memberTies('gran', d))).toBe(false)
   })
 })

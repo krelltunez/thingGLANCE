@@ -1,0 +1,973 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "remove": "Remove",
+    "close": "Close",
+    "edit": "Edit",
+    "add": "Add",
+    "household": "Household",
+    "everyone": "Everyone",
+    "private": "Private",
+    "sample": "sample"
+  },
+  "event": {
+    "kind": {
+      "coverage-end": "Coverage",
+      "support-end": "Support",
+      "replace": "Replace",
+      "renewal": "Renewal",
+      "trial-end": "Trial",
+      "sub-end": "Ends"
+    },
+    "title": {
+      "coverageEnds": "{{name}} ends",
+      "updatesLikelyEnd": "Updates likely end",
+      "securityUpdatesEnd": "Security updates end",
+      "plannedReplacement": "Planned replacement",
+      "accessEnds": "{{name}} access ends",
+      "trialConverts": "{{name}} trial converts",
+      "expires": "{{name}} expires",
+      "renews": "{{name}} renews"
+    },
+    "detail": {
+      "andMore": "{{name}} + {{count}} more",
+      "subscription": "Subscription",
+      "thenPrice": "{{where}} · then {{amount}}/{{cycle}}"
+    }
+  },
+  "verdict": {
+    "prime": {
+      "label": "Prime",
+      "hint": "Covered and current"
+    },
+    "solid": {
+      "label": "Solid",
+      "hint": "Plenty of life left"
+    },
+    "watch": {
+      "label": "Watch",
+      "hint": "Start thinking about what is next"
+    },
+    "replace": {
+      "label": "Replace soon",
+      "hint": "Its window closes within six months"
+    },
+    "overdue": {
+      "label": "Past its window",
+      "hint": "Out of support or past your plan"
+    },
+    "retired": {
+      "label": "Retired",
+      "hint": "No longer in service"
+    },
+    "unknown": {
+      "label": "No dates yet",
+      "hint": "Add a purchase date to start the clock"
+    }
+  },
+  "category": {
+    "phone": {
+      "label": "Phone",
+      "plural": "Phones"
+    },
+    "laptop": {
+      "label": "Laptop",
+      "plural": "Laptops"
+    },
+    "desktop": {
+      "label": "Desktop",
+      "plural": "Desktops"
+    },
+    "tablet": {
+      "label": "Tablet",
+      "plural": "Tablets"
+    },
+    "watch": {
+      "label": "Watch",
+      "plural": "Watches"
+    },
+    "audio": {
+      "label": "Audio",
+      "plural": "Audio"
+    },
+    "tv": {
+      "label": "TV",
+      "plural": "TVs"
+    },
+    "display": {
+      "label": "Display",
+      "plural": "Displays"
+    },
+    "console": {
+      "label": "Console",
+      "plural": "Consoles"
+    },
+    "camera": {
+      "label": "Camera",
+      "plural": "Cameras"
+    },
+    "security": {
+      "label": "Security camera",
+      "plural": "Security cameras"
+    },
+    "network": {
+      "label": "Network",
+      "plural": "Network"
+    },
+    "storage": {
+      "label": "Storage",
+      "plural": "Storage"
+    },
+    "smarthome": {
+      "label": "Smart home",
+      "plural": "Smart home"
+    },
+    "printer": {
+      "label": "Printer",
+      "plural": "Printers"
+    },
+    "accessory": {
+      "label": "Accessory",
+      "plural": "Accessories"
+    },
+    "software": {
+      "label": "Software",
+      "plural": "Software"
+    },
+    "other": {
+      "label": "Other",
+      "plural": "Other"
+    }
+  },
+  "cycle": {
+    "weekly": {
+      "label": "Weekly",
+      "short": "wk"
+    },
+    "monthly": {
+      "label": "Monthly",
+      "short": "mo"
+    },
+    "quarterly": {
+      "label": "Quarterly",
+      "short": "qtr"
+    },
+    "yearly": {
+      "label": "Yearly",
+      "short": "yr"
+    }
+  },
+  "time": {
+    "days": "{{n}}d",
+    "months": "{{n}}mo",
+    "years": "{{n}}y",
+    "yearsMonths": "{{y}}y {{mo}}mo",
+    "none": "—"
+  },
+  "reminder": {
+    "today": "today",
+    "when": "{{relative}}, {{date}}",
+    "body": "{{detail}} · {{when}}"
+  },
+  "ties": {
+    "owns_one": "owns {{count}} thing",
+    "owns_other": "owns {{count}} things",
+    "pays_one": "pays for {{count}} plan",
+    "pays_other": "pays for {{count}} plans",
+    "responsible_one": "is responsible for {{count}} item",
+    "responsible_other": "is responsible for {{count}} items"
+  },
+  "sync": {
+    "error": {
+      "keyMismatch": "The passphrase on this device does not match this vault account. Re-enter the passphrase your other GLANCE apps use.",
+      "credential": "The vault rejected this device's credential. Reconnect in Settings.",
+      "forbidden": "The vault refused access to this account.",
+      "network": "Could not reach the vault. It will retry on its own.",
+      "quota": "The vault account is over its quota. Uploads are paused; downloads continue.",
+      "pausing": "Sync is pausing briefly and will resume on its own.",
+      "verifier": "This vault server is too old to verify the encryption key. Update the server.",
+      "unknownApp": "This vault does not accept thingGLANCE yet. Add \"thingglance\" to the server's allowed apps (GLANCEVAULT_ALLOWED_APPS) and recreate its container.",
+      "failed": "Sync failed."
+    },
+    "passphrase": {
+      "wrong": "That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.",
+      "notConnected": "The vault is not connected."
+    },
+    "enroll": {
+      "noKey": "No account key entered.",
+      "unreachable": "Could not reach GLANCEvault Pro.",
+      "rejected": "That account key was not accepted.",
+      "notOffered": "This server does not offer enrollment.",
+      "status": "Enrollment failed (status {{status}}).",
+      "noCredential": "The enrollment reply was missing the credential."
+    },
+    "roster": {
+      "unreadable": "The roster could not be read."
+    }
+  },
+  "intents": {
+    "off": "Intents are turned off",
+    "noKey": "The intents encryption key is not set up on this device",
+    "notConnected": "GLANCEvault is not connected",
+    "noSalt": "GLANCEvault has no encryption salt for this account yet (it is created on the first sync)",
+    "task": {
+      "coverage-end": "Use or extend coverage: {{thing}}",
+      "support-end": "Plan a replacement for {{thing}}",
+      "replace": "Shop for a new {{thing}}",
+      "renewal": "Keep or cancel {{name}}?",
+      "trial-end": "Cancel or keep {{name}} trial",
+      "sub-end": "Renew {{name}}?",
+      "notes": "{{title}} on {{date}} ({{detail}}). Sent from thingGLANCE."
+    },
+    "activity": {
+      "sent": "Sent \"{{title}}\" to dayGLANCE",
+      "due": "Due {{date}}",
+      "sendFailed": "Could not send \"{{title}}\" to dayGLANCE",
+      "completed": "\"{{title}}\" was completed in dayGLANCE",
+      "reopened": "\"{{title}}\" was reopened in dayGLANCE",
+      "deleted": "\"{{title}}\" was deleted in dayGLANCE",
+      "notEncrypted": "Rejected non-encrypted intent {{id}}",
+      "undecryptable": "Could not decrypt intent {{id}}",
+      "dropped": "Dropped intent {{id}} after {{failures}} attempts (limit {{limit}})",
+      "droppedNoKey": "No intents encryption key on this device. Re-enter your sync passphrase in Settings.",
+      "checkFailed": "Could not check GLANCEvault for intents"
+    }
+  },
+  "backup": {
+    "notABackup": "This file is not a thingGLANCE backup.",
+    "tooNew": "This backup was made by a newer version of thingGLANCE."
+  },
+  "lookup": {
+    "note": {
+      "ended": "Support has ended",
+      "published": "Published end-of-support date",
+      "unsupported": "No longer supported",
+      "estimated": "Still supported. No end date announced; estimated at {{years}} years from release.",
+      "noDate": "Still supported. No end date announced."
+    },
+    "spec": {
+      "type": "Type",
+      "chip": "Chip",
+      "graphics": "Graphics",
+      "memory": "Memory",
+      "storage": "Storage",
+      "display": "Display",
+      "battery": "Battery",
+      "os": "OS",
+      "camera": "Camera",
+      "connectivity": "Connectivity",
+      "weight": "Weight",
+      "discontinued": "Discontinued"
+    }
+  },
+  "device": {
+    "osApp": "{{os}} app",
+    "desktopApp": "Desktop app",
+    "phoneApp": "Phone app",
+    "browser": "Browser",
+    "browserOn": "{{browser}} on {{os}}"
+  },
+  "sample": {
+    "limitedWarranty": "Limited warranty",
+    "manufacturerWarranty": "Manufacturer warranty",
+    "threeYearWarranty": "3-year warranty",
+    "unlimitedPlan": "Unlimited Plus plan",
+    "noteBattery": "Battery at 91% health last check.",
+    "noteHandedDown": "Handed down. Still gets used for two-factor codes.",
+    "noteEarCup": "Right ear cup creaks. Get it looked at before the warranty ends.",
+    "connector": "Connector"
+  },
+  "toast": {
+    "cleared": "Cleared from your queue",
+    "undo": "Undo",
+    "yours": "Yours to deal with now",
+    "sent": "Sent to dayGLANCE",
+    "notConnected": "dayGLANCE is not connected yet",
+    "passphraseFirst": "Enter your sync passphrase first",
+    "tasksTravel": "Tasks travel through GLANCEvault, end-to-end encrypted.",
+    "setUp": "Set up",
+    "unreachable": "Could not reach GLANCEvault",
+    "notSent": "The task was not sent. Try again in a moment.",
+    "gone": {
+      "thing": "That thing is not on this device",
+      "plan": "That plan is not on this device",
+      "date": "That date is not on this device"
+    },
+    "goneBody": "It may have been removed, or it may be private to someone else."
+  },
+  "language": {
+    "label": "Language",
+    "device": "Same as this device",
+    "hint": "Used for this device only."
+  },
+  "app": {
+    "nav": {
+      "glance": "Glance",
+      "horizon": "Horizon",
+      "things": "Things",
+      "plans": "Plans"
+    },
+    "header": {
+      "tagline": "what's next for your things?",
+      "search": "Search",
+      "settings": "Settings"
+    },
+    "sync": {
+      "off": "Not syncing. Connect GLANCEvault",
+      "locked": "Enter your sync passphrase",
+      "idle": "Connected to GLANCEvault",
+      "syncing": "Syncing…",
+      "synced": "Synced with GLANCEvault",
+      "error": "Sync needs attention"
+    },
+    "filter": {
+      "label": "Whose things to show",
+      "mine": "Mine",
+      "me": "{{name}} (me)"
+    },
+    "who": {
+      "found_one": "Found your household: {{count}} person.",
+      "found_other": "Found your household: {{count}} people.",
+      "which": "Which one is this device?",
+      "chooseInSettings": "Choose under Settings, Household.",
+      "notNow": "Not now"
+    },
+    "add": {
+      "thing": "A thing",
+      "plan": "A plan"
+    },
+    "samples": {
+      "notice": "You are looking at sample data. It never syncs, and editing a sample makes it yours.",
+      "remove": "Remove samples"
+    }
+  },
+  "thingForm": {
+    "addTitle": "Add a thing",
+    "editTitle": "Edit {{name}}",
+    "subtitle": "Only the name is required. Dates are what make it useful.",
+    "add": "Add thing",
+    "added": "{{name}} is on the radar",
+    "name": "Name",
+    "namePlaceholder": "What do you call it?",
+    "kind": "Kind",
+    "kindHint_one": "{{kind}} · usually kept about {{count}} year",
+    "kindHint_other": "{{kind}} · usually kept about {{count}} years",
+    "brand": "Brand",
+    "brandPlaceholder": "Apple",
+    "model": "Model / config",
+    "modelPlaceholder": "256 GB, Blue",
+    "boughtOn": "Bought on",
+    "price": "Price ({{currency}})",
+    "boughtFrom": "Bought from",
+    "boughtFromPlaceholder": "Store",
+    "keepFor": "Keep it for (years)",
+    "keepForHint": "Your own plan. Sets the replace-by date.",
+    "soldFor": "Sold for ({{currency}})",
+    "holderLabel": "Whose is it?",
+    "handOverHint": "Handing it on keeps its dates, coverage and plans, and remembers who had it before.",
+    "notes": "Notes",
+    "notesPlaceholder": "Serial number, battery health, quirks…",
+    "lookup": {
+      "heading": "Find it on the web",
+      "placeholder": "iPhone 15 Pro, Pixel 9, PlayStation 5…",
+      "filledFromWikipedia": "Filled in from Wikipedia",
+      "filledFromBoth": "Filled in from Wikipedia and endoflife.date",
+      "specs_one": "{{count}} spec",
+      "specs_other": "{{count}} specs",
+      "released": "Released {{date}}",
+      "updatesUntil": "Updates until {{date}}",
+      "updatesAbout": "Updates ≈ {{date}}",
+      "about": "Pulls the photo, specs and release date from Wikipedia, and the end of security updates from endoflife.date. Only what you type here is sent.",
+      "error": {
+        "noMatches": "No matches. You can still fill it in by hand.",
+        "unavailable": "Lookup is unavailable right now.",
+        "loadFailed": "Could not load details for that one."
+      }
+    },
+    "support": {
+      "label": "Security updates end",
+      "lookUp": "Look up",
+      "notFound": "No published support window found for this. Enter a date if you know one.",
+      "unreachable": "Could not reach endoflife.date.",
+      "estimateHint": "An estimate from the maker's usual support window.",
+      "hint": "The day it stops being safe to rely on. Leave empty if it does not apply."
+    },
+    "warranty": {
+      "label": "Warranty",
+      "none": "None",
+      "years_one": "{{count}} year",
+      "years_other": "{{count}} years",
+      "fromPurchase": "Counted from the day you bought it. Add extended plans afterwards.",
+      "needsDate": "Needs a purchase date to start counting."
+    }
+  },
+  "planForm": {
+    "addTitle": "Add a plan",
+    "editTitle": "Edit {{name}}",
+    "subtitle": "Anything that renews: storage, phone plans, protection, software.",
+    "add": "Add plan",
+    "added": "{{name}} added",
+    "deleted": "{{name}} deleted",
+    "name": "Name",
+    "namePlaceholder": "iCloud+ 2 TB",
+    "provider": "Provider",
+    "providerPlaceholder": "Apple",
+    "amount": "Amount ({{currency}})",
+    "billed": "Billed",
+    "status": {
+      "label": "Status",
+      "active": "Active",
+      "trial": "Free trial",
+      "cancelled": "Cancelled"
+    },
+    "trialEnds": "Trial ends",
+    "trialEndsHint": "The day it starts charging.",
+    "accessEnds": "Access ends",
+    "accessEndsHint": "Optional.",
+    "nextRenewal": "Next renewal",
+    "nextRenewalHint": "Any renewal date works; it repeats from there.",
+    "attachedTo": "Attached to",
+    "attachedSplitHint": "Its cost is split evenly between them.",
+    "detach": "Detach {{name}}",
+    "attach": "Attach a thing",
+    "attachAnother": "Attach another…",
+    "attachNothing": "Nothing (standalone)",
+    "autoRenew": "Renews automatically",
+    "autoRenewHint": "Off means it simply expires on its next date.",
+    "review": "Review before it renews",
+    "reviewHint": "Puts it in your queue a week ahead. Annual plans ask a month ahead regardless.",
+    "holderLabel": "Who pays?",
+    "coversLabel": "Who is it for?",
+    "coversHint": "Optional. A family plan covers several people.",
+    "notes": "Notes",
+    "notesPlaceholder": "Where to cancel, which card it is on…",
+    "coverage": {
+      "addTitle": "Add coverage",
+      "editTitle": "Edit coverage",
+      "add": "Add coverage",
+      "type": {
+        "warranty": "Warranty",
+        "extended": "Extended plan",
+        "insurance": "Insurance"
+      },
+      "name": {
+        "warranty": "Manufacturer warranty",
+        "extended": "Extended warranty",
+        "insurance": "Insurance"
+      },
+      "providerPlaceholder": "Who covers it",
+      "cost": "Cost ({{currency}})",
+      "starts": "Starts",
+      "ends": "Ends",
+      "pickLength": "Or pick a length",
+      "years_one": "{{count}} year",
+      "years_other": "{{count}} years",
+      "notesPlaceholder": "Claim number, what it covers…"
+    }
+  },
+  "detail": {
+    "track": {
+      "coverage": "Coverage",
+      "updates": "Updates",
+      "updatesEstimated": "Updates (est.)",
+      "plan": "Your plan"
+    },
+    "bought": "Bought",
+    "released": "Released",
+    "heldUntil": "{{name}} until {{when}}",
+    "headline": {
+      "retired": "Retired",
+      "retiredOn": "Retired {{when}}",
+      "supportEnded": "Support ended {{when}}",
+      "pastPlan": "Past your plan {{when}}",
+      "supportRunsOut": "Support runs out {{when}}",
+      "dueForReplacement": "Due for replacement {{when}}"
+    },
+    "unpin": "Unpin",
+    "pin": "Pin to the top",
+    "covered": "Covered",
+    "dealsWithIt": "{{name}} deals with it",
+    "before": "Before: {{list}}",
+    "left": "left",
+    "age": "{{age}} old.",
+    "hint": "{{hint}}.",
+    "comingUp": "Coming up",
+    "paid": "Paid",
+    "from": "From",
+    "costPerDay": "Cost per day",
+    "perDaySoFar": "Per day so far",
+    "perDayOnPlan": "Per day, on plan",
+    "soldFor": "Sold for",
+    "plansPerYear": "Plans / year",
+    "coverage": {
+      "title": "Coverage",
+      "empty": "No warranty or protection plan on record.",
+      "until": "until {{when}}"
+    },
+    "plans": {
+      "title": "Plans",
+      "empty": "Nothing recurring attached to this.",
+      "cancelled": "cancelled",
+      "underReview": "under review",
+      "active": "Active"
+    },
+    "specs": "Specs",
+    "wikipedia": "Wikipedia",
+    "notes": "Notes",
+    "backInService": "Back in service",
+    "retire": "Retire",
+    "retiredToast": "{{name}} retired",
+    "retiredToastBody": "Edit it to record what you sold it for.",
+    "deletedToast": "{{name}} deleted",
+    "deleteForGood": "Delete for good",
+    "keepIt": "Keep it"
+  },
+  "parts": {
+    "coverageEnds": "Coverage ends {{when}}",
+    "supportEnds": "Support ends {{when}}",
+    "inDayglance": "In dayGLANCE",
+    "you": "You",
+    "someoneRemoved": "Someone removed",
+    "sendToDayglance": "Send to dayGLANCE as a task",
+    "take": "I'll deal with this",
+    "doneWithThis": "Done with this",
+    "restore": "Restore",
+    "more_one": "+{{count}} more",
+    "more_other": "+{{count}} more"
+  },
+  "overlays": {
+    "passphrase": {
+      "title": "Sync passphrase",
+      "subtitle": "Unlocks end-to-end encryption on this device.",
+      "notNow": "Not now",
+      "unlock": "Unlock",
+      "conflict": "The passphrase this device was using does not open what your other GLANCE apps keep on this account. That is why the household roster was empty here, and dayGLANCE could not read tasks sent from here. Enter the one the other apps use; what is on this device is kept and uploaded again under it.",
+      "explain": "Your things are encrypted here before they reach GLANCEvault, with a key made from this passphrase. Use the <b>same passphrase as your other GLANCE apps</b> on this account. If this is the account's first app, whatever you enter becomes its passphrase.",
+      "label": "Passphrase",
+      "neverSent": "It is never sent anywhere and cannot be recovered. This device remembers the derived key, not the passphrase."
+    },
+    "palette": {
+      "group": {
+        "actions": "Actions",
+        "goto": "Go to",
+        "things": "Things",
+        "plans": "Plans"
+      },
+      "addThing": "Add a thing",
+      "addPlan": "Add a plan",
+      "glance": "Glance",
+      "horizon": "Horizon",
+      "things": "Things",
+      "plans": "Plans",
+      "syncNow": "Sync now",
+      "switchTheme": "Switch light / dark",
+      "settings": "Settings",
+      "vaultSettings": "GLANCEvault settings",
+      "placeholder": "Search things and plans, or run a command…",
+      "nothing": "Nothing matches “{{q}}”."
+    },
+    "welcome": {
+      "tagline": "Know what is next for your things.",
+      "coverage": {
+        "title": "Warranties and coverage",
+        "body": "Know a warranty is ending while you can still use it."
+      },
+      "plans": {
+        "title": "Plans and renewals",
+        "body": "See what renews, what it adds up to, and what to cancel first."
+      },
+      "shelfLife": {
+        "title": "Shelf life",
+        "body": "When security updates stop, and the right moment to buy the next one."
+      },
+      "explore": "Explore with sample data",
+      "addFirst": "Add my first thing",
+      "alreadySync": "I already sync with GLANCEvault",
+      "footnote": "Not a home inventory. No serial-number spreadsheets, no receipts to scan. Just the dates that matter and what they cost. Everything stays on this device unless you connect GLANCEvault."
+    }
+  },
+  "glance": {
+    "addThing": "Add a thing",
+    "strip": {
+      "title": "Next 12 months",
+      "open": "Open horizon"
+    },
+    "empty": {
+      "title": "Nothing on the radar yet",
+      "body": "Add your first thing, a laptop, a phone, anything with a warranty, a plan or a shelf life, and thingGLANCE starts watching its dates for you."
+    },
+    "status": {
+      "urgent_one": "{{count}} urgent",
+      "urgent_other": "{{count}} urgent",
+      "headsUp": "heads up",
+      "nominal": "nominal"
+    },
+    "headline": {
+      "clear": "All clear. Nothing needs you right now.",
+      "decide_one": "{{count}} thing wants a decision.",
+      "decide_other": "{{count}} things want a decision."
+    },
+    "next": {
+      "overdue": "Overdue: <item>{{title}}</item> for {{detail}}, {{when}}.",
+      "upcoming": "Next up: <item>{{title}}</item> for {{detail}}, {{when}}."
+    },
+    "watching": {
+      "sentence": "You are watching {{things}} and {{plans}}. The next date is a way off.",
+      "things_one": "{{count}} thing",
+      "things_other": "{{count}} things",
+      "plans_one": "{{count}} plan",
+      "plans_other": "{{count}} plans"
+    },
+    "stat": {
+      "inService": "In service",
+      "underCoverage_one": "{{count}} under coverage",
+      "underCoverage_other": "{{count}} under coverage",
+      "plansMonth": "Plans / month",
+      "aYear": "{{amount}} a year",
+      "next30": "Next 30 days",
+      "charges_one": "{{count}} charge coming",
+      "charges_other": "{{count}} charges coming",
+      "monthlyTarget": "monthly target"
+    },
+    "queue": {
+      "title": "Needs a decision",
+      "hint": "Clear each one when you have decided, or hand it to dayGLANCE.",
+      "emptyTitle": "Queue is empty",
+      "emptyBody": "When a warranty is about to lapse, a plan is about to renew or a device nears the end of its support, it shows up here.",
+      "unassignedOne": "This one falls to nobody in particular, so everyone is asked. The hand button makes one yours.",
+      "unassignedAll": "These fall to nobody in particular, so everyone is asked. The hand button makes one yours.",
+      "unassignedSome_one": "{{count}} of these fall to nobody in particular, so everyone is asked. The hand button makes one yours.",
+      "unassignedSome_other": "{{count}} of these fall to nobody in particular, so everyone is asked. The hand button makes one yours.",
+      "recentlyCleared": "Recently cleared"
+    },
+    "fleet": {
+      "title": "Fleet",
+      "hint": "Closest to the end of its window first.",
+      "all": "All things",
+      "more_one": "+{{count}} more in Things",
+      "more_other": "+{{count}} more in Things"
+    },
+    "charges": {
+      "title": "Plan charges, month by month",
+      "hint": "What will actually leave your account. Annual renewals are the spikes.",
+      "plans": "Plans"
+    },
+    "fund": {
+      "title": "Upgrade fund",
+      "setAside": "Set aside <b>{{amount}}</b> a month and every replacement is paid for the day it is due.",
+      "empty": "Add prices and purchase dates to see this.",
+      "dueNow": "due now",
+      "replace": "replace {{date}}",
+      "left": "{{span}} left"
+    }
+  },
+  "horizon": {
+    "title": "Horizon",
+    "subtitle": "Every date ahead of you, on one axis.",
+    "rangeYears_one": "{{count}} yr",
+    "rangeYears_other": "{{count}} yr",
+    "things": "Things",
+    "plans": "Plans",
+    "today": "Today",
+    "empty": {
+      "title": "The horizon is empty",
+      "body": "Add a thing with a purchase date and its lifecycle shows up here as a lane."
+    },
+    "tip": {
+      "until": "until {{date}}",
+      "updatesLikelyEnd": "Updates likely end {{date}}",
+      "securityUpdatesEnd": "Security updates end {{date}}",
+      "plannedReplacement": "Planned replacement {{date}}",
+      "renews": "{{name}} renews {{date}}",
+      "trialConverts": "Trial converts {{date}}"
+    },
+    "legend": {
+      "coverage": "Coverage",
+      "securityUpdates": "Security updates",
+      "estimated": "Estimated",
+      "plannedReplacement": "Planned replacement",
+      "renewal": "Renewal"
+    },
+    "agenda": {
+      "title": "Agenda",
+      "hint": "The same dates as a list. Monthly plans appear once, and only if you asked to review them.",
+      "pastDue": "Past due"
+    }
+  },
+  "things": {
+    "title": "Things",
+    "subtitle": "{{counts}}. The ring is how much of its window is left.",
+    "counts": {
+      "inService_one": "{{count}} in service",
+      "inService_other": "{{count}} in service",
+      "retired_one": "{{count}} retired",
+      "retired_other": "{{count}} retired"
+    },
+    "all": "All",
+    "addThing": "Add a thing",
+    "retired": "Retired",
+    "sort": {
+      "label": "Sort",
+      "window": "Closing soonest",
+      "name": "Name",
+      "newest": "Newest",
+      "price": "Price"
+    },
+    "empty": {
+      "title": "No things yet",
+      "body": "Computers, phones, tablets, anything with a warranty, a plan or a shelf life."
+    },
+    "card": {
+      "noDate": "no date",
+      "supportEnds": "support ends {{date}}",
+      "replace": "replace {{date}}",
+      "coveredUntil": "until {{date}}",
+      "noCoverage": "No coverage",
+      "perDay": "<b>{{amount}}</b> a day so far",
+      "nothingScheduled": "Nothing scheduled"
+    }
+  },
+  "plans": {
+    "title": "Plans",
+    "subtitle": "Everything that renews, and what it adds up to.",
+    "everyMonth": "Every month",
+    "across_one": "across {{count}} plan",
+    "across_other": "across {{count}} plans",
+    "everyYear": "Every year",
+    "biggestMonth": "biggest month: {{month}}",
+    "noCharges": "no charges ahead",
+    "whoPays": "Who pays",
+    "reviewSavings": "Under review: <b>{{amount}}</b> a year you could get back.",
+    "chargesTitle": "Charges, next 12 months",
+    "everythingElse": "Everything else",
+    "allPlans": "All plans",
+    "ended": "Ended",
+    "review": {
+      "title": "Under review",
+      "hint": "Trials, and plans you asked to be reminded about before they renew."
+    },
+    "empty": {
+      "title": "No plans yet",
+      "body": "Cloud storage, phone plans, protection plans, software: anything that renews.",
+      "add": "Add a plan"
+    },
+    "next": {
+      "accessEnds": "access ends {{date}}",
+      "trialConverts": "trial converts {{date}}",
+      "expires": "expires {{date}}",
+      "renews": "renews {{date}}"
+    },
+    "row": {
+      "andMore_one": "{{name}} + {{count}} more",
+      "andMore_other": "{{name}} + {{count}} more",
+      "trial": "Trial",
+      "cancelled": "Cancelled",
+      "standalone": "Standalone",
+      "underReview": "Under review: you will be asked before it renews",
+      "review": "Review before it renews"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "sections": {
+      "general": "General",
+      "vault": "GLANCEvault",
+      "household": "Household",
+      "integrations": "Integrations",
+      "data": "Data",
+      "about": "About"
+    },
+    "general": {
+      "appearance": "Appearance",
+      "system": "System",
+      "dark": "Dark",
+      "light": "Light",
+      "currency": "Currency",
+      "currencyHint": "One currency for every amount. Nothing is converted.",
+      "webLookup": "Web lookup",
+      "webLookupLabel": "Fill things in from the web",
+      "webLookupHint": "Photo, specs and release date from Wikipedia; end of security updates from endoflife.date. Only the product name you type into the lookup box is sent, and only when you use it.",
+      "install": "Install",
+      "installHint": "Runs in its own window, works offline, and shows a badge when something needs a decision.",
+      "installButton": "Install thingGLANCE"
+    },
+    "vault": {
+      "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",
+      "couldNotConnect": "Could not connect.",
+      "tokenRejected": "The vault rejected that token.",
+      "tokenForbidden": "That token cannot access this account.",
+      "unreachable": "Could not reach the vault. Check the URL, and that this site's address is in the server's allowed origins.",
+      "appNotAllowed": "Connected, but this server does not list \"{{app}}\" in its allowed apps yet. Add it to GLANCEVAULT_ALLOWED_APPS (keep the apps already listed), then recreate the vault's container: a plain restart keeps the old settings. The server's /healthz page shows the list in effect.",
+      "reachFresh": "Reachable. This account is new: your passphrase will set its encryption key.",
+      "reachExisting": "Reachable, and the account already has data. Use the same passphrase as your other GLANCE apps.",
+      "rosterNotListed": "{{reach}} One thing to fix on the server: it does not list \"glance-users\" in GLANCEVAULT_ALLOWED_APPS, so the household roster will not sync, here or in your other GLANCE apps.",
+      "phase": {
+        "off": "Off",
+        "locked": "Waiting for your passphrase",
+        "idle": "Connected",
+        "syncing": "Syncing…",
+        "synced": "Up to date",
+        "error": "Needs attention"
+      },
+      "account": "account {{id}}…",
+      "lastSynced": "Last synced {{when}}",
+      "waitingToUpload_one": "{{count}} waiting to upload",
+      "waitingToUpload_other": "{{count}} waiting to upload",
+      "live": {
+        "on": "Live: changes from your other devices arrive within seconds.",
+        "connecting": "Connecting live updates. Until then it checks every few minutes.",
+        "stalled": "Live updates are blocked, probably by a reverse proxy buffering /events. It still checks every few minutes.",
+        "unsupported": "This vault server is too old for live updates. It checks every few minutes.",
+        "off": "Checks every few minutes, and whenever you return to the app."
+      },
+      "rowsSkipped_one": "{{count}} row could not be decrypted and was skipped.",
+      "rowsSkipped_other": "{{count}} rows could not be decrypted and were skipped.",
+      "enterPassphrase": "Enter passphrase",
+      "syncNow": "Sync now",
+      "resetKey": "Reset key and re-enter",
+      "disconnectDevice": "Disconnect this device",
+      "disconnect": "Disconnect",
+      "disconnectNote": "Your things stay on this device and in the vault. Only the connection is removed.",
+      "encrypted": "End-to-end encrypted",
+      "encryptedHint": "Everything is encrypted on this device with a key made from your sync passphrase before it leaves. The vault stores ciphertext it cannot read. The passphrase is the same one your other GLANCE apps use on this account, and it is never sent anywhere.",
+      "syncWith": "Sync with GLANCEvault",
+      "syncWithHint": "thingGLANCE syncs one way only: through GLANCEvault, end-to-end encrypted. It also carries the shared household roster and tasks sent to dayGLANCE. Without it, everything stays on this device.",
+      "selfHosted": "Self-hosted",
+      "soon": "Soon",
+      "proNote": "GLANCEvault Pro, the hosted vault, is coming soon. If you were sent an account key as a tester, it works here today.",
+      "accountKey": "Account key",
+      "accountKeyHint": "Paste the key you were sent. It is exchanged once for this device's own credential and never stored.",
+      "connect": "Connect",
+      "serverUrl": "Server URL",
+      "accountId": "Account ID",
+      "deviceToken": "Device token",
+      "test": "Test",
+      "serverNeeds": "The server needs <id>{{app}}</id> in GLANCEVAULT_ALLOWED_APPS, and this site's address ({{origin}}) in its allowed origins. Its /healthz page lists the apps it accepts."
+    },
+    "household": {
+      "removed": "{{name}} removed",
+      "removedUnnamed": "They removed",
+      "wentTo": "Everything of theirs went to {{name}}.",
+      "wentToHousehold": "Everything of theirs went to the household.",
+      "couldNotRemove": "Could not remove them",
+      "members": "Members",
+      "membersHint": "Everyone the household tracks things for. A name is all it takes: a member does not need the app or a device. {{where}}",
+      "membersNotConnected": "Not connected to GLANCEvault, so members stay on this device for now.",
+      "membersLocal": "Members added here stay on this device for now.",
+      "membersShared": "The same list dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account.",
+      "you": "you",
+      "noApp": "Does not use the app",
+      "usesApp": "Uses the app: {{devices}}",
+      "thisDevice": "this device",
+      "aDevice": "a device",
+      "notMe": "Not me",
+      "thisIsMe": "This is me",
+      "rename": "Rename",
+      "stillTied_one": "{{name}} still {{ties}}. Hand it to someone first.",
+      "stillTied_other": "{{name}} still {{ties}}. Hand them to someone first.",
+      "hiddenMine_one": "One of these is private to {{name}}, so only you can see it now.",
+      "hiddenMine_other": "{{count}} of these are private to {{name}}, so only you can see them now.",
+      "hiddenOthers_one": "One of these is private to {{name}}, so you cannot see it now.",
+      "hiddenOthers_other": "{{count}} of these are private to {{name}}, so you cannot see them now.",
+      "staysPrivate_one": "It stays private, to {{name}}.",
+      "staysPrivate_other": "They stay private, to {{name}}.",
+      "becomesVisible_one": "It becomes visible to the whole household.",
+      "becomesVisible_other": "They become visible to the whole household.",
+      "whoGets": "Who gets what {{name}} has",
+      "theHousehold": "The household",
+      "noDevice": "{{name}} (no device)",
+      "handOver": "Hand over and remove",
+      "noMembers": "No members yet. Add yourself first.",
+      "addMember": "Add a member",
+      "pickYourself": "Pick which member this device belongs to. It lets things be handed to you to deal with, and private items be yours.",
+      "needSecond": "Owners, payers and the member filter show up once there is a second member.",
+      "otherDevices": "Other devices",
+      "otherDevicesHint": "Detaching a device stops it counting as that person. It does not sign the device out of the vault.",
+      "unnamedDevice": "A device",
+      "goneMember": "someone no longer on the list",
+      "since": "since {{date}}",
+      "detach": "Detach",
+      "checkAgain": "Check again",
+      "rosterKeyConflict": "This device was using a passphrase that does not match your other GLANCE apps, so it could not read the roster. Enter the right one and the members appear.",
+      "rosterLocked": "The roster is read once you enter your sync passphrase.",
+      "rosterPaused": "The roster could not be checked just now: sync with the vault is pausing after a failed request and will retry on its own.",
+      "rosterReading": "Reading the roster from your vault…",
+      "rosterError": "Could not read the roster from your vault at {{at}}: {{error}}",
+      "rosterRejected_one": "Your vault has {{count}} roster row that could not be read as a member (checked at {{at}}).",
+      "rosterRejected_other": "Your vault has {{count}} roster rows that could not be read as a member (checked at {{at}}).",
+      "rosterSkipped_one": "{{count}} roster row in your vault could not be decrypted at {{at}}, which usually means a different passphrase.",
+      "rosterSkipped_other": "{{count}} roster rows in your vault could not be decrypted at {{at}}, which usually means a different passphrase.",
+      "rosterEmpty": "Checked your vault at {{at}} and found no members in the shared roster for this account."
+    },
+    "integrations": {
+      "passphraseTitle": "Enter your sync passphrase",
+      "passphraseBody": "It makes the key that encrypts tasks sent between your GLANCE apps.",
+      "encryptionFailed": "Could not set up encryption",
+      "dayglanceHint": "Turn anything in your queue into a dayGLANCE task with one tap. When you complete the task there, the item clears here, on every device.",
+      "sendReceive": "Send and receive through GLANCEvault",
+      "sendReceiveHint": "Uses GLANCE intents over your vault connection, end-to-end encrypted. dayGLANCE needs GLANCEvault intents turned on too.",
+      "taskDue": "Task due",
+      "lead": {
+        "sameDay": "On the day itself",
+        "threeDays": "3 days before",
+        "week": "A week before",
+        "twoWeeks": "Two weeks before",
+        "month": "A month before"
+      },
+      "connectFirst": "Connect GLANCEvault first",
+      "activity": "Activity",
+      "activityEmpty": "Nothing sent or received yet.",
+      "otherSurfaces": "Other surfaces",
+      "otherSurfacesHint": "Widgets, the menu bar popup, GLANCElauncher cards and MCP tools will all read one object: the glance snapshot. This is what it holds right now, including the reminders this device would get. Nothing schedules them yet: that arrives with the phone and desktop apps.",
+      "snapshotCopied": "Full snapshot copied",
+      "copySnapshot": "Copy full snapshot"
+    },
+    "data": {
+      "imported": "Backup imported",
+      "importedBody": "{{added}} added, {{updated}} updated.",
+      "importFailed": "Could not import that file",
+      "backup": "Backup",
+      "backupHint": "A plain JSON file with everything except sample data. Importing merges by item, newest wins, so it never rolls anything back.",
+      "export": "Export",
+      "import": "Import",
+      "samples": "Sample data",
+      "samplesHint": "A realistic set of things and plans to explore with. Samples never sync; editing one turns it into a real item.",
+      "samplesRemoved": "Sample data removed",
+      "removeSamples_one": "Remove {{count}} sample",
+      "removeSamples_other": "Remove {{count}} samples",
+      "loadSamples": "Load sample data",
+      "erase": "Erase this device",
+      "eraseHint": "Deletes everything stored in this browser. Anything already in your vault stays there.",
+      "erased": "Local data erased",
+      "eraseConfirm": "Yes, erase it",
+      "eraseButton": "Erase local data"
+    },
+    "about": {
+      "tagline": "Know what is next for your things.",
+      "version": "v{{version}} · prototype · built {{when}}",
+      "family": "Part of the GLANCE family",
+      "familyHint": "dayGLANCE plans the day, lastGLANCE remembers when you last did something, lifeGLANCE holds the long view. thingGLANCE watches the things you own.",
+      "intents": "Intents",
+      "sharedRoster": "Shared roster",
+      "webData": "Where the web data comes from",
+      "webDataHint": "Product facts: Wikipedia (CC BY-SA). Support windows: endoflife.date (MIT). Dates marked as estimates are projections from a maker's usual support window, not promises."
+    }
+  },
+  "householdFields": {
+    "whoDeals": "Who deals with it?",
+    "whoDealsHint": "The person asked about its dates. Only members who use the app can be picked.",
+    "anyone": "Anyone",
+    "you": "{{name}} (you)",
+    "noDevice": "{{name}} (no device)",
+    "showsOn": "Only shows on {{name}} devices.",
+    "showsOnYours": "Only shows on {{name}} (your) devices.",
+    "showsOnTheirs": "Only shows on their devices.",
+    "showsOnTheirsYours": "Only shows on their (your) devices.",
+    "hides": {
+      "thing": "This hides the thing from the rest of the household; it is not separately encrypted.",
+      "plan": "This hides the plan from the rest of the household; it is not separately encrypted."
+    }
+  }
+}

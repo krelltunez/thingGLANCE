@@ -13,6 +13,7 @@ import { ACTIONS, buildEncryptedEnvelope, deriveEnvelopeKey } from '@glance-apps
 import dayjs from 'dayjs'
 import type { HorizonEvent, Thing } from '@/core/types'
 import { DAY, fmtDay, today } from '@/core/dates'
+import { tr } from '@/core/text'
 import { decide } from '@/db/queries'
 import { SOURCE_APP, addActivity, getIntentsConfig, isIntentsEnabled } from './config'
 import { loadIntentsRootKey } from './keyStore'
@@ -20,28 +21,24 @@ import { sendEnvelope } from './transport'
 
 export class IntentsUnavailableError extends Error {
   constructor(readonly reason: 'disabled' | 'no-key') {
-    super(reason === 'disabled' ? 'Intents are turned off' : 'The intents encryption key is not set up on this device')
+    super(reason === 'disabled' ? tr('intents.off') : tr('intents.noKey'))
     this.name = 'IntentsUnavailableError'
   }
 }
 
-const VERBS: Record<HorizonEvent['type'], (e: HorizonEvent) => string> = {
-  'coverage-end': (e) => `Use or extend coverage: ${e.detail}`,
-  'support-end': (e) => `Plan a replacement for ${e.detail}`,
-  replace: (e) => `Shop for a new ${e.detail}`,
-  renewal: (e) => `Keep or cancel ${e.title.replace(/ renews$/, '')}?`,
-  'trial-end': (e) => `Cancel or keep ${e.title.replace(/ trial converts$/, '')} trial`,
-  'sub-end': (e) => `Renew ${e.title.replace(/ (expires|access ends)$/, '')}?`,
-}
+// What the task asks for. `thing` is the thing the date is about; `name` is
+// the plan's own name (an event carries it apart from its title, which
+// already has it inside a sentence).
+const taskTitle = (e: HorizonEvent): string => tr(`intents.task.${e.type}`, { thing: e.detail, name: e.name ?? e.title })
 
 export function taskFor(event: HorizonEvent, leadDays: number): { title: string; due: string; notes: string } {
   // Due `leadDays` before the event, but never in the past.
   const target = dayjs(event.date).subtract(leadDays, 'day').format(DAY)
   const due = target < today() ? today() : target
   return {
-    title: VERBS[event.type](event),
+    title: taskTitle(event),
     due,
-    notes: `${event.title} on ${fmtDay(event.date)} (${event.detail}). Sent from thingGLANCE.`,
+    notes: tr('intents.task.notes', { title: event.title, date: fmtDay(event.date), detail: event.detail }),
   }
 }
 
@@ -71,9 +68,9 @@ export async function sendEventToDayglance(event: HorizonEvent, thing?: Thing | 
     )
     await sendEnvelope(envelope)
     await decide(event.key, 'sent')
-    addActivity({ type: 'sent', message: `Sent "${task.title}" to dayGLANCE`, detail: `Due ${fmtDay(task.due)}` })
+    addActivity({ type: 'sent', message: tr('intents.activity.sent', { title: task.title }), detail: tr('intents.activity.due', { date: fmtDay(task.due) }) })
   } catch (err) {
-    addActivity({ type: 'error', message: `Could not send "${task.title}" to dayGLANCE`, detail: err instanceof Error ? err.message : String(err) })
+    addActivity({ type: 'error', message: tr('intents.activity.sendFailed', { title: task.title }), detail: err instanceof Error ? err.message : String(err) })
     throw err
   }
 }

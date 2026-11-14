@@ -2,6 +2,7 @@
 // it. Shared by the thing form and the plan form so the two cannot drift.
 
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useData } from '@/state/data'
 import { Field, Toggle } from './ui'
 import { cx, type WhoDraft } from './kit'
@@ -11,12 +12,13 @@ const chip = (on: boolean) =>
 
 // One of the household's members, or the household itself ('').
 export function MemberPicker({ label, value, onChange, hint }: { label: string; value: string; onChange: (id: string) => void; hint?: ReactNode }) {
+  const { t } = useTranslation()
   const d = useData()
   return (
     <div>
       <span className="label mb-1.5 block">{label}</span>
       <div className="flex flex-wrap gap-1.5">
-        <button type="button" aria-pressed={value === ''} className={chip(value === '')} onClick={() => onChange('')}>Household</button>
+        <button type="button" aria-pressed={value === ''} className={chip(value === '')} onClick={() => onChange('')}>{t('common.household')}</button>
         {d.members.map((m) => (
           <button key={m.id} type="button" aria-pressed={value === m.id} className={chip(value === m.id)} onClick={() => onChange(m.id)}>{m.name}</button>
         ))}
@@ -52,6 +54,7 @@ export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun
   holderHint?: ReactNode
   noun: 'thing' | 'plan'
 }) {
+  const { t } = useTranslation()
   const d = useData()
   if (!d.multiUser || d.members.length === 0) return null
   const users = d.members.filter((m) => d.userIds.has(m.id))
@@ -59,6 +62,11 @@ export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun
   // Someone who was responsible and has since lost their last device stays in
   // the list, marked, so saving the form does not silently reassign.
   const stale = value.responsible && !d.userIds.has(value.responsible) ? d.members.find((m) => m.id === value.responsible) : undefined
+  const holderName = d.memberName(value.holder)
+  const mine = value.holder === d.meId
+  const showsOn = holderName != null
+    ? (mine ? t('householdFields.showsOnYours', { name: holderName }) : t('householdFields.showsOn', { name: holderName }))
+    : (mine ? t('householdFields.showsOnTheirsYours') : t('householdFields.showsOnTheirs'))
 
   return (
     <div className="space-y-4">
@@ -68,11 +76,11 @@ export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun
         onChange={(holder) => onChange({ ...value, holder, isPrivate: value.isPrivate && d.userIds.has(holder) })}
       />
       {(users.length > 0 || stale) && (
-        <Field label="Who deals with it?" hint="The person asked about its dates. Only members who use the app can be picked.">
+        <Field label={t('householdFields.whoDeals')} hint={t('householdFields.whoDealsHint')}>
           <select className="input" value={value.responsible} onChange={(e) => onChange({ ...value, responsible: e.target.value })}>
-            <option value="">Anyone</option>
-            {users.map((m) => <option key={m.id} value={m.id}>{m.name}{m.id === d.meId ? ' (you)' : ''}</option>)}
-            {stale && <option value={stale.id}>{stale.name} (no device)</option>}
+            <option value="">{t('householdFields.anyone')}</option>
+            {users.map((m) => <option key={m.id} value={m.id}>{m.id === d.meId ? t('householdFields.you', { name: m.name }) : m.name}</option>)}
+            {stale && <option value={stale.id}>{t('householdFields.noDevice', { name: stale.name })}</option>}
           </select>
         </Field>
       )}
@@ -80,8 +88,8 @@ export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun
         <div className="rounded-xl border border-line/10 bg-bg/40 px-3 py-2">
           <Toggle
             checked={value.isPrivate} onChange={(isPrivate) => onChange({ ...value, isPrivate })}
-            label="Private"
-            hint={`Only shows on ${d.memberName(value.holder) ?? 'their'}${value.holder === d.meId ? ' (your)' : ''} devices. This hides the ${noun} from the rest of the household; it is not separately encrypted.`}
+            label={t('common.private')}
+            hint={<>{showsOn} {t(`householdFields.hides.${noun}`)}</>}
           />
         </div>
       )}

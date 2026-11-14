@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { Check, Globe, LoaderCircle, ScanSearch, Search, X } from 'lucide-react'
 import type { CategoryId, Spec, Thing } from '@/core/types'
-import { CATEGORIES, category } from '@/core/categories'
+import { CATEGORIES, category, categoryLabel } from '@/core/categories'
 import { DAY, fmtDay, today } from '@/core/dates'
 import { createThing, saveCoverage, updateThing, type ThingInput } from '@/db/queries'
 import { findSupport, lookupProduct, searchWikipedia, type LookupResult, type SearchHit, type SupportInfo } from '@/lookup'
@@ -66,13 +67,17 @@ const fromThing = (t: Thing | undefined, cat: CategoryId | undefined, meId: stri
   eolRelease: t?.eolRelease,
 })
 
+// What went wrong with a lookup. Held as a code, put into words where it is shown.
+type LookupError = 'noMatches' | 'unavailable' | 'loadFailed'
+
 // "Find it on the web": type a product, pick a match, and the form fills in.
 function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
+  const { t } = useTranslation()
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [busy, setBusy] = useState<'search' | 'load' | null>(null)
   const [result, setResult] = useState<LookupResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LookupError | null>(null)
   const picked = useRef(false)
 
   useEffect(() => {
@@ -82,8 +87,8 @@ function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
     const timer = setTimeout(() => {
       setBusy('search')
       searchWikipedia(q, ctl.signal)
-        .then((h) => { setHits(h); setError(h.length ? null : 'No matches. You can still fill it in by hand.') })
-        .catch((e) => { if ((e as Error).name !== 'AbortError') setError('Lookup is unavailable right now.') })
+        .then((h) => { setHits(h); setError(h.length ? null : 'noMatches') })
+        .catch((e) => { if ((e as Error).name !== 'AbortError') setError('unavailable') })
         .finally(() => setBusy((b) => (b === 'search' ? null : b)))
     }, 280)
     return () => { clearTimeout(timer); ctl.abort() }
@@ -101,7 +106,7 @@ function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
       setResult(r)
       onResult(r)
     } catch {
-      setError('Could not load details for that one.')
+      setError('loadFailed')
     } finally {
       setBusy(null)
     }
@@ -109,10 +114,10 @@ function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
 
   return (
     <div className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3">
-      <p className="label mb-2 flex items-center gap-1.5 !text-accent"><Globe size={11} /> Find it on the web</p>
+      <p className="label mb-2 flex items-center gap-1.5 !text-accent"><Globe size={11} /> {t('thingForm.lookup.heading')}</p>
       <div className="relative">
         <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-        <input className="input pl-9 pr-9" placeholder="iPhone 15 Pro, Pixel 9, PlayStation 5…" value={q} autoFocus
+        <input className="input pl-9 pr-9" placeholder={t('thingForm.lookup.placeholder')} value={q} autoFocus
           onChange={(e) => { setQ(e.target.value); setResult(null) }} />
         {busy && <LoaderCircle size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-accent" />}
         {!busy && q && <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-faint hover:text-ink" onClick={() => { setQ(''); setHits([]); setResult(null); setError(null) }}><X size={14} /></button>}
@@ -138,22 +143,23 @@ function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
         <div className="mt-2.5 flex animate-rise items-start gap-3">
           {result.imageUrl && <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white"><img src={result.imageUrl} alt="" className="h-full w-full object-contain p-1" /></span>}
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-sm font-medium text-ink"><Check size={14} className="text-ok" /> Filled in from {result.support ? 'Wikipedia and endoflife.date' : 'Wikipedia'}</p>
+            <p className="flex items-center gap-1.5 text-sm font-medium text-ink"><Check size={14} className="text-ok" /> {result.support ? t('thingForm.lookup.filledFromBoth') : t('thingForm.lookup.filledFromWikipedia')}</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {result.specs.length > 0 && <Chip tone="accent">{result.specs.length} specs</Chip>}
-              {result.releaseDate && <Chip tone="dim">Released {fmtDay(result.releaseDate, 'MMM YYYY')}</Chip>}
-              {result.support?.supportEnd && <Chip tone={result.support.ended ? 'bad' : 'ok'}>Updates {result.support.basis === 'estimate' ? '≈' : 'until'} {fmtDay(result.support.supportEnd, 'MMM YYYY')}</Chip>}
+              {result.specs.length > 0 && <Chip tone="accent">{t('thingForm.lookup.specs', { count: result.specs.length })}</Chip>}
+              {result.releaseDate && <Chip tone="dim">{t('thingForm.lookup.released', { date: fmtDay(result.releaseDate, 'MMM YYYY') })}</Chip>}
+              {result.support?.supportEnd && <Chip tone={result.support.ended ? 'bad' : 'ok'}>{result.support.basis === 'estimate' ? t('thingForm.lookup.updatesAbout', { date: fmtDay(result.support.supportEnd, 'MMM YYYY') }) : t('thingForm.lookup.updatesUntil', { date: fmtDay(result.support.supportEnd, 'MMM YYYY') })}</Chip>}
             </div>
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-dim">{error}</p>}
-      {!result && !error && hits.length === 0 && <p className="mt-2 text-xs leading-relaxed text-faint">Pulls the photo, specs and release date from Wikipedia, and the end of security updates from endoflife.date. Only what you type here is sent.</p>}
+      {error && <p className="mt-2 text-xs text-dim">{t(`thingForm.lookup.error.${error}`)}</p>}
+      {!result && !error && hits.length === 0 && <p className="mt-2 text-xs leading-relaxed text-faint">{t('thingForm.lookup.about')}</p>}
     </div>
   )
 }
 
 export function ThingForm({ id, initialCategory, initialName }: { id?: string; initialCategory?: CategoryId; initialName?: string }) {
+  const { t } = useTranslation()
   const d = useData()
   const ui = useUI()
   const { webLookup, currency } = useSettings()
@@ -170,7 +176,7 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
   const cat = category(f.category)
 
   const applySupport = (s: SupportInfo | null) => {
-    if (!s) { setSupportNote('No published support window found for this. Enter a date if you know one.'); return }
+    if (!s) { setSupportNote(t('thingForm.support.notFound')); return }
     setSupportNote(s.note)
     setF((p) => ({
       ...p,
@@ -200,7 +206,7 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
   const checkSupport = async () => {
     setChecking(true)
     try { applySupport(await findSupport(f.name)) }
-    catch { setSupportNote('Could not reach endoflife.date.') }
+    catch { setSupportNote(t('thingForm.support.unreachable')) }
     finally { setChecking(false) }
   }
 
@@ -244,13 +250,13 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
         const thing = await createThing(input)
         if (warrantyYears > 0 && f.purchaseDate) {
           await saveCoverage({
-            thingId: thing.id, type: 'warranty', name: 'Manufacturer warranty', provider: input.brand,
+            thingId: thing.id, type: 'warranty', name: t('planForm.coverage.name.warranty'), provider: input.brand,
             startDate: f.purchaseDate, endDate: dayjs(f.purchaseDate).add(warrantyYears, 'year').format(DAY),
           })
         }
         ui.close()
         ui.openThing(thing.id)
-        toast({ title: `${thing.name} is on the radar`, tone: 'ok' })
+        toast({ title: t('thingForm.added', { name: thing.name }), tone: 'ok' })
       }
     } finally {
       setSaving(false)
@@ -259,28 +265,28 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
 
   return (
     <Sheet
-      title={existing ? `Edit ${existing.name}` : 'Add a thing'}
-      subtitle={existing ? undefined : 'Only the name is required. Dates are what make it useful.'}
+      title={existing ? t('thingForm.editTitle', { name: existing.name }) : t('thingForm.addTitle')}
+      subtitle={existing ? undefined : t('thingForm.subtitle')}
       onClose={ui.close} width="max-w-xl"
       footer={<>
-        <button type="button" className="btn-ghost" onClick={ui.close}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!f.name.trim() || saving} onClick={() => void save()}>{existing ? 'Save' : 'Add thing'}</button>
+        <button type="button" className="btn-ghost" onClick={ui.close}>{t('common.cancel')}</button>
+        <button type="button" className="btn-primary" disabled={!f.name.trim() || saving} onClick={() => void save()}>{existing ? t('common.save') : t('thingForm.add')}</button>
       </>}
     >
       <div className="space-y-5">
         {webLookup && !existing && <Lookup onResult={applyLookup} />}
 
-        <Field label="Name">
-          <input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="What do you call it?" autoFocus={!webLookup || !!existing} />
+        <Field label={t('thingForm.name')}>
+          <input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder={t('thingForm.namePlaceholder')} autoFocus={!webLookup || !!existing} />
         </Field>
 
         <div>
-          <span className="label mb-1.5 block">Kind</span>
+          <span className="label mb-1.5 block">{t('thingForm.kind')}</span>
           <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">
             {CATEGORIES.map((c) => {
               const Icon = categoryIcon(c.id)
               return (
-                <button key={c.id} type="button" title={c.label} onClick={() => set('category', c.id)}
+                <button key={c.id} type="button" title={categoryLabel(c.id)} onClick={() => set('category', c.id)}
                   className={cx('flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border transition',
                     f.category === c.id ? 'border-accent/50 bg-accent/15 text-accent' : 'border-line/10 bg-bg/40 text-dim hover:border-line/25 hover:text-ink')}>
                   <Icon size={17} strokeWidth={1.7} />
@@ -288,61 +294,61 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
               )
             })}
           </div>
-          <p className="mt-1.5 text-xs text-faint">{cat.label} · usually kept about {+(cat.lifespanMonths / 12).toFixed(1)} years</p>
+          <p className="mt-1.5 text-xs text-faint">{t('thingForm.kindHint', { kind: categoryLabel(f.category), count: +(cat.lifespanMonths / 12).toFixed(1) })}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Brand"><input className="input" value={f.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Apple" /></Field>
-          <Field label="Model / config"><input className="input" value={f.model} onChange={(e) => set('model', e.target.value)} placeholder="256 GB, Blue" /></Field>
-          <Field label="Bought on"><input type="date" className="input" value={f.purchaseDate} max={today()} onChange={(e) => set('purchaseDate', e.target.value)} /></Field>
-          <Field label={`Price (${currency})`}><input className="input num" inputMode="decimal" value={f.price} onChange={(e) => set('price', e.target.value)} placeholder="0" /></Field>
-          <Field label="Bought from"><input className="input" value={f.retailer} onChange={(e) => set('retailer', e.target.value)} placeholder="Store" /></Field>
-          <Field label="Keep it for (years)" hint="Your own plan. Sets the replace-by date.">
+          <Field label={t('thingForm.brand')}><input className="input" value={f.brand} onChange={(e) => set('brand', e.target.value)} placeholder={t('thingForm.brandPlaceholder')} /></Field>
+          <Field label={t('thingForm.model')}><input className="input" value={f.model} onChange={(e) => set('model', e.target.value)} placeholder={t('thingForm.modelPlaceholder')} /></Field>
+          <Field label={t('thingForm.boughtOn')}><input type="date" className="input" value={f.purchaseDate} max={today()} onChange={(e) => set('purchaseDate', e.target.value)} /></Field>
+          <Field label={t('thingForm.price', { currency })}><input className="input num" inputMode="decimal" value={f.price} onChange={(e) => set('price', e.target.value)} placeholder="0" /></Field>
+          <Field label={t('thingForm.boughtFrom')}><input className="input" value={f.retailer} onChange={(e) => set('retailer', e.target.value)} placeholder={t('thingForm.boughtFromPlaceholder')} /></Field>
+          <Field label={t('thingForm.keepFor')} hint={t('thingForm.keepForHint')}>
             <input className="input num" inputMode="decimal" value={f.lifespanYears} onChange={(e) => set('lifespanYears', e.target.value)} placeholder={String(+(cat.lifespanMonths / 12).toFixed(1))} />
           </Field>
         </div>
 
         <div>
-          <span className="label mb-1.5 block">Security updates end</span>
+          <span className="label mb-1.5 block">{t('thingForm.support.label')}</span>
           <div className="flex gap-2">
             <input type="date" className="input" value={f.supportEnd} onChange={(e) => { set('supportEnd', e.target.value); set('supportBasis', 'manual') }} />
             {webLookup && (
               <button type="button" className="btn h-10 shrink-0" disabled={!f.name.trim() || checking} onClick={() => void checkSupport()}>
-                {checking ? <LoaderCircle size={15} className="animate-spin" /> : <ScanSearch size={15} />} Look up
+                {checking ? <LoaderCircle size={15} className="animate-spin" /> : <ScanSearch size={15} />} {t('thingForm.support.lookUp')}
               </button>
             )}
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-faint">
-            {supportNote ?? (f.supportEnd && f.supportBasis === 'estimate' ? 'An estimate from the maker\'s usual support window.' : 'The day it stops being safe to rely on. Leave empty if it does not apply.')}
+            {supportNote ?? (f.supportEnd && f.supportBasis === 'estimate' ? t('thingForm.support.estimateHint') : t('thingForm.support.hint'))}
           </p>
         </div>
 
         {!existing && (
           <div>
-            <span className="label mb-1.5 block">Warranty</span>
+            <span className="label mb-1.5 block">{t('thingForm.warranty.label')}</span>
             <div className="flex flex-wrap gap-1.5">
               {[0, 1, 2, 3].map((y) => (
                 <button key={y} type="button" onClick={() => setWarrantyYears(y)}
                   className={cx('h-8 rounded-full border px-3 text-[13px] font-medium transition', warrantyYears === y ? 'border-ok/40 bg-ok/15 text-ok' : 'border-line/10 bg-bg/40 text-dim hover:text-ink')}>
-                  {y === 0 ? 'None' : `${y} year${y > 1 ? 's' : ''}`}
+                  {y === 0 ? t('thingForm.warranty.none') : t('thingForm.warranty.years', { count: y })}
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-xs text-faint">{f.purchaseDate ? 'Counted from the day you bought it. Add extended plans afterwards.' : 'Needs a purchase date to start counting.'}</p>
+            <p className="mt-1.5 text-xs text-faint">{f.purchaseDate ? t('thingForm.warranty.fromPurchase') : t('thingForm.warranty.needsDate')}</p>
           </div>
         )}
 
         {existing?.status === 'retired' && (
-          <Field label={`Sold for (${currency})`}><input className="input num" inputMode="decimal" value={f.resaleValue} onChange={(e) => set('resaleValue', e.target.value)} placeholder="0" /></Field>
+          <Field label={t('thingForm.soldFor', { currency })}><input className="input num" inputMode="decimal" value={f.resaleValue} onChange={(e) => set('resaleValue', e.target.value)} placeholder="0" /></Field>
         )}
 
         <HouseholdFields
-          value={f.who} onChange={(who) => set('who', who)} noun="thing" holderLabel="Whose is it?"
-          holderHint={existing && (existing.ownerMemberId ?? '') !== f.who.holder ? 'Handing it on keeps its dates, coverage and plans, and remembers who had it before.' : undefined}
+          value={f.who} onChange={(who) => set('who', who)} noun="thing" holderLabel={t('thingForm.holderLabel')}
+          holderHint={existing && (existing.ownerMemberId ?? '') !== f.who.holder ? t('thingForm.handOverHint') : undefined}
         />
 
-        <Field label="Notes">
-          <textarea className="input" rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Serial number, battery health, quirks…" />
+        <Field label={t('thingForm.notes')}>
+          <textarea className="input" rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('thingForm.notesPlaceholder')} />
         </Field>
       </div>
     </Sheet>

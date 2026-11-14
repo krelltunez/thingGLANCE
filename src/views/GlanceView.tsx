@@ -3,13 +3,14 @@
 
 import { useMemo } from 'react'
 import dayjs from 'dayjs'
+import { Trans, useTranslation } from 'react-i18next'
 import { ArrowRight, CircleCheck, PiggyBank, Plus, Radar, Sparkles } from 'lucide-react'
 import type { HorizonEvent } from '@/core/types'
 import { DAY, addDays, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
-import { EVENT_META } from '@/core/horizon'
+import { EVENT_META, eventKindLabel } from '@/core/horizon'
 import { replacementFund } from '@/core/health'
 import { fundByOwner } from '@/core/household'
-import { forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
+import { cycleShort, forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
@@ -54,18 +55,22 @@ const TRACES: { d: string; nodes: [number, number][]; seconds: number; delay: nu
 function CircuitTraces() {
   return (
     <svg aria-hidden="true" viewBox="0 0 1200 68" preserveAspectRatio="xMidYMid slice" className="pointer-events-none absolute inset-0 h-full w-full text-accent">
-      {TRACES.map((t, i) => (
-        <g key={i} className="animate-trace" style={{ animationDuration: `${t.seconds}s`, animationDelay: `${t.delay}s` }}>
-          <path d={t.d} fill="none" stroke="currentColor" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          {t.nodes.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.8} fill="currentColor" />)}
+      {TRACES.map((trace, i) => (
+        <g key={i} className="animate-trace" style={{ animationDuration: `${trace.seconds}s`, animationDelay: `${trace.delay}s` }}>
+          <path d={trace.d} fill="none" stroke="currentColor" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          {trace.nodes.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.8} fill="currentColor" />)}
         </g>
       ))}
     </svg>
   )
 }
 
+// The kinds named under the strip, in the order their lanes run.
+const LEGEND = ['coverage-end', 'support-end', 'replace', 'renewal', 'trial-end'] as const
+
 // Twelve months at a glance: one pip per event, in a lane per kind.
 function HorizonStrip({ events }: { events: HorizonEvent[] }) {
+  const { t } = useTranslation()
   const ui = useUI()
   const { openEvent } = useEventActions()
   const start = dayjs().startOf('month')
@@ -77,9 +82,9 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
   return (
     <div className="mt-6">
       <div className="mb-2 flex items-center justify-between">
-        <p className="label">Next 12 months</p>
+        <p className="label">{t('glance.strip.title')}</p>
         <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('horizon')}>
-          Open horizon <ArrowRight size={12} />
+          {t('glance.strip.open')} <ArrowRight size={12} />
         </button>
       </div>
       <div className="relative h-[68px] overflow-hidden rounded-xl border border-line/10 bg-bg/50">
@@ -87,7 +92,7 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
           const m = start.add(i, 'month')
           return (
             <div key={i} className="absolute inset-y-0 border-l border-line/[0.07] first:border-l-0" style={{ left: `${pos(m.format(DAY))}%`, width: `${(m.daysInMonth() / total) * 100}%` }}>
-              <span className="label absolute bottom-1 left-1.5 !text-[9px]">{m.format(m.month() === 0 || i === 0 ? 'MMM YY' : 'MMM')}</span>
+              <span className="label absolute bottom-1 left-1.5 !text-[9px]">{fmtDay(m.format(DAY), m.month() === 0 || i === 0 ? 'MMM YY' : 'MMM')}</span>
             </div>
           )
         })}
@@ -105,9 +110,9 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-        {(['coverage-end', 'support-end', 'replace', 'renewal', 'trial-end'] as const).map((t) => (
-          <span key={t} className="inline-flex items-center gap-1.5 text-[11px] text-faint">
-            <span className={cx('h-1.5 w-1.5 rounded-full', TONES[EVENT_META[t].tone].solid)} />{EVENT_META[t].label}
+        {LEGEND.map((kind) => (
+          <span key={kind} className="inline-flex items-center gap-1.5 text-[11px] text-faint">
+            <span className={cx('h-1.5 w-1.5 rounded-full', TONES[EVENT_META[kind].tone].solid)} />{eventKindLabel(kind)}
           </span>
         ))}
       </div>
@@ -116,12 +121,13 @@ function HorizonStrip({ events }: { events: HorizonEvent[] }) {
 }
 
 export function GlanceView() {
+  const { t } = useTranslation()
   const d = useData()
   const ui = useUI()
   const { currency } = useSettings()
   const ref = today()
 
-  const monthly = d.visibleSubs.reduce((t, s) => t + monthlyCost(s), 0)
+  const monthly = d.visibleSubs.reduce((sum, s) => sum + monthlyCost(s), 0)
   const fund = useMemo(() => replacementFund(d.activeThings, d.coverages), [d.activeThings, d.coverages])
   const months = useMemo(() => forecast(d.visibleSubs, 12), [d.visibleSubs])
   const fundSplit = useMemo(() => fundByOwner(fund.rows), [fund])
@@ -140,23 +146,28 @@ export function GlanceView() {
     return { total, count }
   }, [d.visibleSubs, ref])
 
-  const covered = d.activeThings.filter((t) => d.life.get(t.id)?.covered).length
+  const covered = d.activeThings.filter((thing) => d.life.get(thing.id)?.covered).length
   const fleet = [...d.activeThings].sort((a, b) => (d.life.get(a.id)?.daysLeft ?? 1e9) - (d.life.get(b.id)?.daysLeft ?? 1e9))
   const decided = d.events.filter((e) => (e.decision?.state === 'dismissed' || e.decision?.state === 'done') && e.days > -30 && e.days < 200).slice(0, 4)
   const urgent = d.queue.filter((e) => e.severity === 'urgent' || e.severity === 'past').length
 
   const headline = d.queue.length === 0
-    ? 'All clear. Nothing needs you right now.'
-    : `${d.queue.length} ${d.queue.length === 1 ? 'thing wants' : 'things want'} a decision.`
+    ? t('glance.headline.clear')
+    : t('glance.headline.decide', { count: d.queue.length })
   const first = d.queue[0]
+  // "Overdue: <the date> for <the thing>, <when>." The date's title is a button.
+  const nextUp = first && {
+    values: { title: first.title.toLowerCase(), detail: first.detail, when: relative(first.days) },
+    components: { item: <button type="button" className="font-medium text-ink underline decoration-accent/50 underline-offset-4 hover:decoration-accent" onClick={() => first.thingId ? ui.openThing(first.thingId) : ui.open({ type: 'subscription', id: first.subscriptionId })} /> },
+  }
 
   if (d.ready && d.things.length === 0 && d.subscriptions.length === 0) {
     return (
       <div className="panel hud mx-auto mt-10 max-w-xl">
         <Empty
-          icon={Radar} title="Nothing on the radar yet"
-          body="Add your first thing, a laptop, a phone, anything with a warranty, a plan or a shelf life, and thingGLANCE starts watching its dates for you."
-          action={<button type="button" className="btn-primary" onClick={() => ui.open({ type: 'thing' })}><Plus size={16} /> Add a thing</button>}
+          icon={Radar} title={t('glance.empty.title')}
+          body={t('glance.empty.body')}
+          action={<button type="button" className="btn-primary" onClick={() => ui.open({ type: 'thing' })}><Plus size={16} /> {t('glance.addThing')}</button>}
         />
       </div>
     )
@@ -169,20 +180,23 @@ export function GlanceView() {
           <div className="animate-rise">
             <p className="label flex items-center gap-2">
               <span className={cx('h-1.5 w-1.5 rounded-full', urgent ? 'animate-pulse2 bg-bad' : d.queue.length ? 'bg-warn' : 'bg-ok')} />
-              {dayjs().format('ddd, MMM D')} · {urgent ? `${urgent} urgent` : d.queue.length ? 'heads up' : 'nominal'}
+              {fmtDay(ref, 'ddd, MMM D')} · {urgent ? t('glance.status.urgent', { count: urgent }) : d.queue.length ? t('glance.status.headsUp') : t('glance.status.nominal')}
             </p>
             <h1 className="mt-2.5 text-[26px] font-semibold leading-[1.15] tracking-tight text-ink lg:text-[34px]">{headline}</h1>
             <p className="mt-2 text-sm leading-relaxed text-dim lg:text-[15px]">
-              {first
-                ? <>{first.days < 0 ? 'Overdue' : 'Next up'}: <button type="button" className="font-medium text-ink underline decoration-accent/50 underline-offset-4 hover:decoration-accent" onClick={() => first.thingId ? ui.openThing(first.thingId) : ui.open({ type: 'subscription', id: first.subscriptionId })}>{first.title.toLowerCase()}</button> for {first.detail}, {relative(first.days)}.</>
-                : <>You are watching {d.activeThings.length} {d.activeThings.length === 1 ? 'thing' : 'things'} and {d.visibleSubs.filter((s) => s.status !== 'cancelled').length} plans. The next date is a way off.</>}
+              {nextUp
+                ? (first.days < 0 ? <Trans i18nKey="glance.next.overdue" {...nextUp} /> : <Trans i18nKey="glance.next.upcoming" {...nextUp} />)
+                : t('glance.watching.sentence', {
+                  things: t('glance.watching.things', { count: d.activeThings.length }),
+                  plans: t('glance.watching.plans', { count: d.visibleSubs.filter((s) => s.status !== 'cancelled').length }),
+                })}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-            <Stat i={0} label="In service" value={String(d.activeThings.length)} sub={`${covered} under coverage`} />
-            <Stat i={1} label="Plans / month" value={money(monthly, currency)} sub={`${money(monthly * 12, currency, { compact: true })} a year`} />
-            <Stat i={2} label="Next 30 days" value={money(next30.total, currency)} sub={`${next30.count} ${next30.count === 1 ? 'charge' : 'charges'} coming`} />
-            <Stat i={3} label="Upgrade fund" value={money(fund.monthly, currency)} sub="monthly target" />
+            <Stat i={0} label={t('glance.stat.inService')} value={String(d.activeThings.length)} sub={t('glance.stat.underCoverage', { count: covered })} />
+            <Stat i={1} label={t('glance.stat.plansMonth')} value={money(monthly, currency)} sub={t('glance.stat.aYear', { amount: money(monthly * 12, currency, { compact: true }) })} />
+            <Stat i={2} label={t('glance.stat.next30')} value={money(next30.total, currency)} sub={t('glance.stat.charges', { count: next30.count })} />
+            <Stat i={3} label={t('glance.fund.title')} value={money(fund.monthly, currency)} sub={t('glance.stat.monthlyTarget')} />
           </div>
         </div>
         <HorizonStrip events={d.events} />
@@ -192,22 +206,22 @@ export function GlanceView() {
         <section className="panel min-w-0 p-4 lg:col-span-7 lg:p-5">
           <header className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-[15px] font-semibold text-ink">Needs a decision</h2>
-              <p className="text-xs text-dim">Clear each one when you have decided, or hand it to dayGLANCE.</p>
+              <h2 className="text-[15px] font-semibold text-ink">{t('glance.queue.title')}</h2>
+              <p className="text-xs text-dim">{t('glance.queue.hint')}</p>
             </div>
             {d.queue.length > 0 && <span className="num rounded-md border border-line/10 bg-bg/50 px-2 py-1 text-xs text-dim">{d.queue.length}</span>}
           </header>
           {d.queue.length === 0
-            ? <Empty icon={CircleCheck} title="Queue is empty" body="When a warranty is about to lapse, a plan is about to renew or a device nears the end of its support, it shows up here." />
+            ? <Empty icon={CircleCheck} title={t('glance.queue.emptyTitle')} body={t('glance.queue.emptyBody')} />
             : <div className="stagger space-y-2">{d.queue.map((e, i) => <div key={e.key} style={{ '--i': i } as React.CSSProperties}><EventRow event={e} /></div>)}</div>}
           {unassigned > 0 && (
             <p className="mt-3 px-1 text-xs leading-relaxed text-faint">
-              {unassigned === d.queue.length ? (unassigned === 1 ? 'This one falls' : 'These fall') : `${unassigned} of these fall`} to nobody in particular, so everyone is asked. The hand button makes one yours.
+              {unassigned < d.queue.length ? t('glance.queue.unassignedSome', { count: unassigned }) : unassigned === 1 ? t('glance.queue.unassignedOne') : t('glance.queue.unassignedAll')}
             </p>
           )}
           {decided.length > 0 && (
             <div className="mt-4 border-t border-line/10 pt-3">
-              <p className="label mb-1">Recently cleared</p>
+              <p className="label mb-1">{t('glance.queue.recentlyCleared')}</p>
               {decided.map((e) => <DecidedRow key={e.key} event={e} />)}
             </div>
           )}
@@ -216,24 +230,24 @@ export function GlanceView() {
         <section className="panel min-w-0 p-4 lg:col-span-5 lg:p-5">
           <header className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-[15px] font-semibold text-ink">Fleet</h2>
-              <p className="text-xs text-dim">Closest to the end of its window first.</p>
+              <h2 className="text-[15px] font-semibold text-ink">{t('glance.fleet.title')}</h2>
+              <p className="text-xs text-dim">{t('glance.fleet.hint')}</p>
             </div>
-            <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('things')}>All things <ArrowRight size={12} /></button>
+            <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('things')}>{t('glance.fleet.all')} <ArrowRight size={12} /></button>
           </header>
           <div className="stagger space-y-1">
-            {fleet.slice(0, FLEET_SHOWN).map((t, i) => {
-              const life = d.life.get(t.id)!
+            {fleet.slice(0, FLEET_SHOWN).map((thing, i) => {
+              const life = d.life.get(thing.id)!
               const tone = verdictTone(life.verdict)
               return (
-                <button key={t.id} type="button" style={{ '--i': i } as React.CSSProperties} onClick={() => ui.openThing(t.id)}
+                <button key={thing.id} type="button" style={{ '--i': i } as React.CSSProperties} onClick={() => ui.openThing(thing.id)}
                   className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-line/5">
                   <Ring value={life.remaining} size={40} stroke={3.5} tone={tone}>
                     <span className={cx('num text-[10px] font-semibold', TONES[tone].text)}>{life.remaining != null ? Math.round(life.remaining * 100) : '–'}</span>
                   </Ring>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-ink">{t.name}</span>
+                      <span className="truncate text-sm font-medium text-ink">{thing.name}</span>
                     </span>
                     <span className="mt-1.5 block"><LifeBar life={life} /></span>
                   </span>
@@ -245,7 +259,7 @@ export function GlanceView() {
           </div>
           {fleet.length > FLEET_SHOWN && (
             <button type="button" className="mt-1 w-full rounded-lg px-2 py-1.5 text-left text-xs text-dim transition hover:bg-line/5 hover:text-ink" onClick={() => ui.setView('things')}>
-              +{fleet.length - FLEET_SHOWN} more in Things
+              {t('glance.fleet.more', { count: fleet.length - FLEET_SHOWN })}
             </button>
           )}
         </section>
@@ -255,10 +269,10 @@ export function GlanceView() {
         <section className="panel flex min-w-0 flex-col p-4 lg:col-span-7 lg:p-5">
           <header className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[15px] font-semibold text-ink">Plan charges, month by month</h2>
-              <p className="text-xs text-dim">What will actually leave your account. Annual renewals are the spikes.</p>
+              <h2 className="text-[15px] font-semibold text-ink">{t('glance.charges.title')}</h2>
+              <p className="text-xs text-dim">{t('glance.charges.hint')}</p>
             </div>
-            <button type="button" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('plans')}>Plans <ArrowRight size={12} /></button>
+            <button type="button" className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-accent hover:underline" onClick={() => ui.setView('plans')}>{t('glance.charges.plans')} <ArrowRight size={12} /></button>
           </header>
           <ChargesChart months={months} className="min-h-44 flex-1" />
         </section>
@@ -267,15 +281,15 @@ export function GlanceView() {
           <header className="mb-3 flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-warn/25 bg-warn/10 text-warn"><PiggyBank size={17} /></span>
             <div>
-              <h2 className="text-[15px] font-semibold text-ink">Upgrade fund</h2>
+              <h2 className="text-[15px] font-semibold text-ink">{t('glance.fund.title')}</h2>
               <p className="text-xs leading-relaxed text-dim">
-                Set aside <span className="num font-semibold text-ink">{money(fund.monthly, currency)}</span> a month and every replacement is paid for the day it is due.
+                <Trans i18nKey="glance.fund.setAside" values={{ amount: money(fund.monthly, currency) }} components={{ b: <span className="num font-semibold text-ink" /> }} />
               </p>
             </div>
           </header>
           {d.multiUser && !d.focusId && fundSplit.size > 0 && <div className="mb-3"><MemberSplit split={fundSplit} /></div>}
           {fund.rows.length === 0
-            ? <p className="py-6 text-center text-sm text-dim"><Sparkles size={14} className="mr-1 inline text-accent" />Add prices and purchase dates to see this.</p>
+            ? <p className="py-6 text-center text-sm text-dim"><Sparkles size={14} className="mr-1 inline text-accent" />{t('glance.fund.empty')}</p>
             : (
               <div className="space-y-0.5">
                 {fund.rows.slice(0, 5).map(({ thing, monthly: m, monthsLeft, lifeEnd }) => (
@@ -283,9 +297,9 @@ export function GlanceView() {
                     <ThingAvatar thing={thing} size={28} className="!rounded-lg" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm text-ink">{thing.name}</span>
-                      <span className="block text-[11px] text-faint">{monthsLeft <= 0 ? 'due now' : `replace ${fmtDay(lifeEnd, 'MMM YYYY')} · ${span(Math.round(monthsLeft * 30.44))} left`}</span>
+                      <span className="block text-[11px] text-faint">{monthsLeft <= 0 ? t('glance.fund.dueNow') : `${t('glance.fund.replace', { date: fmtDay(lifeEnd, 'MMM YYYY') })} · ${t('glance.fund.left', { span: span(Math.round(monthsLeft * 30.44)) })}`}</span>
                     </span>
-                    <span className="num shrink-0 text-sm text-ink">{money(m, currency, { cents: false })}<span className="text-faint">{monthsLeft <= 0 ? '' : '/mo'}</span></span>
+                    <span className="num shrink-0 text-sm text-ink">{money(m, currency, { cents: false })}<span className="text-faint">{monthsLeft <= 0 ? '' : `/${cycleShort('monthly')}`}</span></span>
                   </button>
                 ))}
               </div>

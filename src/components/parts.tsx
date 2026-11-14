@@ -1,13 +1,13 @@
 // Domain-aware building blocks shared by the screens.
 
 import { useState } from 'react'
-import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { Check, Hand, Send, Undo2 } from 'lucide-react'
-import type { HorizonEvent, Thing } from '@/core/types'
-import { VERDICTS, type Lifecycle, type Verdict } from '@/core/health'
+import type { Day, HorizonEvent, Thing } from '@/core/types'
+import { verdictLabel, type Lifecycle, type Verdict } from '@/core/health'
 import { EVENT_META } from '@/core/horizon'
 import { daysBetween, fmtDay, fmtMonth, today } from '@/core/dates'
-import { money, type ForecastMonth } from '@/core/money'
+import { cycleShort, money, type ForecastMonth } from '@/core/money'
 import { isIntentsEnabled } from '@/intents/config'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
@@ -32,12 +32,13 @@ export function ThingAvatar({ thing, size = 40, className }: { thing: Pick<Thing
 }
 
 export function VerdictChip({ verdict }: { verdict: Verdict }) {
-  return <Chip tone={verdictTone(verdict)}><span className={cx('h-1.5 w-1.5 rounded-full', TONES[verdictTone(verdict)].solid)} />{VERDICTS[verdict].label}</Chip>
+  return <Chip tone={verdictTone(verdict)}><span className={cx('h-1.5 w-1.5 rounded-full', TONES[verdictTone(verdict)].solid)} />{verdictLabel(verdict)}</Chip>
 }
 
 // The lifecycle in one line: purchase on the left, the end of its window on
 // the right, filled up to today, with ticks where coverage and support end.
 export function LifeBar({ life, tall = false }: { life: Lifecycle; tall?: boolean }) {
+  const { t } = useTranslation()
   if (!life.start || !life.lifeEnd) return <div className={cx('rounded-full bg-line/10', tall ? 'h-2' : 'h-1')} />
   const total = Math.max(1, daysBetween(life.start, life.lifeEnd))
   const pos = (d: string) => Math.min(100, Math.max(0, (daysBetween(life.start!, d) / total) * 100))
@@ -47,10 +48,10 @@ export function LifeBar({ life, tall = false }: { life: Lifecycle; tall?: boolea
     <div className={cx('relative rounded-full bg-line/10', tall ? 'h-2' : 'h-1')}>
       <div className={cx('absolute inset-y-0 left-0 rounded-full', TONES[tone].bar)} style={{ width: `${now}%` }} />
       {life.warrantyEnd && life.warrantyEnd < life.lifeEnd && (
-        <span className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-ok" style={{ left: `${pos(life.warrantyEnd)}%` }} title={`Coverage ends ${fmtDay(life.warrantyEnd)}`} />
+        <span className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-ok" style={{ left: `${pos(life.warrantyEnd)}%` }} title={t('parts.coverageEnds', { when: fmtDay(life.warrantyEnd) })} />
       )}
       {life.supportEnd && life.lifeEndReason === 'plan' && life.supportEnd > life.start && (
-        <span className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-accent" style={{ left: `${pos(life.supportEnd)}%` }} title={`Support ends ${fmtDay(life.supportEnd)}`} />
+        <span className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-accent" style={{ left: `${pos(life.supportEnd)}%` }} title={t('parts.supportEnds', { when: fmtDay(life.supportEnd) })} />
       )}
       <span className={cx('absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-panel', TONES[tone].solid)} style={{ left: `${now}%` }} />
     </div>
@@ -58,6 +59,7 @@ export function LifeBar({ life, tall = false }: { life: Lifecycle; tall?: boolea
 }
 
 export function EventRow({ event, compact = false }: { event: HorizonEvent; compact?: boolean }) {
+  const { t } = useTranslation()
   const { currency } = useSettings()
   const actions = useEventActions()
   const meta = EVENT_META[event.type]
@@ -70,6 +72,7 @@ export function EventRow({ event, compact = false }: { event: HorizonEvent; comp
   // one-tap "I'll deal with this" instead.
   const handler = d.multiUser ? d.handlerOf(event) : null
   const canTake = !compact && d.needsSomeone(event) && !!d.meId && d.userIds.has(d.meId)
+  const when = fmtDay(event.date, 'MMM D')
   return (
     <div className="group flex items-center gap-3 rounded-xl border border-line/10 bg-raised/40 px-3 py-2.5 transition hover:border-line/25 hover:bg-raised/70">
       <TBadge days={event.days} tone={tone} />
@@ -77,21 +80,21 @@ export function EventRow({ event, compact = false }: { event: HorizonEvent; comp
       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => actions.openEvent(event)}>
         <span className="block truncate text-sm font-medium text-ink">{event.title}</span>
         <span className="block truncate text-xs text-dim">
-          {event.detail} · {fmtDay(event.date, 'MMM D')}
+          {event.detail} · {when}
           {event.amount != null && event.type !== 'replace' && <> · <span className="num">{money(event.amount, currency)}</span></>}
         </span>
       </button>
-      {sent && <Chip tone="accent" icon={Send} className="hidden sm:inline-flex">In dayGLANCE</Chip>}
-      {handler && <Chip tone={handler === d.meId ? 'accent' : 'dim'} className="hidden sm:inline-flex">{handler === d.meId ? 'You' : d.memberName(handler)}</Chip>}
+      {sent && <Chip tone="accent" icon={Send} className="hidden sm:inline-flex">{t('parts.inDayglance')}</Chip>}
+      {handler && <Chip tone={handler === d.meId ? 'accent' : 'dim'} className="hidden sm:inline-flex">{handler === d.meId ? t('parts.you') : d.memberName(handler)}</Chip>}
       {!compact && (
         <div className="flex shrink-0 items-center gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
           {!sent && isIntentsEnabled() && (
-            <button type="button" className="icon-btn h-8 w-8" title="Send to dayGLANCE as a task" onClick={() => void actions.send(event)}><Send size={14} /></button>
+            <button type="button" className="icon-btn h-8 w-8" title={t('parts.sendToDayglance')} onClick={() => void actions.send(event)}><Send size={14} /></button>
           )}
           {canTake && (
-            <button type="button" className="icon-btn h-8 w-8 hover:!border-accent/40 hover:!text-accent" title="I'll deal with this" aria-label="I'll deal with this" onClick={() => void actions.take(event)}><Hand size={14} /></button>
+            <button type="button" className="icon-btn h-8 w-8 hover:!border-accent/40 hover:!text-accent" title={t('parts.take')} aria-label={t('parts.take')} onClick={() => void actions.take(event)}><Hand size={14} /></button>
           )}
-          <button type="button" className="icon-btn h-8 w-8 hover:!border-ok/40 hover:!text-ok" title="Done with this" onClick={() => void actions.dismiss(event)}><Check size={15} /></button>
+          <button type="button" className="icon-btn h-8 w-8 hover:!border-ok/40 hover:!text-ok" title={t('parts.doneWithThis')} onClick={() => void actions.dismiss(event)}><Check size={15} /></button>
         </div>
       )}
     </div>
@@ -99,20 +102,24 @@ export function EventRow({ event, compact = false }: { event: HorizonEvent; comp
 }
 
 export function DecidedRow({ event }: { event: HorizonEvent }) {
+  const { t } = useTranslation()
   const actions = useEventActions()
   return (
     <div className="flex items-center gap-3 px-1 py-1.5 text-xs text-faint">
       <Check size={13} className="text-ok" />
       <span className="min-w-0 flex-1 truncate line-through decoration-line/30">{event.title} · {event.detail}</span>
-      <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => void actions.restore(event)}><Undo2 size={12} /> Restore</button>
+      <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => void actions.restore(event)}><Undo2 size={12} /> {t('parts.restore')}</button>
     </div>
   )
 }
+
+const monthName = (month: Day): string => fmtDay(month, 'MMM')
 
 // Plan charges for the months ahead: one bar per month with what leaves the
 // account written above it. The Glance and Plans pages share it so the two
 // charts cannot drift. The parent sets the height (a fixed one, or flex-1).
 export function ChargesChart({ months, className }: { months: ForecastMonth[]; className?: string }) {
+  const { t } = useTranslation()
   const { currency } = useSettings()
   const max = Math.max(1, ...months.map((m) => m.total))
   // On a phone there is no room to label twelve bars, so only the spikes
@@ -131,7 +138,7 @@ export function ChargesChart({ months, className }: { months: ForecastMonth[]; c
             <div className="pointer-events-none absolute -top-1 z-10 hidden w-max max-w-[230px] -translate-y-full rounded-lg border border-line/15 bg-raised px-2.5 py-2 text-left shadow-xl group-hover:block">
               <p className="text-xs font-semibold text-ink">{fmtMonth(m.month)} · <span className="num">{money(m.total, currency)}</span></p>
               {m.items.slice(0, 5).map((it) => <p key={it.id + it.date} className="truncate text-[11px] text-dim">{it.name} <span className="num text-faint">{money(it.amount, currency)}</span></p>)}
-              {m.items.length > 5 && <p className="text-[11px] text-faint">+{m.items.length - 5} more</p>}
+              {m.items.length > 5 && <p className="text-[11px] text-faint">{t('parts.more', { count: m.items.length - 5 })}</p>}
             </div>
             {m.total > 0 && (
               <span className={cx('num whitespace-nowrap text-[10px] leading-none', isSpike(m.total) ? 'text-dim' : 'text-faint', !keep && 'hidden sm:block')}>
@@ -143,7 +150,7 @@ export function ChargesChart({ months, className }: { months: ForecastMonth[]; c
               className={cx('w-full rounded-t-md transition-all duration-700 group-hover:brightness-125', i === 0 ? 'bg-sub' : 'bg-sub/35')}
               style={{ height: `max(3px, calc((100% - 2.5rem) * ${m.total / max}))` }}
             />
-            <span className="label !text-[9px] leading-none">{dayjs(m.month).format('MMM')}</span>
+            <span className="label !text-[9px] leading-none">{monthName(m.month)}</span>
           </div>
         )
       })}
@@ -154,17 +161,19 @@ export function ChargesChart({ months, className }: { months: ForecastMonth[]; c
 // An amount split by member (null is the household), as a row of chips. Used
 // for the upgrade fund by owner and plan costs by payer. This device's own
 // member reads "You" and stands out: "what I pay" is the question asked most.
-export function MemberSplit({ split, suffix = '/mo' }: { split: Map<string | null, number>; suffix?: string }) {
+export function MemberSplit({ split, suffix }: { split: Map<string | null, number>; suffix?: string }) {
+  const { t } = useTranslation()
   const d = useData()
   const { currency } = useSettings()
   const rows = [...split.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+  const tail = suffix ?? `/${cycleShort('monthly')}`
   if (rows.length === 0) return null
   return (
     <div className="flex flex-wrap gap-1.5">
       {rows.map(([id, amount]) => (
         <Chip key={id ?? 'household'} tone={id && id === d.meId ? 'accent' : 'dim'}>
-          {id === null ? 'Household' : id === d.meId ? 'You' : d.memberName(id) ?? 'Someone removed'}
-          <span className="num font-semibold">{money(amount, currency, { cents: false })}{suffix}</span>
+          {id === null ? t('common.household') : id === d.meId ? t('parts.you') : d.memberName(id) ?? t('parts.someoneRemoved')}
+          <span className="num font-semibold">{money(amount, currency, { cents: false })}{tail}</span>
         </Chip>
       ))}
     </div>

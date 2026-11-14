@@ -10,6 +10,7 @@
 
 import type { DataSet, Day, DeviceLink, HorizonEvent, Member, OwnershipSpan, Subscription, Thing } from './types'
 import { monthlyCost } from './money'
+import { listText, tr } from './text'
 
 // ── Who is a user ────────────────────────────────────────────────────────────
 
@@ -166,13 +167,12 @@ export function memberTies(memberId: string, data: Pick<DataSet, 'things' | 'sub
 export const isTied = (t: MemberTies): boolean => t.owns + t.pays + t.responsible > 0
 
 export function describeTies(t: MemberTies): string {
-  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
   const parts = [
-    t.owns ? `owns ${n(t.owns, 'thing', 'things')}` : '',
-    t.pays ? `pays for ${n(t.pays, 'plan', 'plans')}` : '',
-    t.responsible ? `is responsible for ${n(t.responsible, 'item', 'items')}` : '',
+    t.owns ? tr('ties.owns', { count: t.owns }) : '',
+    t.pays ? tr('ties.pays', { count: t.pays }) : '',
+    t.responsible ? tr('ties.responsible', { count: t.responsible }) : '',
   ].filter(Boolean)
-  return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+  return listText(parts)
 }
 
 // Handing a member's things and plans to someone else (or to the household),

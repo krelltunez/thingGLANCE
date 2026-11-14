@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Cloud, CloudAlert, CloudOff, LayoutDashboard, Lock, Package, Plus, RefreshCw, Repeat, Search,
   Settings as SettingsIcon, Sparkles, Telescope, Users, type LucideIcon,
@@ -28,28 +29,31 @@ import { needsWelcome } from '@/state/welcome'
 import { Toasts, Wordmark } from '@/components/ui'
 import { cx } from '@/components/kit'
 
-const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
-  { id: 'glance', label: 'Glance', icon: LayoutDashboard },
-  { id: 'horizon', label: 'Horizon', icon: Telescope },
-  { id: 'things', label: 'Things', icon: Package },
-  { id: 'plans', label: 'Plans', icon: Repeat },
+// The names are in the catalog under app.nav, keyed by the view's id.
+const VIEWS: { id: View; icon: LucideIcon }[] = [
+  { id: 'glance', icon: LayoutDashboard },
+  { id: 'horizon', icon: Telescope },
+  { id: 'things', icon: Package },
+  { id: 'plans', icon: Repeat },
 ]
 
 const isView = (v: string | null): v is View => !!v && VIEWS.some((x) => x.id === v)
 
 function SyncButton({ onOpen }: { onOpen: (m: Modal) => void }) {
+  const { t } = useTranslation()
   const sync = useSync()
-  const map: Record<typeof sync.phase, { icon: LucideIcon; cls: string; title: string; spin?: boolean }> = {
-    off: { icon: CloudOff, cls: 'text-faint', title: 'Not syncing. Connect GLANCEvault' },
-    locked: { icon: Lock, cls: 'text-warn !border-warn/40', title: 'Enter your sync passphrase' },
-    idle: { icon: Cloud, cls: 'text-ok', title: 'Connected to GLANCEvault' },
-    syncing: { icon: RefreshCw, cls: 'text-accent', title: 'Syncing…', spin: true },
-    synced: { icon: Cloud, cls: 'text-ok', title: 'Synced with GLANCEvault' },
-    error: { icon: CloudAlert, cls: 'text-bad !border-bad/40', title: 'Sync needs attention' },
+  const map: Record<typeof sync.phase, { icon: LucideIcon; cls: string; spin?: boolean }> = {
+    off: { icon: CloudOff, cls: 'text-faint' },
+    locked: { icon: Lock, cls: 'text-warn !border-warn/40' },
+    idle: { icon: Cloud, cls: 'text-ok' },
+    syncing: { icon: RefreshCw, cls: 'text-accent', spin: true },
+    synced: { icon: Cloud, cls: 'text-ok' },
+    error: { icon: CloudAlert, cls: 'text-bad !border-bad/40' },
   }
   const s = map[sync.phase]
+  const title = t(`app.sync.${sync.phase}`)
   return (
-    <button type="button" className={cx('icon-btn', s.cls)} title={s.title} aria-label={s.title}
+    <button type="button" className={cx('icon-btn', s.cls)} title={title} aria-label={title}
       onClick={() => onOpen(sync.phase === 'locked' ? { type: 'passphrase' } : { type: 'settings', section: 'vault' })}>
       <s.icon size={16} className={cx(s.spin && 'animate-spin')} />
     </button>
@@ -60,20 +64,21 @@ function SyncButton({ onOpen }: { onOpen: (m: Modal) => void }) {
 // the ones they deal with, and the household's). A native select under a
 // styled face, so it is a proper picker on a phone and costs one icon's width.
 function MemberFilter() {
+  const { t } = useTranslation()
   const d = useData()
   if (!d.multiUser) return null
   const focus = d.members.find((m) => m.id === d.focusId)
   // The device's own member first: it is the choice made most often.
   const ordered = [...d.members].sort((a, b) => Number(b.id === d.meId) - Number(a.id === d.meId))
   return (
-    <label title="Whose things to show"
+    <label title={t('app.filter.label')}
       className={cx('relative flex h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-[13px] font-medium transition focus-within:ring-2 focus-within:ring-accent/30',
         focus ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line/10 bg-raised/60 text-dim hover:border-line/25 hover:text-ink')}>
       <Users size={15} className="shrink-0" />
-      <span className={cx('max-w-[9rem] truncate', !focus && 'hidden md:inline')}>{focus ? (focus.id === d.meId ? 'Mine' : focus.name) : 'Everyone'}</span>
-      <select aria-label="Whose things to show" className="absolute inset-0 cursor-pointer opacity-0" value={d.focusId ?? ''} onChange={(e) => setFocusMemberId(e.target.value || null)}>
-        <option value="">Everyone</option>
-        {ordered.map((m) => <option key={m.id} value={m.id}>{m.id === d.meId ? `${m.name} (me)` : m.name}</option>)}
+      <span className={cx('max-w-[9rem] truncate', !focus && 'hidden md:inline')}>{focus ? (focus.id === d.meId ? t('app.filter.mine') : focus.name) : t('common.everyone')}</span>
+      <select aria-label={t('app.filter.label')} className="absolute inset-0 cursor-pointer opacity-0" value={d.focusId ?? ''} onChange={(e) => setFocusMemberId(e.target.value || null)}>
+        <option value="">{t('common.everyone')}</option>
+        {ordered.map((m) => <option key={m.id} value={m.id}>{m.id === d.meId ? t('app.filter.me', { name: m.name }) : m.name}</option>)}
       </select>
     </label>
   )
@@ -84,6 +89,7 @@ function MemberFilter() {
 // these people is holding this device? Saying so is what lets things be handed
 // to them and private items be theirs.
 function WhoBanner() {
+  const { t } = useTranslation()
   const d = useData()
   useSyncExternalStore(subscribeHousehold, householdSnapshot)
   if (!d.ready || d.meId || d.members.length === 0 || getWhoAsked()) return null
@@ -92,7 +98,7 @@ function WhoBanner() {
     <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/20 bg-accent/[0.06] px-3.5 py-2.5 text-xs text-dim lg:mb-5">
       <Users size={14} className="shrink-0 text-accent" />
       <span className="min-w-0 flex-1 basis-56 text-[13px] text-ink">
-        Found your household: {d.members.length === 1 ? '1 person' : `${d.members.length} people`}. <span className="text-dim">Which one is this device?</span>
+        {t('app.who.found', { count: d.members.length })} <span className="text-dim">{t('app.who.which')}</span>
       </span>
       <span className="flex flex-wrap items-center gap-1.5">
         {few
@@ -100,14 +106,15 @@ function WhoBanner() {
               <button key={m.id} type="button" className="h-7 rounded-full border border-accent/40 bg-accent/15 px-3 text-xs font-medium text-accent transition hover:brightness-125"
                 onClick={() => void attachThisDevice(m.id, describeDevice())}>{m.name}</button>
             ))
-          : <span>Choose under Settings, Household.</span>}
-        <button type="button" className="h-7 rounded-full px-2.5 text-xs font-medium text-dim transition hover:text-ink" onClick={setWhoAsked}>Not now</button>
+          : <span>{t('app.who.chooseInSettings')}</span>}
+        <button type="button" className="h-7 rounded-full px-2.5 text-xs font-medium text-dim transition hover:text-ink" onClick={setWhoAsked}>{t('app.who.notNow')}</button>
       </span>
     </div>
   )
 }
 
 function AddMenu({ onOpen, variant }: { onOpen: (m: Modal) => void; variant: 'header' | 'fab' }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -120,8 +127,8 @@ function AddMenu({ onOpen, variant }: { onOpen: (m: Modal) => void; variant: 'he
   return (
     <div ref={ref} className="relative">
       {variant === 'header'
-        ? <button type="button" className="btn-primary" onClick={() => setOpen((v) => !v)}><Plus size={16} /> Add</button>
-        : <button type="button" aria-label="Add" onClick={() => setOpen((v) => !v)}
+        ? <button type="button" className="btn-primary" onClick={() => setOpen((v) => !v)}><Plus size={16} /> {t('common.add')}</button>
+        : <button type="button" aria-label={t('common.add')} onClick={() => setOpen((v) => !v)}
             className={cx('flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-ink shadow-[0_8px_24px_-6px_rgb(var(--accent)/0.7)] transition active:scale-95', open && 'rotate-45')}>
             <Plus size={22} />
           </button>}
@@ -131,8 +138,8 @@ function AddMenu({ onOpen, variant }: { onOpen: (m: Modal) => void; variant: 'he
         // the centring translate until it finished and the menu would jump.
         <div className={cx('absolute z-50 w-48', variant === 'header' ? 'right-0 top-11' : 'bottom-14 left-1/2 -translate-x-1/2')}>
           <div className={cx('panel animate-pop !bg-raised p-1.5 shadow-2xl', variant === 'fab' && 'origin-bottom')}>
-            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'thing' })}><Package size={15} className="text-accent" /> A thing</button>
-            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'subscription' })}><Repeat size={15} className="text-sub" /> A plan</button>
+            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'thing' })}><Package size={15} className="text-accent" /> {t('app.add.thing')}</button>
+            <button type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-accent/15" onClick={() => pick({ type: 'subscription' })}><Repeat size={15} className="text-sub" /> {t('app.add.plan')}</button>
           </div>
         </div>
       )}
@@ -141,6 +148,7 @@ function AddMenu({ onOpen, variant }: { onOpen: (m: Modal) => void; variant: 'he
 }
 
 function Shell({ ui }: { ui: UI }) {
+  const { t } = useTranslation()
   const d = useData()
   const { view, setView, modal, open } = ui
 
@@ -154,7 +162,7 @@ function Shell({ ui }: { ui: UI }) {
   useEffect(() => {
     if (ready && takeLegacyMineFilter() && meId) setFocusMemberId(meId)
   }, [ready, meId])
-  const samples = d.things.filter((t) => t.sample).length + d.subscriptions.filter((x) => x.sample).length
+  const samples = d.things.filter((x) => x.sample).length + d.subscriptions.filter((x) => x.sample).length
 
   const ViewBody = { glance: GlanceView, horizon: HorizonView, things: ThingsView, plans: PlansView }[view]
 
@@ -164,7 +172,7 @@ function Shell({ ui }: { ui: UI }) {
         <div className="mx-auto flex h-14 max-w-[1560px] items-center gap-3 px-4 lg:h-16 lg:gap-5 lg:px-8">
           <button type="button" className="shrink-0 text-left leading-none" onClick={() => setView('glance')}>
             <Wordmark className="text-[22px] lg:text-2xl" />
-            <span className="label mt-1 hidden !text-[9px] !normal-case !tracking-wide lg:block">what's next for your things?</span>
+            <span className="label mt-1 hidden !text-[9px] !normal-case !tracking-wide lg:block">{t('app.header.tagline')}</span>
           </button>
 
           <nav className="ml-2 hidden items-center gap-1 lg:flex" role="tablist">
@@ -172,7 +180,7 @@ function Shell({ ui }: { ui: UI }) {
               <button key={v.id} type="button" role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
                 className={cx('relative flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition',
                   view === v.id ? 'bg-accent/12 text-accent' : 'text-dim hover:bg-line/5 hover:text-ink')}>
-                <v.icon size={15} /> {v.label}
+                <v.icon size={15} /> {t(`app.nav.${v.id}`)}
                 {v.id === 'glance' && d.queue.length > 0 && <span className="num flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-ink">{d.queue.length}</span>}
                 {view === v.id && <span className="absolute inset-x-3 -bottom-[14px] h-0.5 rounded-full bg-accent glow-accent" />}
               </button>
@@ -182,12 +190,13 @@ function Shell({ ui }: { ui: UI }) {
           <div className="ml-auto flex items-center gap-2">
             <button type="button" onClick={() => open({ type: 'palette' })}
               className="hidden h-9 items-center gap-2 rounded-lg border border-line/10 bg-raised/50 pl-3 pr-2 text-[13px] text-faint transition hover:border-line/25 hover:text-ink md:flex">
-              <Search size={14} /> Search <kbd className="label ml-6 rounded border border-line/15 px-1.5 py-0.5">⌘K</kbd>
+              {/* eslint-disable-next-line i18next/no-literal-string -- a key's name, the same in every language */}
+              <Search size={14} /> {t('app.header.search')} <kbd className="label ml-6 rounded border border-line/15 px-1.5 py-0.5">⌘K</kbd>
             </button>
-            <button type="button" className="icon-btn md:hidden" aria-label="Search" onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
+            <button type="button" className="icon-btn md:hidden" aria-label={t('app.header.search')} onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
             <MemberFilter />
             <SyncButton onOpen={open} />
-            <button type="button" className="icon-btn" aria-label="Settings" title="Settings" onClick={() => open({ type: 'settings' })}><SettingsIcon size={16} /></button>
+            <button type="button" className="icon-btn" aria-label={t('app.header.settings')} title={t('app.header.settings')} onClick={() => open({ type: 'settings' })}><SettingsIcon size={16} /></button>
             <div className="hidden lg:block"><AddMenu onOpen={open} variant="header" /></div>
           </div>
         </div>
@@ -198,8 +207,8 @@ function Shell({ ui }: { ui: UI }) {
         {samples > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-accent/20 bg-accent/[0.06] px-3.5 py-2 text-xs text-dim lg:mb-5">
             <Sparkles size={13} className="shrink-0 text-accent" />
-            <span className="min-w-0 flex-1">You are looking at sample data. It never syncs, and editing a sample makes it yours.</span>
-            <button type="button" className="font-medium text-accent hover:underline" onClick={() => void removeSamples()}>Remove samples</button>
+            <span className="min-w-0 flex-1">{t('app.samples.notice')}</span>
+            <button type="button" className="font-medium text-accent hover:underline" onClick={() => void removeSamples()}>{t('app.samples.remove')}</button>
           </div>
         )}
         <div key={view} className="animate-fade-in"><ViewBody /></div>
@@ -226,10 +235,11 @@ function Shell({ ui }: { ui: UI }) {
 }
 
 function TabButton({ v, active, onClick, badge }: { v: (typeof VIEWS)[number]; active: boolean; onClick: () => void; badge: number }) {
+  const { t } = useTranslation()
   return (
     <button type="button" onClick={onClick} className={cx('relative flex flex-col items-center gap-1 py-1.5 text-[10px] font-medium transition', active ? 'text-accent' : 'text-faint')}>
       <v.icon size={20} strokeWidth={active ? 2.2 : 1.8} />
-      {v.label}
+      {t(`app.nav.${v.id}`)}
       {badge > 0 && <span className="num absolute right-[22%] top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-ink">{badge}</span>}
     </button>
   )

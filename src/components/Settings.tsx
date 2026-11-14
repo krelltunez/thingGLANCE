@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
+import { Trans, useTranslation } from 'react-i18next'
 import {
   Cloud, Copy, Database, Download, Info, KeyRound, LoaderCircle, Lock, MonitorCog, Moon, Palette, Pencil,
   RefreshCw, Send, Sun, Trash2, Unplug, Upload, Users, Zap,
 } from 'lucide-react'
+import { DAY, fmtDay, fmtMoment } from '@/core/dates'
 import { CURRENCIES } from '@/core/money'
+import { languages } from '@/locales'
+import { LanguagePicker } from './LanguagePicker'
 import { buildSnapshot } from '@/core/snapshot'
 import { downloadBackup, importBackup, wipeLocalData } from '@/db/backup'
 import { loadSamples } from '@/db/demo'
@@ -26,17 +30,15 @@ import { useUI, type SettingsSection } from '@/state/ui'
 import { Chip, Field, Segmented, Sheet, Toggle, Wordmark } from './ui'
 import { TONES, cx, type Tone } from './kit'
 
-const SECTIONS: { id: SettingsSection; label: string; icon: typeof Cloud }[] = [
-  { id: 'general', label: 'General', icon: Palette },
-  { id: 'vault', label: 'GLANCEvault', icon: Cloud },
-  { id: 'household', label: 'Household', icon: Users },
-  { id: 'integrations', label: 'Integrations', icon: Zap },
-  { id: 'data', label: 'Data', icon: Database },
-  { id: 'about', label: 'About', icon: Info },
+// The label of each is settings.sections.<id> in the catalog.
+const SECTIONS: { id: SettingsSection; icon: typeof Cloud }[] = [
+  { id: 'general', icon: Palette },
+  { id: 'vault', icon: Cloud },
+  { id: 'household', icon: Users },
+  { id: 'integrations', icon: Zap },
+  { id: 'data', icon: Database },
+  { id: 'about', icon: Info },
 ]
-
-// One wording for a vault that leaves the roster's app out, wherever it shows.
-const ROSTER_REFUSED = 'Your vault is refusing the shared household roster: "glance-users" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault\'s container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.'
 
 function Block({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -49,29 +51,35 @@ function Block({ title, hint, children }: { title: string; hint?: ReactNode; chi
 }
 
 function General() {
+  const { t } = useTranslation()
   const s = useSettings()
   const installable = useCanInstall()
   return (
     <div className="space-y-3">
-      <Block title="Appearance">
+      <Block title={t('settings.general.appearance')}>
         <Segmented<ThemePref> value={s.theme} onChange={(theme) => updateSettings({ theme })} options={[
-          { id: 'system', label: <span className="inline-flex items-center gap-1.5"><MonitorCog size={13} /> System</span> },
-          { id: 'dark', label: <span className="inline-flex items-center gap-1.5"><Moon size={13} /> Dark</span> },
-          { id: 'light', label: <span className="inline-flex items-center gap-1.5"><Sun size={13} /> Light</span> },
+          { id: 'system', label: <span className="inline-flex items-center gap-1.5"><MonitorCog size={13} /> {t('settings.general.system')}</span> },
+          { id: 'dark', label: <span className="inline-flex items-center gap-1.5"><Moon size={13} /> {t('settings.general.dark')}</span> },
+          { id: 'light', label: <span className="inline-flex items-center gap-1.5"><Sun size={13} /> {t('settings.general.light')}</span> },
         ]} />
       </Block>
-      <Block title="Currency" hint="One currency for every amount. Nothing is converted.">
+      <Block title={t('settings.general.currency')} hint={t('settings.general.currencyHint')}>
         <select className="input w-40" value={s.currency} onChange={(e) => updateSettings({ currency: e.target.value })}>
           {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
         </select>
       </Block>
-      <Block title="Web lookup">
-        <Toggle checked={s.webLookup} onChange={(webLookup) => updateSettings({ webLookup })} label="Fill things in from the web"
-          hint="Photo, specs and release date from Wikipedia; end of security updates from endoflife.date. Only the product name you type into the lookup box is sent, and only when you use it." />
+      {languages.length > 1 && (
+        <Block title={t('language.label')} hint={t('language.hint')}>
+          <LanguagePicker className="input w-56" />
+        </Block>
+      )}
+      <Block title={t('settings.general.webLookup')}>
+        <Toggle checked={s.webLookup} onChange={(webLookup) => updateSettings({ webLookup })} label={t('settings.general.webLookupLabel')}
+          hint={t('settings.general.webLookupHint')} />
       </Block>
       {installable && (
-        <Block title="Install" hint="Runs in its own window, works offline, and shows a badge when something needs a decision.">
-          <button type="button" className="btn-primary" onClick={() => void promptInstall()}><Download size={15} /> Install thingGLANCE</button>
+        <Block title={t('settings.general.install')} hint={t('settings.general.installHint')}>
+          <button type="button" className="btn-primary" onClick={() => void promptInstall()}><Download size={15} /> {t('settings.general.installButton')}</button>
         </Block>
       )}
     </div>
@@ -79,6 +87,7 @@ function General() {
 }
 
 function Vault() {
+  const { t } = useTranslation()
   const sync = useSync()
   const ui = useUI()
   const cfg = getVaultConfig()
@@ -97,7 +106,7 @@ function Vault() {
   const connectPro = async () => {
     setBusy(true); setNote(null)
     try { await connectVaultPro(key); done() }
-    catch (e) { setNote({ tone: 'bad', text: e instanceof ProEnrollError ? e.message : 'Could not connect.' }) }
+    catch (e) { setNote({ tone: 'bad', text: e instanceof ProEnrollError ? e.message : t('settings.vault.couldNotConnect') }) }
     finally { setBusy(false) }
   }
 
@@ -109,17 +118,17 @@ function Vault() {
     const r = await testVaultConnection(self)
     setBusy(false)
     if (!r.ok) {
-      setNote({ tone: 'bad', text: r.code === 'AUTH_FAILURE' ? 'The vault rejected that token.' : r.code === 'FORBIDDEN' ? 'That token cannot access this account.' : `Could not reach the vault. Check the URL, and that this site's address is in the server's allowed origins.` })
+      setNote({ tone: 'bad', text: r.code === 'AUTH_FAILURE' ? t('settings.vault.tokenRejected') : r.code === 'FORBIDDEN' ? t('settings.vault.tokenForbidden') : t('settings.vault.unreachable') })
       return false
     }
     if (r.appAllowed === false) {
-      setNote({ tone: 'warn', text: `Connected, but this server does not list "${APP_ID}" in its allowed apps yet. Add it to GLANCEVAULT_ALLOWED_APPS (keep the apps already listed), then recreate the vault's container: a plain restart keeps the old settings. The server's /healthz page shows the list in effect.` })
+      setNote({ tone: 'warn', text: t('settings.vault.appNotAllowed', { app: APP_ID }) })
       return false
     }
-    const reach = r.fresh ? 'Reachable. This account is new: your passphrase will set its encryption key.' : 'Reachable, and the account already has data. Use the same passphrase as your other GLANCE apps.'
+    const reach = r.fresh ? t('settings.vault.reachFresh') : t('settings.vault.reachExisting')
     // Things still sync without the roster, so this warns and lets you connect.
     setNote(r.rosterAllowed === false
-      ? { tone: 'warn', text: `${reach} One thing to fix on the server: it does not list "glance-users" in GLANCEVAULT_ALLOWED_APPS, so the household roster will not sync, here or in your other GLANCE apps.` }
+      ? { tone: 'warn', text: t('settings.vault.rosterNotListed', { reach }) }
       : { tone: 'ok', text: reach })
     return true
   }
@@ -131,84 +140,77 @@ function Vault() {
   }
 
   if (connected && cfg) {
-    const phase: Record<typeof sync.phase, { label: string; tone: Tone }> = {
-      off: { label: 'Off', tone: 'dim' },
-      locked: { label: 'Waiting for your passphrase', tone: 'warn' },
-      idle: { label: 'Connected', tone: 'ok' },
-      syncing: { label: 'Syncing…', tone: 'accent' },
-      synced: { label: 'Up to date', tone: 'ok' },
-      error: { label: 'Needs attention', tone: 'bad' },
-    }
-    const p = phase[sync.phase]
+    const tones: Record<typeof sync.phase, Tone> = { off: 'dim', locked: 'warn', idle: 'ok', syncing: 'accent', synced: 'ok', error: 'bad' }
+    const tone = tones[sync.phase]
     return (
       <div className="space-y-3">
-        <Block title={cfg.pro ? 'GLANCEvault Pro' : 'GLANCEvault'} hint={<span className="num">{new URL(cfg.vaultUrl).host} · account {cfg.accountId.slice(0, 8)}…</span>}>
+        <Block title={cfg.pro ? 'GLANCEvault Pro' : 'GLANCEvault'} hint={<span className="num">{new URL(cfg.vaultUrl).host} · {t('settings.vault.account', { id: cfg.accountId.slice(0, 8) })}</span>}>
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone={p.tone}><span className={cx('h-1.5 w-1.5 rounded-full', TONES[p.tone].solid, sync.phase === 'syncing' && 'animate-pulse2')} />{p.label}</Chip>
-            {sync.lastSynced && <span className="text-xs text-dim">Last synced {dayjs(sync.lastSynced).format('MMM D, h:mm A')}</span>}
-            {sync.pending > 0 && <span className="num text-xs text-faint">{sync.pending} waiting to upload</span>}
+            <Chip tone={tone}><span className={cx('h-1.5 w-1.5 rounded-full', TONES[tone].solid, sync.phase === 'syncing' && 'animate-pulse2')} />{t(`settings.vault.phase.${sync.phase}`)}</Chip>
+            {sync.lastSynced && <span className="text-xs text-dim">{t('settings.vault.lastSynced', { when: fmtMoment(sync.lastSynced, 'day-time') })}</span>}
+            {sync.pending > 0 && <span className="num text-xs text-faint">{t('settings.vault.waitingToUpload', { count: sync.pending })}</span>}
           </div>
           <p className="mt-2 flex items-center gap-1.5 text-xs text-dim">
             <span className={cx('h-1.5 w-1.5 rounded-full', sync.live === 'on' ? 'bg-ok' : sync.live === 'stalled' ? 'bg-warn' : 'bg-faint')} />
-            {{
-              on: 'Live: changes from your other devices arrive within seconds.',
-              connecting: 'Connecting live updates. Until then it checks every few minutes.',
-              stalled: 'Live updates are blocked, probably by a reverse proxy buffering /events. It still checks every few minutes.',
-              unsupported: 'This vault server is too old for live updates. It checks every few minutes.',
-              off: 'Checks every few minutes, and whenever you return to the app.',
-            }[sync.live]}
+            {t(`settings.vault.live.${sync.live}`)}
           </p>
           {sync.phase === 'error' && <p className="mt-3 rounded-lg border border-bad/25 bg-bad/10 px-3 py-2 text-xs leading-relaxed text-bad">{syncErrorText(sync.errorCode, sync.errorMessage)}</p>}
-          {sync.skipped > 0 && <p className="mt-3 text-xs text-warn">{sync.skipped} rows could not be decrypted and were skipped.</p>}
-          {sync.rosterUnsupported && <p className="mt-3 rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">{ROSTER_REFUSED}</p>}
+          {sync.skipped > 0 && <p className="mt-3 text-xs text-warn">{t('settings.vault.rowsSkipped', { count: sync.skipped })}</p>}
+          {sync.rosterUnsupported && <p className="mt-3 rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">{t('settings.vault.rosterRefused')}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             {sync.phase === 'locked'
-              ? <button type="button" className="btn-primary" onClick={() => ui.open({ type: 'passphrase' })}><Lock size={15} /> Enter passphrase</button>
-              : <button type="button" className="btn" onClick={() => void syncNow()}><RefreshCw size={15} className={cx(sync.phase === 'syncing' && 'animate-spin')} /> Sync now</button>}
+              ? <button type="button" className="btn-primary" onClick={() => ui.open({ type: 'passphrase' })}><Lock size={15} /> {t('settings.vault.enterPassphrase')}</button>
+              : <button type="button" className="btn" onClick={() => void syncNow()}><RefreshCw size={15} className={cx(sync.phase === 'syncing' && 'animate-spin')} /> {t('settings.vault.syncNow')}</button>}
             {sync.errorCode === 'KEY_MISMATCH' && (
-              <button type="button" className="btn" onClick={() => void clearCachedVaultKeys().then(done)}><KeyRound size={15} /> Reset key and re-enter</button>
+              <button type="button" className="btn" onClick={() => void clearCachedVaultKeys().then(done)}><KeyRound size={15} /> {t('settings.vault.resetKey')}</button>
             )}
             {confirm
               ? <>
-                  <button type="button" className="btn-danger" onClick={() => void disconnectVault().then(done)}><Unplug size={15} /> Disconnect this device</button>
-                  <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>Cancel</button>
+                  <button type="button" className="btn-danger" onClick={() => void disconnectVault().then(done)}><Unplug size={15} /> {t('settings.vault.disconnectDevice')}</button>
+                  <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>{t('common.cancel')}</button>
                 </>
-              : <button type="button" className="btn-ghost" onClick={() => setConfirm(true)}><Unplug size={15} /> Disconnect</button>}
+              : <button type="button" className="btn-ghost" onClick={() => setConfirm(true)}><Unplug size={15} /> {t('settings.vault.disconnect')}</button>}
           </div>
-          {confirm && <p className="mt-2 text-xs text-dim">Your things stay on this device and in the vault. Only the connection is removed.</p>}
+          {confirm && <p className="mt-2 text-xs text-dim">{t('settings.vault.disconnectNote')}</p>}
         </Block>
-        <Block title="End-to-end encrypted" hint="Everything is encrypted on this device with a key made from your sync passphrase before it leaves. The vault stores ciphertext it cannot read. The passphrase is the same one your other GLANCE apps use on this account, and it is never sent anywhere.">{null}</Block>
+        <Block title={t('settings.vault.encrypted')} hint={t('settings.vault.encryptedHint')}>{null}</Block>
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
-      <Block title="Sync with GLANCEvault" hint="thingGLANCE syncs one way only: through GLANCEvault, end-to-end encrypted. It also carries the shared household roster and tasks sent to dayGLANCE. Without it, everything stays on this device.">
+      <Block title={t('settings.vault.syncWith')} hint={t('settings.vault.syncWithHint')}>
         <Segmented value={mode} onChange={(m) => { setMode(m); setNote(null) }} options={[
-          { id: 'self', label: 'Self-hosted' },
-          { id: 'pro', label: <span className="inline-flex items-center gap-1.5">GLANCEvault Pro <span className="rounded border border-line/15 px-1 font-mono text-[9px] uppercase tracking-wider text-faint">Soon</span></span> },
+          { id: 'self', label: t('settings.vault.selfHosted') },
+          { id: 'pro', label: <span className="inline-flex items-center gap-1.5">GLANCEvault Pro <span className="rounded border border-line/15 px-1 font-mono text-[9px] uppercase tracking-wider text-faint">{t('settings.vault.soon')}</span></span> },
         ]} />
         {mode === 'pro' ? (
           <div className="mt-4 space-y-3">
-            <p className="rounded-lg border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim">GLANCEvault Pro, the hosted vault, is coming soon. If you were sent an account key as a tester, it works here today.</p>
-            <Field label="Account key" hint="Paste the key you were sent. It is exchanged once for this device's own credential and never stored.">
+            <p className="rounded-lg border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim">{t('settings.vault.proNote')}</p>
+            <Field label={t('settings.vault.accountKey')} hint={t('settings.vault.accountKeyHint')}>
+              {/* eslint-disable-next-line i18next/no-literal-string -- the shape of a key, not words */}
               <input className="input num" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="gv_…" />
             </Field>
-            <button type="button" className="btn-primary" disabled={!key.trim() || busy} onClick={() => void connectPro()}>{busy && <LoaderCircle size={15} className="animate-spin" />} Connect</button>
+            <button type="button" className="btn-primary" disabled={!key.trim() || busy} onClick={() => void connectPro()}>{busy && <LoaderCircle size={15} className="animate-spin" />} {t('settings.vault.connect')}</button>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            <Field label="Server URL"><input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://vault.example.com" inputMode="url" autoCapitalize="off" /></Field>
+            <Field label={t('settings.vault.serverUrl')}>
+              {/* eslint-disable-next-line i18next/no-literal-string -- an example URL, not words */}
+              <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://vault.example.com" inputMode="url" autoCapitalize="off" />
+            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Account ID"><input className="input" value={account} onChange={(e) => setAccount(e.target.value)} autoCapitalize="off" /></Field>
-              <Field label="Device token"><input className="input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} /></Field>
+              <Field label={t('settings.vault.accountId')}><input className="input" value={account} onChange={(e) => setAccount(e.target.value)} autoCapitalize="off" /></Field>
+              <Field label={t('settings.vault.deviceToken')}><input className="input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} /></Field>
             </div>
             <div className="flex gap-2">
-              <button type="button" className="btn" disabled={!selfValid || busy} onClick={() => void test()}>{busy && <LoaderCircle size={15} className="animate-spin" />} Test</button>
-              <button type="button" className="btn-primary" disabled={!selfValid || busy} onClick={() => void connectSelf()}>Connect</button>
+              <button type="button" className="btn" disabled={!selfValid || busy} onClick={() => void test()}>{busy && <LoaderCircle size={15} className="animate-spin" />} {t('settings.vault.test')}</button>
+              <button type="button" className="btn-primary" disabled={!selfValid || busy} onClick={() => void connectSelf()}>{t('settings.vault.connect')}</button>
             </div>
-            <p className="text-xs leading-relaxed text-faint">The server needs <span className="num text-dim">{APP_ID}</span> in GLANCEVAULT_ALLOWED_APPS, and this site's address ({window.location.origin}) in its allowed origins. Its /healthz page lists the apps it accepts.</p>
+            <p className="text-xs leading-relaxed text-faint">
+              <Trans i18nKey="settings.vault.serverNeeds" values={{ app: APP_ID, origin: window.location.origin }} components={{ id: <span className="num text-dim" /> }} />
+            </p>
           </div>
         )}
         {note && <p className={cx('mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed', TONES[note.tone].soft)}>{note.text}</p>}
@@ -218,6 +220,7 @@ function Vault() {
 }
 
 function Household() {
+  const { t } = useTranslation()
   const d = useData()
   const sync = useSync()
   const [name, setName] = useState('')
@@ -245,15 +248,24 @@ function Household() {
   }
   const handOver = async () => {
     if (!leaving) return
-    const who = d.memberName(leaving.id) ?? 'They'
+    const who = d.memberName(leaving.id)
+    const heir = d.memberName(leaving.to)
     const ok = await reassignAndRemove(leaving.id, leaving.to || null)
     setLeaving(null)
-    toast(ok ? { title: `${who} removed`, body: `Everything of theirs went to ${d.memberName(leaving.to) ?? 'the household'}.`, tone: 'ok' } : { title: 'Could not remove them', tone: 'bad' })
+    toast(ok
+      ? {
+          title: who != null ? t('settings.household.removed', { name: who }) : t('settings.household.removedUnnamed'),
+          body: heir != null ? t('settings.household.wentTo', { name: heir }) : t('settings.household.wentToHousehold'),
+          tone: 'ok',
+        }
+      : { title: t('settings.household.couldNotRemove'), tone: 'bad' })
   }
+
+  const where = sync.phase === 'off' ? t('settings.household.membersNotConnected') : sync.rosterUnsupported ? t('settings.household.membersLocal') : t('settings.household.membersShared')
 
   return (
     <div className="space-y-3">
-      <Block title="Members" hint={`Everyone the household tracks things for. A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'Members added here stay on this device for now.' : 'The same list dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account.'}`}>
+      <Block title={t('settings.household.members')} hint={t('settings.household.membersHint', { where })}>
         <ul className="divide-y divide-line/[0.07]">
           {d.members.map((m) => {
             const links = d.devices.filter((l) => l.memberId === m.id)
@@ -269,59 +281,63 @@ function Household() {
                         onBlur={() => { if (editing.name.trim() && editing.name !== m.name) void renameMember(m.id, editing.name); setEditing(null) }} />
                     : (
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-ink">{m.name}{me && <span className="ml-2 text-xs text-accent">you</span>}</span>
+                        <span className="block truncate text-sm text-ink">{m.name}{me && <span className="ml-2 text-xs text-accent">{t('settings.household.you')}</span>}</span>
                         <span className="block truncate text-xs text-faint">
-                          {links.length === 0 ? 'Does not use the app' : `Uses the app: ${links.map((l) => (l.id === d.deviceId ? 'this device' : l.label ?? 'a device')).join(', ')}`}
+                          {links.length === 0
+                            ? t('settings.household.noApp')
+                            : t('settings.household.usesApp', { devices: links.map((l) => (l.id === d.deviceId ? t('settings.household.thisDevice') : l.label ?? t('settings.household.aDevice'))).join(', ') })}
                         </span>
                       </span>
                     )}
                   {me
-                    ? <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void detachDevice()}>Not me</button>
-                    : <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void attachThisDevice(m.id, describeDevice())}>This is me</button>}
-                  <button type="button" className="icon-btn h-8 w-8" title="Rename" onClick={() => setEditing({ id: m.id, name: m.name })}><Pencil size={13} /></button>
-                  <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title="Remove" onClick={() => void remove(m.id)}><Trash2 size={13} /></button>
+                    ? <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void detachDevice()}>{t('settings.household.notMe')}</button>
+                    : <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void attachThisDevice(m.id, describeDevice())}>{t('settings.household.thisIsMe')}</button>}
+                  <button type="button" className="icon-btn h-8 w-8" title={t('settings.household.rename')} onClick={() => setEditing({ id: m.id, name: m.name })}><Pencil size={13} /></button>
+                  <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title={t('common.remove')} onClick={() => void remove(m.id)}><Trash2 size={13} /></button>
                 </div>
                 {going && (
                   <div className="mt-2 rounded-lg border border-warn/25 bg-warn/[0.07] p-3">
-                    <p className="text-xs leading-relaxed text-ink">{m.name} still {describeTies(going.ties)}. Hand {going.ties.owns + going.ties.pays + going.ties.responsible === 1 ? 'it' : 'them'} to someone first.</p>
+                    <p className="text-xs leading-relaxed text-ink">{t('settings.household.stillTied', { count: going.ties.owns + going.ties.pays + going.ties.responsible, name: m.name, ties: describeTies(going.ties) })}</p>
                     {going.hidden > 0 && (
                       <p className="mt-1.5 text-xs leading-relaxed text-warn">
-                        {going.hidden === 1 ? 'One of these is' : `${going.hidden} of these are`} private to {m.name}, so {me ? 'only you can see ' + (going.hidden === 1 ? 'it' : 'them') : 'you cannot see ' + (going.hidden === 1 ? 'it' : 'them')} now.{' '}
+                        {me
+                          ? t('settings.household.hiddenMine', { count: going.hidden, name: m.name })
+                          : t('settings.household.hiddenOthers', { count: going.hidden, name: m.name })}{' '}
                         {going.to && d.userIds.has(going.to)
-                          ? `${going.hidden === 1 ? 'It stays' : 'They stay'} private, to ${d.memberName(going.to)}.`
-                          : `${going.hidden === 1 ? 'It becomes' : 'They become'} visible to the whole household.`}
+                          ? t('settings.household.staysPrivate', { count: going.hidden, name: d.memberName(going.to) })
+                          : t('settings.household.becomesVisible', { count: going.hidden })}
                       </p>
                     )}
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                      <select aria-label={`Who gets what ${m.name} has`} className="input h-8 w-auto min-w-[10rem] flex-1 py-0 text-xs" value={going.to} onChange={(e) => setLeaving({ ...going, to: e.target.value })}>
-                        <option value="">The household</option>
-                        {d.members.filter((x) => x.id !== m.id).map((x) => <option key={x.id} value={x.id}>{x.name}{d.userIds.has(x.id) ? '' : ' (no device)'}</option>)}
+                      <select aria-label={t('settings.household.whoGets', { name: m.name })} className="input h-8 w-auto min-w-[10rem] flex-1 py-0 text-xs" value={going.to} onChange={(e) => setLeaving({ ...going, to: e.target.value })}>
+                        <option value="">{t('settings.household.theHousehold')}</option>
+                        {d.members.filter((x) => x.id !== m.id).map((x) => <option key={x.id} value={x.id}>{d.userIds.has(x.id) ? x.name : t('settings.household.noDevice', { name: x.name })}</option>)}
                       </select>
-                      <button type="button" className="btn-danger h-8 px-3 text-xs" onClick={() => void handOver()}>Hand over and remove</button>
-                      <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => setLeaving(null)}>Cancel</button>
+                      <button type="button" className="btn-danger h-8 px-3 text-xs" onClick={() => void handOver()}>{t('settings.household.handOver')}</button>
+                      <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => setLeaving(null)}>{t('common.cancel')}</button>
                     </div>
                   </div>
                 )}
               </li>
             )
           })}
-          {d.members.length === 0 && <li className="py-3 text-sm text-dim">No members yet. Add yourself first.</li>}
+          {d.members.length === 0 && <li className="py-3 text-sm text-dim">{t('settings.household.noMembers')}</li>}
         </ul>
         <RosterStatus empty={d.members.length === 0} />
         <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add() }}>
-          <input className="input" placeholder="Add a member" value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="submit" className="btn shrink-0" disabled={!name.trim()}>Add</button>
+          <input className="input" placeholder={t('settings.household.addMember')} value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="btn shrink-0" disabled={!name.trim()}>{t('common.add')}</button>
         </form>
       </Block>
-      {!d.meId && d.members.length > 0 && <p className="px-1 text-xs text-warn">Pick which member this device belongs to. It lets things be handed to you to deal with, and private items be yours.</p>}
-      {d.members.length === 1 && <p className="px-1 text-xs text-dim">Owners, payers and the member filter show up once there is a second member.</p>}
+      {!d.meId && d.members.length > 0 && <p className="px-1 text-xs text-warn">{t('settings.household.pickYourself')}</p>}
+      {d.members.length === 1 && <p className="px-1 text-xs text-dim">{t('settings.household.needSecond')}</p>}
       {d.devices.some((l) => l.id !== d.deviceId) && (
-        <Block title="Other devices" hint="Detaching a device stops it counting as that person. It does not sign the device out of the vault.">
+        <Block title={t('settings.household.otherDevices')} hint={t('settings.household.otherDevicesHint')}>
           <ul className="divide-y divide-line/[0.07]">
             {d.devices.filter((l) => l.id !== d.deviceId).map((l) => (
               <li key={l.id} className="flex items-center gap-2 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label ?? 'A device'} <span className="text-xs text-faint">· {d.memberName(l.memberId) ?? 'someone no longer on the list'} · since {dayjs(l.createdAt).format('MMM D, YYYY')}</span></span>
-                <button type="button" className="btn-ghost h-8 px-2 text-xs hover:!text-bad" onClick={() => void detachDevice(l.id)}>Detach</button>
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label ?? t('settings.household.unnamedDevice')} <span className="text-xs text-faint">· {d.memberName(l.memberId) ?? t('settings.household.goneMember')} · {t('settings.household.since', { date: fmtDay(dayjs(l.createdAt).format(DAY)) })}</span></span>
+                <button type="button" className="btn-ghost h-8 px-2 text-xs hover:!text-bad" onClick={() => void detachDevice(l.id)}>{t('settings.household.detach')}</button>
               </li>
             ))}
           </ul>
@@ -334,27 +350,30 @@ function Household() {
 // Says what the last read of the vault's shared roster found, so an empty
 // list is explained rather than left to look broken.
 function RosterStatus({ empty }: { empty: boolean }) {
+  const { t } = useTranslation()
   const sync = useSync()
   if (sync.phase === 'off') return null
-  const again = <button type="button" className="font-medium text-accent hover:underline" onClick={() => void recheckRoster()}>Check again</button>
+  const again = <button type="button" className="font-medium text-accent hover:underline" onClick={() => void recheckRoster()}>{t('settings.household.checkAgain')}</button>
   const line = 'mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed'
-  if (sync.rosterUnsupported) return <p className={cx(line, TONES.warn.soft)}>{ROSTER_REFUSED} {again}</p>
-  if (sync.phase === 'locked') return <p className={cx(line, TONES.warn.soft)}>{sync.keyConflict ? 'This device was using a passphrase that does not match your other GLANCE apps, so it could not read the roster. Enter the right one and the members appear.' : 'The roster is read once you enter your sync passphrase.'}</p>
-  if (sync.rosterPaused) return <p className={cx(line, TONES.warn.soft)}>The roster could not be checked just now: sync with the vault is pausing after a failed request and will retry on its own. {again}</p>
-  if (!sync.rosterCheckedAt) return <p className={cx(line, 'border-line/10 text-dim')}>Reading the roster from your vault…</p>
-  const at = dayjs(sync.rosterCheckedAt).format('h:mm A')
-  if (sync.rosterError) return <p className={cx(line, TONES.bad.soft)}>Could not read the roster from your vault at {at}: {sync.rosterError} {again}</p>
-  if (sync.rosterRejected > 0 && empty) return <p className={cx(line, TONES.warn.soft)}>Your vault has {sync.rosterRejected} roster {sync.rosterRejected === 1 ? 'row' : 'rows'} that could not be read as a member (checked at {at}). {again}</p>
-  if (sync.rosterSkipped > 0) return <p className={cx(line, TONES.warn.soft)}>{sync.rosterSkipped} roster {sync.rosterSkipped === 1 ? 'row' : 'rows'} in your vault could not be decrypted at {at}, which usually means a different passphrase. {again}</p>
+  // One wording for a vault that leaves the roster's app out, wherever it shows.
+  if (sync.rosterUnsupported) return <p className={cx(line, TONES.warn.soft)}>{t('settings.vault.rosterRefused')} {again}</p>
+  if (sync.phase === 'locked') return <p className={cx(line, TONES.warn.soft)}>{sync.keyConflict ? t('settings.household.rosterKeyConflict') : t('settings.household.rosterLocked')}</p>
+  if (sync.rosterPaused) return <p className={cx(line, TONES.warn.soft)}>{t('settings.household.rosterPaused')} {again}</p>
+  if (!sync.rosterCheckedAt) return <p className={cx(line, 'border-line/10 text-dim')}>{t('settings.household.rosterReading')}</p>
+  const at = fmtMoment(sync.rosterCheckedAt, 'time')
+  if (sync.rosterError) return <p className={cx(line, TONES.bad.soft)}>{t('settings.household.rosterError', { at, error: sync.rosterError })} {again}</p>
+  if (sync.rosterRejected > 0 && empty) return <p className={cx(line, TONES.warn.soft)}>{t('settings.household.rosterRejected', { count: sync.rosterRejected, at })} {again}</p>
+  if (sync.rosterSkipped > 0) return <p className={cx(line, TONES.warn.soft)}>{t('settings.household.rosterSkipped', { count: sync.rosterSkipped, at })} {again}</p>
   if (!empty) return null
   return (
     <p className={cx(line, 'border-line/10 text-dim')}>
-      Checked your vault at {at} and found no members in the shared roster for this account. {again}
+      {t('settings.household.rosterEmpty', { at })} {again}
     </p>
   )
 }
 
 function Integrations() {
+  const { t } = useTranslation()
   useIntentsVersion()
   const sync = useSync()
   const ui = useUI()
@@ -365,38 +384,38 @@ function Integrations() {
   const toggle = async (enabled: boolean) => {
     if (enabled && !(await loadIntentsRootKey())) {
       const pass = getSyncPassphrase()
-      if (!pass) { ui.open({ type: 'passphrase' }); toast({ title: 'Enter your sync passphrase', body: 'It makes the key that encrypts tasks sent between your GLANCE apps.' }); return }
+      if (!pass) { ui.open({ type: 'passphrase' }); toast({ title: t('settings.integrations.passphraseTitle'), body: t('settings.integrations.passphraseBody') }); return }
       try { await setupIntentsEncryption(pass) }
-      catch (e) { toast({ title: 'Could not set up encryption', body: e instanceof Error ? e.message : undefined, tone: 'bad' }); return }
+      catch (e) { toast({ title: t('settings.integrations.encryptionFailed'), body: e instanceof Error ? e.message : undefined, tone: 'bad' }); return }
     }
     saveIntentsConfig({ ...cfg, enabled })
   }
 
   return (
     <div className="space-y-3">
-      <Block title="dayGLANCE" hint="Turn anything in your queue into a dayGLANCE task with one tap. When you complete the task there, the item clears here, on every device.">
+      <Block title="dayGLANCE" hint={t('settings.integrations.dayglanceHint')}>
         {vaultOn
           ? <>
-              <Toggle checked={cfg.enabled} onChange={(v) => void toggle(v)} label="Send and receive through GLANCEvault"
-                hint="Uses GLANCE intents over your vault connection, end-to-end encrypted. dayGLANCE needs GLANCEvault intents turned on too." />
+              <Toggle checked={cfg.enabled} onChange={(v) => void toggle(v)} label={t('settings.integrations.sendReceive')}
+                hint={t('settings.integrations.sendReceiveHint')} />
               {cfg.enabled && (
-                <Field label="Task due" className="mt-3">
+                <Field label={t('settings.integrations.taskDue')} className="mt-3">
                   <select className="input w-56" value={cfg.leadDays} onChange={(e) => saveIntentsConfig({ ...cfg, leadDays: Number(e.target.value) })}>
-                    <option value={0}>On the day itself</option>
-                    <option value={3}>3 days before</option>
-                    <option value={7}>A week before</option>
-                    <option value={14}>Two weeks before</option>
-                    <option value={30}>A month before</option>
+                    <option value={0}>{t('settings.integrations.lead.sameDay')}</option>
+                    <option value={3}>{t('settings.integrations.lead.threeDays')}</option>
+                    <option value={7}>{t('settings.integrations.lead.week')}</option>
+                    <option value={14}>{t('settings.integrations.lead.twoWeeks')}</option>
+                    <option value={30}>{t('settings.integrations.lead.month')}</option>
                   </select>
                 </Field>
               )}
             </>
-          : <button type="button" className="btn" onClick={() => ui.open({ type: 'settings', section: 'vault' })}><Cloud size={15} /> Connect GLANCEvault first</button>}
+          : <button type="button" className="btn" onClick={() => ui.open({ type: 'settings', section: 'vault' })}><Cloud size={15} /> {t('settings.integrations.connectFirst')}</button>}
       </Block>
       {cfg.enabled && (
-        <Block title="Activity">
+        <Block title={t('settings.integrations.activity')}>
           {activity.length === 0
-            ? <p className="text-sm text-dim">Nothing sent or received yet.</p>
+            ? <p className="text-sm text-dim">{t('settings.integrations.activityEmpty')}</p>
             : (
               <ul className="scrollbar-thin max-h-56 space-y-2 overflow-y-auto">
                 {activity.map((a, i) => (
@@ -406,14 +425,14 @@ function Integrations() {
                       <span className="block text-ink">{a.message}</span>
                       {a.detail && <span className="block text-faint">{a.detail}</span>}
                     </span>
-                    <span className="num shrink-0 text-faint">{dayjs(a.at).format('MMM D HH:mm')}</span>
+                    <span className="num shrink-0 text-faint">{fmtMoment(a.at, 'day-time')}</span>
                   </li>
                 ))}
               </ul>
             )}
         </Block>
       )}
-      <Block title="Other surfaces" hint="Widgets, the menu bar popup, GLANCElauncher cards and MCP tools will all read one object: the glance snapshot. This is what it holds right now, including the reminders this device would get. Nothing schedules them yet: that arrives with the phone and desktop apps.">
+      <Block title={t('settings.integrations.otherSurfaces')} hint={t('settings.integrations.otherSurfacesHint')}>
         <SnapshotPeek />
       </Block>
     </div>
@@ -421,6 +440,7 @@ function Integrations() {
 }
 
 function SnapshotPeek() {
+  const { t } = useTranslation()
   const d = useData()
   const { currency } = useSettings()
   const scope = { viewerId: d.meId, memberId: d.focusId, userIds: d.userIds, currency }
@@ -430,94 +450,97 @@ function SnapshotPeek() {
     burn: { monthly: +snap.burn.monthly.toFixed(2), replacementMonthly: +snap.burn.replacementMonthly.toFixed(2) },
     attention: snap.attention.map((e) => ({ days: e.days, title: e.title, detail: e.detail })),
     // What this device would be reminded of, once a shell exists to schedule it.
-    reminders: { pending: snap.reminders.length, next: snap.reminders.slice(0, 3).map((r) => ({ when: dayjs(r.at).format('MMM D, HH:mm'), title: r.title, body: r.body })) },
+    reminders: { pending: snap.reminders.length, next: snap.reminders.slice(0, 3).map((r) => ({ when: fmtMoment(r.at, 'day-time'), title: r.title, body: r.body })) },
   }
   return (
     <>
       <pre className="scrollbar-thin max-h-44 select-text overflow-auto rounded-lg border border-line/10 bg-bg/70 p-3 font-mono text-[10.5px] leading-relaxed text-dim">
         {JSON.stringify(peek, null, 2)}
       </pre>
-      <button type="button" className="btn mt-2 h-8 text-xs" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(buildSnapshot(d, scope), null, 2)); toast({ title: 'Full snapshot copied', tone: 'ok' }) }}><Copy size={13} /> Copy full snapshot</button>
+      <button type="button" className="btn mt-2 h-8 text-xs" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(buildSnapshot(d, scope), null, 2)); toast({ title: t('settings.integrations.snapshotCopied'), tone: 'ok' }) }}><Copy size={13} /> {t('settings.integrations.copySnapshot')}</button>
     </>
   )
 }
 
 function Data() {
+  const { t } = useTranslation()
   const d = useData()
   const file = useRef<HTMLInputElement>(null)
   const [confirmWipe, setConfirmWipe] = useState(false)
-  const samples = d.things.filter((t) => t.sample).length + d.subscriptions.filter((s) => s.sample).length
+  const samples = d.things.filter((x) => x.sample).length + d.subscriptions.filter((s) => s.sample).length
 
   const onFile = async (f: File | undefined) => {
     if (!f) return
     try {
       const r = await importBackup(await f.text())
-      toast({ title: 'Backup imported', body: `${r.added} added, ${r.updated} updated.`, tone: 'ok' })
+      toast({ title: t('settings.data.imported'), body: t('settings.data.importedBody', { added: r.added, updated: r.updated }), tone: 'ok' })
     } catch (e) {
-      toast({ title: 'Could not import that file', body: e instanceof Error ? e.message : undefined, tone: 'bad' })
+      toast({ title: t('settings.data.importFailed'), body: e instanceof Error ? e.message : undefined, tone: 'bad' })
     }
     if (file.current) file.current.value = ''
   }
 
   return (
     <div className="space-y-3">
-      <Block title="Backup" hint="A plain JSON file with everything except sample data. Importing merges by item, newest wins, so it never rolls anything back.">
+      <Block title={t('settings.data.backup')} hint={t('settings.data.backupHint')}>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn" onClick={() => void downloadBackup()}><Download size={15} /> Export</button>
-          <button type="button" className="btn" onClick={() => file.current?.click()}><Upload size={15} /> Import</button>
+          <button type="button" className="btn" onClick={() => void downloadBackup()}><Download size={15} /> {t('settings.data.export')}</button>
+          <button type="button" className="btn" onClick={() => file.current?.click()}><Upload size={15} /> {t('settings.data.import')}</button>
           <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
         </div>
       </Block>
-      <Block title="Sample data" hint="A realistic set of things and plans to explore with. Samples never sync; editing one turns it into a real item.">
+      <Block title={t('settings.data.samples')} hint={t('settings.data.samplesHint')}>
         {samples > 0
-          ? <button type="button" className="btn" onClick={() => { void removeSamples(); toast({ title: 'Sample data removed' }) }}><Trash2 size={15} /> Remove {samples} samples</button>
-          : <button type="button" className="btn" onClick={() => void loadSamples()}>Load sample data</button>}
+          ? <button type="button" className="btn" onClick={() => { void removeSamples(); toast({ title: t('settings.data.samplesRemoved') }) }}><Trash2 size={15} /> {t('settings.data.removeSamples', { count: samples })}</button>
+          : <button type="button" className="btn" onClick={() => void loadSamples()}>{t('settings.data.loadSamples')}</button>}
       </Block>
-      <Block title="Erase this device" hint="Deletes everything stored in this browser. Anything already in your vault stays there.">
+      <Block title={t('settings.data.erase')} hint={t('settings.data.eraseHint')}>
         {confirmWipe
           ? <div className="flex gap-2">
-              <button type="button" className="btn-danger" onClick={() => void wipeLocalData().then(() => { setConfirmWipe(false); toast({ title: 'Local data erased' }) })}><Trash2 size={15} /> Yes, erase it</button>
-              <button type="button" className="btn-ghost" onClick={() => setConfirmWipe(false)}>Cancel</button>
+              <button type="button" className="btn-danger" onClick={() => void wipeLocalData().then(() => { setConfirmWipe(false); toast({ title: t('settings.data.erased') }) })}><Trash2 size={15} /> {t('settings.data.eraseConfirm')}</button>
+              <button type="button" className="btn-ghost" onClick={() => setConfirmWipe(false)}>{t('common.cancel')}</button>
             </div>
-          : <button type="button" className="btn-ghost hover:!text-bad" onClick={() => setConfirmWipe(true)}><Trash2 size={15} /> Erase local data</button>}
+          : <button type="button" className="btn-ghost hover:!text-bad" onClick={() => setConfirmWipe(true)}><Trash2 size={15} /> {t('settings.data.eraseButton')}</button>}
       </Block>
     </div>
   )
 }
 
 function About() {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-line/10 bg-bg/40 p-5">
         <Wordmark className="text-2xl" />
-        <p className="mt-1 text-sm text-dim">Know what is next for your things.</p>
-        <p className="num mt-4 text-xs text-faint">v{__APP_VERSION__} · prototype · built {dayjs(__BUILD_TIME__).format('MMM D, YYYY HH:mm')}</p>
+        <p className="mt-1 text-sm text-dim">{t('settings.about.tagline')}</p>
+        <p className="num mt-4 text-xs text-faint">{t('settings.about.version', { version: __APP_VERSION__, when: fmtMoment(__BUILD_TIME__, 'date-time') })}</p>
       </div>
-      <Block title="Part of the GLANCE family" hint="dayGLANCE plans the day, lastGLANCE remembers when you last did something, lifeGLANCE holds the long view. thingGLANCE watches the things you own.">
+      <Block title={t('settings.about.family')} hint={t('settings.about.familyHint')}>
         <div className="flex flex-wrap gap-1.5">
-          <Chip tone="dim" icon={Send}>Intents</Chip><Chip tone="dim" icon={Users}>Shared roster</Chip><Chip tone="dim" icon={Cloud}>GLANCEvault</Chip>
+          <Chip tone="dim" icon={Send}>{t('settings.about.intents')}</Chip><Chip tone="dim" icon={Users}>{t('settings.about.sharedRoster')}</Chip><Chip tone="dim" icon={Cloud}>GLANCEvault</Chip>
         </div>
       </Block>
-      <Block title="Where the web data comes from" hint="Product facts: Wikipedia (CC BY-SA). Support windows: endoflife.date (MIT). Dates marked as estimates are projections from a maker's usual support window, not promises.">{null}</Block>
+      <Block title={t('settings.about.webData')} hint={t('settings.about.webDataHint')}>{null}</Block>
     </div>
   )
 }
 
 export function Settings({ section }: { section?: SettingsSection }) {
+  const { t } = useTranslation()
   const ui = useUI()
   const [tab, setTab] = useState<SettingsSection>(section ?? 'general')
   const Body = { general: General, vault: Vault, household: Household, integrations: Integrations, data: Data, about: About }[tab]
   return (
     // One size whatever the section holds, so switching sections never moves
     // the panel. A long section scrolls inside it.
-    <Sheet title="Settings" onClose={ui.close} width="max-w-3xl" className="h-[92svh] sm:h-[660px]">
+    <Sheet title={t('settings.title')} onClose={ui.close} width="max-w-3xl" className="h-[92svh] sm:h-[660px]">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
         <nav className="scrollbar-none -mx-5 flex shrink-0 gap-1 overflow-x-auto px-5 sm:sticky sm:top-0 sm:mx-0 sm:w-44 sm:flex-col sm:px-0">
           {SECTIONS.map((s) => (
             <button key={s.id} type="button" onClick={() => setTab(s.id)}
               className={cx('flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition',
                 tab === s.id ? 'bg-accent/15 text-accent' : 'text-dim hover:bg-line/5 hover:text-ink')}>
-              <s.icon size={15} /> {s.label}
+              <s.icon size={15} /> {t(`settings.sections.${s.id}`)}
             </button>
           ))}
         </nav>

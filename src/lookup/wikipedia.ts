@@ -5,6 +5,7 @@
 
 import { netFetch } from '@/sync/shellFetch'
 import type { Spec } from '@/core/types'
+import { tr } from '@/core/text'
 
 const API = 'https://en.wikipedia.org/w/api.php'
 const REST = 'https://en.wikipedia.org/api/rest_v1'
@@ -75,27 +76,29 @@ const pick = (f: Record<string, string>, keys: string[]): string | undefined => 
   return undefined
 }
 
-const SPEC_FIELDS: [string[], string][] = [
-  [['type'], 'Type'],
-  [['soc', 'cpu', 'processor'], 'Chip'],
-  [['gpu', 'graphics'], 'Graphics'],
-  [['memory', 'ram'], 'Memory'],
-  [['storage'], 'Storage'],
-  [['display'], 'Display'],
-  [['battery', 'power'], 'Battery'],
-  [['os', 'operating system', 'operatingsystem'], 'OS'],
-  [['rear_camera', 'camera'], 'Camera'],
-  [['connectivity'], 'Connectivity'],
-  [['weight'], 'Weight'],
-  [['discontinued'], 'Discontinued'],
+// Which infobox fields become a spec line, and the catalog key of its label.
+const SPEC_FIELDS: [string[], SpecKey][] = [
+  [['type'], 'type'],
+  [['soc', 'cpu', 'processor'], 'chip'],
+  [['gpu', 'graphics'], 'graphics'],
+  [['memory', 'ram'], 'memory'],
+  [['storage'], 'storage'],
+  [['display'], 'display'],
+  [['battery', 'power'], 'battery'],
+  [['os', 'operating system', 'operatingsystem'], 'os'],
+  [['rear_camera', 'camera'], 'camera'],
+  [['connectivity'], 'connectivity'],
+  [['weight'], 'weight'],
+  [['discontinued'], 'discontinued'],
 ]
+type SpecKey = 'type' | 'chip' | 'graphics' | 'memory' | 'storage' | 'display' | 'battery' | 'os' | 'camera' | 'connectivity' | 'weight' | 'discontinued'
 
 function toSpecs(fields: Record<string, string>): Spec[] {
   const out: Spec[] = []
-  for (const [keys, label] of SPEC_FIELDS) {
+  for (const [keys, key] of SPEC_FIELDS) {
     const raw = keys.map((k) => fields[k]).find(Boolean)
     if (!raw) continue
-    out.push({ label, value: clip(raw, 140) })
+    out.push({ label: tr(`lookup.spec.${key}`), value: clip(raw, 140) })
   }
   return out
 }

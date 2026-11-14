@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { parseLink, type LinkTarget } from '@/core/links'
+import { tr } from '@/core/text'
 import { OPEN_LINK_EVENT, peekWaitingLink, takeWaitingLink } from '@/native/links'
 import type { DataValue } from './data'
 import { toast } from './toast'
@@ -39,7 +40,7 @@ export function useLinks(ui: UI, d: DataValue): void {
     // Things, plans and dates have to be looked up, so those wait for the data.
     if (!pending || !ready) return
     setPending(null)
-    const gone = (what: string) => toast({ title: `That ${what} is not on this device`, body: 'It may have been removed, or it may be private to someone else.' })
+    const gone = (what: 'thing' | 'plan' | 'date') => toast({ title: tr(`toast.gone.${what}`), body: tr('toast.goneBody') })
     switch (pending.kind) {
       case 'view': ui.close(); ui.openThing(null); ui.setView(pending.view); break
       case 'queue': ui.close(); ui.openThing(null); ui.setView('glance'); break

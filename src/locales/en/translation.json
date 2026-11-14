@@ -795,7 +795,12 @@
       "installButton": "Install thingGLANCE",
       "widgets": "Home screen widgets",
       "widgetsHint": "Your dates on the home screen, without opening the app. Your launcher will ask where to put it.",
-      "widgetsByHand": "Long-press your home screen and choose Widgets to add one."
+      "widgetsByHand": "Long-press your home screen and choose Widgets to add one.",
+      "reminders": "Reminders",
+      "remindersHint": "A notification as a date comes into view, and a last call before it. Only for dates that fall to you, or to nobody.",
+      "remindersOn": "Remind me on this device",
+      "remindersTime": "At",
+      "remindersBlocked": "Notifications are turned off for thingGLANCE in Android's settings."
     },
     "vault": {
       "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",
@@ -984,5 +989,10 @@
       "empty": "Nothing coming up"
     },
     "today": "today"
+  },
+  "notify": {
+    "channel": "Dates",
+    "channelDescription": "Warranties ending, plans renewing, support running out.",
+    "done": "Done with this"
   }
 }

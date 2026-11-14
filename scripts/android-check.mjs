@@ -293,6 +293,54 @@ shot('widgets-cleared')
 adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
 P = await attach()
 
+// ── Reminders ────────────────────────────────────────────────────────────────
+// A real notification, delivered by Android: a warranty that ends in exactly
+// seven days gets its last call today, at the reminder time, which is set to
+// two minutes from now.
+adb('shell', 'pm', 'grant', APP_ID, 'android.permission.POST_NOTIFICATIONS')
+const deviceNow = Number(adb('shell', 'date', '+%s').trim()) * 1000
+const fireAt = dayjs(deviceNow).add(2, 'minute').startOf('minute').add(dayjs(deviceNow).second() > 40 ? 1 : 0, 'minute')
+await openLink('thingglance://settings/general')
+await sleep(800)
+const timeField = P.getByLabel('At', { exact: true })
+check('Settings offers reminders, on once Android allows them', await timeField.isVisible().catch(() => false))
+await timeField.fill(fireAt.format('HH:mm'))
+await back()
+await openLink('thingglance://action/add?name=Android%20Check%20Tablet')
+await sleep(800)
+await P.getByLabel('Bought on').fill(dayjs(deviceNow).subtract(1, 'year').add(7, 'day').format('YYYY-MM-DD'))
+await P.getByRole('button', { name: 'Add thing' }).click()
+await sleep(2500)
+const pending = await P.evaluate(async () => (await window.Capacitor.Plugins.LocalNotifications.getPending()).notifications.map((n) => ({ title: n.title, body: n.body, at: new Date(n.schedule?.at).getTime(), link: n.extra?.link, sig: !!n.extra?.sig })))
+const mine = pending.find((n) => /Android Check Tablet/.test(n.body ?? ''))
+check('Android holds a pending notification for the date, at the chosen time', !!mine && mine.title === 'Manufacturer warranty ends' && mine.at === fireAt.valueOf() && String(mine.link).startsWith('thingglance://event/'), JSON.stringify(pending))
+check('and nothing for the date that was cleared earlier', !pending.some((n) => /Android Check Phone/.test(n.body ?? '') && n.title === 'Manufacturer warranty ends'))
+
+// Leave the app, and wait for Android to deliver it.
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+await home()
+const shade = () => adb('shell', 'dumpsys', 'notification', '--noredact')
+// Inexact alarms: Android may deliver a minute or two after the time asked for.
+const delivered = await waitFor(() => shade().includes('Android Check Tablet'), fireAt.valueOf() - deviceNow + 240_000)
+check('Android delivers it with the app in the background', delivered.ok, `after ${Math.round(delivered.ms / 1000)} s`)
+adb('shell', 'cmd', 'statusbar', 'expand-notifications'); await sleep(1500)
+shot('notification')
+ui = screen()
+const done = onScreen(ui, 'Done with this')
+check('the notification says what and when, and offers "Done with this"', !!onScreen(ui, 'Manufacturer warranty ends') && ui.some((n) => /^Android Check Tablet · in 7 days/.test(n.text)) && !!done, ui.map((n) => n.text).filter((t) => /warranty|Tablet|Done/i.test(t)).join(' | '))
+if (done) await tap(done); else adb('shell', 'cmd', 'statusbar', 'collapse')
+await sleep(3000)
+adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
+P = await attach()
+await openLink('thingglance://queue')
+// The write is applied as the app comes forward: give it a moment.
+await waitFor(() => P.evaluate(() => document.querySelectorAll('button[title="Done with this"]').length === 0), 15_000)
+// The thing and its date are still on the page (the fleet, the year strip);
+// what must be gone is the row in the queue, which is the only place a date
+// carries a "Done with this" button.
+const cleared = await P.evaluate(async () => ({ queue: document.querySelectorAll('button[title="Done with this"]').length > 0, pending: (await window.Capacitor.Plugins.LocalNotifications.getPending()).notifications.length }))
+check('"Done with this" on the notification clears the date in the app', !!done && !cleared.queue, JSON.stringify(cleared))
+
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')
 await back()

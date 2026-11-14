@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import dayjs from 'dayjs'
 import type { Coverage, DataSet, Decision, Subscription, Thing } from './types'
 import { eventKey } from './horizon'
-import { DEFAULT_REMINDER_PREFS, capReminders, normalizeReminderPrefs, planReminders, reminderNumericId, tellsDevice, type Reminder, type ReminderPrefs } from './reminders'
+import { DEFAULT_REMINDER_PREFS, capReminders, diffReminders, normalizeReminderPrefs, planReminders, reminderNumericId, reminderSignature, tellsDevice, type Reminder, type ReminderPrefs } from './reminders'
 
 const stamp = '2026-01-01T00:00:00.000Z'
 // Local wall-clock times, so the tests read the same in any time zone.
@@ -151,5 +151,29 @@ describe('what a shell needs', () => {
     const kept = capReminders(plan, 3)
     expect(kept).toEqual(plan.slice(0, 3))
     expect(capReminders(plan, 10)).toBe(plan)
+  })
+})
+
+describe('making the platform match the plan', () => {
+  const plan = planReminders(warranty, solo)
+  const held = (list: Reminder[]) => list.map((r) => ({ id: reminderNumericId(r.id), signature: reminderSignature(r) }))
+
+  it('schedules everything on a device that has nothing pending', () => {
+    expect(diffReminders(plan, [])).toEqual({ schedule: plan, cancel: [] })
+  })
+  it('does nothing when the platform already holds exactly the plan', () => {
+    expect(diffReminders(plan, held(plan))).toEqual({ schedule: [], cancel: [] })
+  })
+  it('cancels what is no longer planned, and only that', () => {
+    const stale = { id: 424242, signature: 'something that was cleared' }
+    expect(diffReminders(plan, [...held(plan), stale])).toEqual({ schedule: [], cancel: [424242] })
+    expect(diffReminders([], held(plan)).cancel).toEqual(held(plan).map((p) => p.id))
+  })
+  it('schedules again what changed: its time, its words, or one with no signature', () => {
+    const later = planReminders(warranty, { ...solo, prefs: { ...DEFAULT_REMINDER_PREFS, hour: 18 } })
+    expect(diffReminders(later, held(plan))).toEqual({ schedule: later, cancel: [] })
+    const renamed = planReminders(data({ things: [thing({ name: 'Work laptop' })], coverages: [cov({})] }), solo)
+    expect(diffReminders(renamed, held(plan)).schedule).toEqual(renamed)
+    expect(diffReminders(plan, held(plan).map((p) => ({ id: p.id }))).schedule).toEqual(plan)
   })
 })

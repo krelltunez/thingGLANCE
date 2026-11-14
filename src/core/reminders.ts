@@ -177,3 +177,34 @@ export function reminderNumericId(id: string): number {
   for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0
   return (h & 0x7fffffff) || 1
 }
+
+// ── Making the platform match the plan ───────────────────────────────────────
+
+// Everything about a reminder that a scheduled notification shows or acts on.
+// A pending notification whose signature differs is out of date.
+export const reminderSignature = (r: Reminder): string => `${r.id}|${r.at}|${r.title}|${r.body}|${r.link}`
+
+export interface PendingNotification {
+  // The platform's id (reminderNumericId of the reminder's id).
+  id: number
+  // The signature it was scheduled with, if it carried one.
+  signature?: string
+}
+
+// What a shell has to do so that the notifications the platform holds are
+// exactly the planned ones: schedule what is new or changed (scheduling under
+// an id replaces what was there), cancel what is no longer wanted. Pure, so
+// every shell diffs the same way.
+export function diffReminders(wanted: Reminder[], pending: PendingNotification[]): { schedule: Reminder[]; cancel: number[] } {
+  const byId = new Map<number, Reminder>()
+  // Two reminders landing on one platform id is about a one-in-a-million
+  // chance; the sooner one keeps it, and the next plan brings the other in.
+  for (const r of [...wanted].sort((a, b) => a.at - b.at)) {
+    const id = reminderNumericId(r.id)
+    if (!byId.has(id)) byId.set(id, r)
+  }
+  const held = new Map(pending.map((p) => [p.id, p.signature]))
+  const schedule = [...byId.entries()].filter(([id, r]) => held.get(id) !== reminderSignature(r)).map(([, r]) => r)
+  const cancel = pending.map((p) => p.id).filter((id) => !byId.has(id))
+  return { schedule, cancel: [...new Set(cancel)] }
+}

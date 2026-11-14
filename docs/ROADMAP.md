@@ -148,7 +148,7 @@ A review before Phase 2 went through these as the first shell would use them and
 
 ## Phase 2: Android (L)
 
-> Status, 2026-11-14: the shell is scaffolded and runs. It has the Keystore-backed secure store, native networking, `thingglance://` links, the back button and the status bar, and it syncs with a web device through a real vault. A script drives the real app on an emulator to check all of that ([android.md](android.md)). Nothing below is built yet, and nothing has been signed or uploaded.
+> Status, 2026-11-14: the shell is scaffolded and runs. It has the Keystore-backed secure store, native networking, `thingglance://` links, the back button and the status bar, and it syncs with a web device through a real vault. Step 1 below is done: the snapshot bridge and two read-only widgets (Needs a decision, Next up), in Jetpack Glance. A script drives the real app on an emulator to check all of that ([android.md](android.md)). The rest is not built yet, and nothing has been signed or uploaded.
 
 Scaffold with Capacitor 8, then follow the order lastGLANCE's native plan settled on.
 

@@ -4,4 +4,10 @@
     <string name="title_activity_main">thingGLANCE</string>
     <string name="package_name">com.thingglance.app</string>
     <string name="custom_url_scheme">com.thingglance.app</string>
+    <!-- What the launcher's widget picker shows. The widgets' own text comes
+         from the app, in the app's language (src/native/widgetBridge.ts). -->
+    <string name="widget_decide_label">Needs a decision</string>
+    <string name="widget_decide_description">The dates waiting on you, each with its countdown.</string>
+    <string name="widget_next_label">Next up</string>
+    <string name="widget_next_description">The one date that matters most right now.</string>
 </resources>

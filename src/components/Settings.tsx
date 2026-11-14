@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  Cloud, Copy, Database, Download, Info, KeyRound, LoaderCircle, Lock, MonitorCog, Moon, Palette, Pencil,
+  Cloud, Copy, Database, Download, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, Pencil,
   RefreshCw, Send, Sun, Trash2, Unplug, Upload, Users, Zap,
 } from 'lucide-react'
 import { DAY, fmtDay, fmtMoment } from '@/core/dates'
@@ -17,7 +17,8 @@ import { describeTies, isTied, type MemberTies } from '@/core/household'
 import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/config'
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
-import { describeDevice, promptInstall } from '@/native/platform'
+import { describeDevice, promptInstall, shell } from '@/native/platform'
+import { WidgetBridge } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
@@ -52,6 +53,12 @@ function Block({ title, hint, children }: { title: string; hint?: ReactNode; chi
 
 function General() {
   const { t } = useTranslation()
+  // The launcher places the widget and asks the user to confirm. Where it
+  // cannot (an old Android, a launcher without the feature), say how instead.
+  const addWidget = async (kind: 'decide' | 'next') => {
+    const { supported } = await WidgetBridge.pinWidget({ kind }).catch(() => ({ supported: false }))
+    if (!supported) toast({ title: t('settings.general.widgetsByHand') })
+  }
   const s = useSettings()
   const installable = useCanInstall()
   return (
@@ -71,6 +78,14 @@ function General() {
       {languages.length > 1 && (
         <Block title={t('language.label')} hint={t('language.hint')}>
           <LanguagePicker className="input w-56" />
+        </Block>
+      )}
+      {shell() === 'native' && (
+        <Block title={t('settings.general.widgets')} hint={t('settings.general.widgetsHint')}>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn" onClick={() => void addWidget('decide')}><LayoutGrid size={15} /> {t('widget.decide.title')}</button>
+            <button type="button" className="btn" onClick={() => void addWidget('next')}><LayoutGrid size={15} /> {t('widget.next.title')}</button>
+          </div>
         </Block>
       )}
       <Block title={t('settings.general.webLookup')}>

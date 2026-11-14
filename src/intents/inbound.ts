@@ -16,7 +16,7 @@ import type { DataSet } from '@/core/types'
 import { buildHorizon } from '@/core/horizon'
 import { memberOfDevice, userIds, visibleTo } from '@/core/household'
 import { formatLink } from '@/core/links'
-import { buildSnapshot } from '@/core/snapshot'
+import { buildSnapshot, type GlanceSnapshot } from '@/core/snapshot'
 import { db } from '@/db/client'
 import { createThing, decide, saveCoverage, saveSubscription, undecide } from '@/db/queries'
 import { openLink } from '@/native/links'
@@ -39,6 +39,14 @@ async function view() {
   return { all, data: visibleTo(all, meId), members, devices, meId }
 }
 
+// The snapshot as this device may see it, right now. What `query` answers,
+// and what a shell hands to widgets and notifications.
+export async function currentSnapshot(opts: { limit?: number } = {}): Promise<GlanceSnapshot> {
+  const v = await view()
+  const settings = getSettings()
+  return buildSnapshot(v.all, { viewerId: v.meId, userIds: userIds(v.devices, v.members), currency: settings.currency, reminderPrefs: settings.reminders, ...opts })
+}
+
 export function liveContext(): IntentContext {
   return {
     getThing: async (id) => (await view()).data.things.find((t) => t.id === id) ?? null,
@@ -55,11 +63,7 @@ export function liveContext(): IntentContext {
       await sendEventToDayglance(event, event.thingId ? data.things.find((t) => t.id === event.thingId) : null)
     },
     navigate: (target) => openLink(formatLink(target)),
-    snapshot: async () => {
-      const v = await view()
-      const settings = getSettings()
-      return buildSnapshot(v.all, { viewerId: v.meId, userIds: userIds(v.devices, v.members), currency: settings.currency, reminderPrefs: settings.reminders })
-    },
+    snapshot: () => currentSnapshot(),
   }
 }
 

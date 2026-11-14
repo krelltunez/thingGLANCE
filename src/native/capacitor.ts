@@ -10,6 +10,8 @@
 //   links      thingglance:// URLs the system hands the app go to openLink()
 //   back       the hardware back button closes what is on top, then leaves
 //   status bar follows the app's theme
+//   widgets    the snapshot is written to the native side whenever it changes
+//              (native/widgetBridge.ts)
 
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor, registerPlugin } from '@capacitor/core'
@@ -17,6 +19,7 @@ import { StatusBar, Style } from '@capacitor/status-bar'
 import { goBack } from './backStack'
 import { openLink } from './links'
 import { registerShell, type SecureStore } from './shell'
+import { startWidgetBridge } from './widgetBridge'
 
 interface SecureStorePlugin {
   // Resolves null when nothing is stored; rejects when the keystore could not
@@ -86,4 +89,5 @@ export function startCapacitorShell(): void {
   followLinks()
   handleBackButton()
   followTheme()
+  if (Capacitor.getPlatform() === 'android') startWidgetBridge()
 }

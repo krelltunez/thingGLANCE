@@ -792,7 +792,10 @@
       "webLookupHint": "Photo, specs and release date from Wikipedia; end of security updates from endoflife.date. Only the product name you type into the lookup box is sent, and only when you use it.",
       "install": "Install",
       "installHint": "Runs in its own window, works offline, and shows a badge when something needs a decision.",
-      "installButton": "Install thingGLANCE"
+      "installButton": "Install thingGLANCE",
+      "widgets": "Home screen widgets",
+      "widgetsHint": "Your dates on the home screen, without opening the app. Your launcher will ask where to put it.",
+      "widgetsByHand": "Long-press your home screen and choose Widgets to add one."
     },
     "vault": {
       "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",
@@ -970,5 +973,16 @@
       "thing": "This hides the thing from the rest of the household; it is not separately encrypted.",
       "plan": "This hides the plan from the rest of the household; it is not separately encrypted."
     }
+  },
+  "widget": {
+    "decide": {
+      "title": "Needs a decision",
+      "empty": "Nothing needs a decision"
+    },
+    "next": {
+      "title": "Next up",
+      "empty": "Nothing coming up"
+    },
+    "today": "today"
   }
 }

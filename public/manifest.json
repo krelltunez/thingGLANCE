@@ -12,9 +12,12 @@
   "orientation": "any",
   "categories": ["productivity", "utilities", "finance"],
   "shortcuts": [
-    { "name": "Add a thing", "short_name": "Add thing", "url": "/?action=add-thing", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Add a subscription", "short_name": "Add sub", "url": "/?action=add-subscription", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Horizon", "url": "/?view=horizon", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+    { "name": "Add a thing", "short_name": "Add thing", "url": "/?link=action/add", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Add a plan", "short_name": "Add plan", "url": "/?link=action/add-plan", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Horizon", "url": "/?link=view/horizon", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "protocol_handlers": [
+    { "protocol": "web+thingglance", "url": "/?link=%s" }
   ],
   "icons": [
     { "src": "/icons/icon-72.png", "sizes": "72x72", "type": "image/png", "purpose": "any" },

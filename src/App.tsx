@@ -3,12 +3,16 @@ import {
   Cloud, CloudAlert, CloudOff, LayoutDashboard, Lock, Package, Plus, RefreshCw, Repeat, Search,
   Settings as SettingsIcon, Sparkles, Telescope, Users, type LucideIcon,
 } from 'lucide-react'
+import { parseLink } from '@/core/links'
 import { useData } from '@/state/data'
+import { useLinks } from '@/state/useLinks'
 import { DataProvider } from '@/state/DataProvider'
 import { UIContext, type Modal, type UI, type View } from '@/state/ui'
 import { useSync } from '@/state/sync'
 import { getWhoAsked, householdSnapshot, setFocusMemberId, setWhoAsked, subscribeHousehold, takeLegacyMeId, takeLegacyMineFilter } from '@/multiuser/settings'
 import { startSync } from '@/sync/manager'
+import { dispatchExternalWrite } from '@/intents/inbound'
+import { openLink } from '@/native/links'
 import { describeDevice, setBadge } from '@/native/platform'
 import { attachThisDevice, removeSamples } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
@@ -141,6 +145,8 @@ function Shell({ ui }: { ui: UI }) {
   const { view, setView, modal, open } = ui
 
   useEffect(() => { setBadge(d.queue.length) }, [d.queue.length])
+  // Every link, however it arrived, is acted on in one place.
+  useLinks(ui, d)
 
   // The old Mine / Everyone switch becomes the member filter: a device that
   // was on "Mine" stays on its own member.
@@ -208,8 +214,8 @@ function Shell({ ui }: { ui: UI }) {
       </nav>
 
       {ui.thingId && <ThingDetail key={`detail-${ui.thingId}`} thingId={ui.thingId} />}
-      {modal?.type === 'thing' && <ThingForm key={`thing-${modal.id ?? 'new'}`} id={modal.id} initialCategory={modal.category} />}
-      {modal?.type === 'subscription' && <SubscriptionForm key={`plan-${modal.id ?? 'new'}`} id={modal.id} thingId={modal.thingId} />}
+      {modal?.type === 'thing' && <ThingForm key={`thing-${modal.id ?? 'new'}`} id={modal.id} initialCategory={modal.category} initialName={modal.name} />}
+      {modal?.type === 'subscription' && <SubscriptionForm key={`plan-${modal.id ?? 'new'}`} id={modal.id} thingId={modal.thingId} initialName={modal.name} />}
       {modal?.type === 'coverage' && <CoverageForm key={`cover-${modal.id ?? 'new'}`} thingId={modal.thingId} id={modal.id} />}
       {modal?.type === 'settings' && <Settings key={`settings-${modal.section ?? 'general'}`} section={modal.section} />}
       {modal?.type === 'passphrase' && <PassphraseModal />}
@@ -230,11 +236,12 @@ function TabButton({ v, active, onClick, badge }: { v: (typeof VIEWS)[number]; a
 }
 
 export default function App() {
-  const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const [view, setViewState] = useState<View>(() => {
-    const fromUrl = params.get('view')
+    // A link that names a view decides the first paint, so the app does not
+    // open on one page and jump to another. The link hook does everything else.
+    const linked = parseLink(window.location.href)
     const stored = localStorage.getItem('tg_view')
-    return isView(fromUrl) ? fromUrl : isView(stored) ? stored : 'glance'
+    return linked?.kind === 'view' ? linked.view : isView(stored) ? stored : 'glance'
   })
   const [thingId, setThingId] = useState<string | null>(null)
   const [modal, setModal] = useState<Modal>(null)
@@ -256,6 +263,13 @@ export default function App() {
   // Engines start once; the page reloads after any vault config change.
   useEffect(() => { void startSync() }, [])
 
+  // No shell exists yet to call the link router or the outside-write handler,
+  // so the dev server exposes both for trying by hand and for the e2e run:
+  // __thingglance.openLink('thingglance://queue'), __thingglance.intent({...}).
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__thingglance = { openLink, intent: dispatchExternalWrite }
+  }, [])
+
   // v0.1 remembered "this is me" in localStorage. It is a synced row now, so
   // the rest of the household can tell who uses the app: hand it over once.
   useEffect(() => {
@@ -268,17 +282,6 @@ export default function App() {
   useEffect(() => {
     if (sync.phase === 'locked' && !asked.current && !welcome) { asked.current = true; setModal({ type: 'passphrase' }) }
   }, [sync.phase, welcome])
-
-  // PWA shortcuts (manifest.json) and, later, deep links from widgets, the
-  // launcher and the tray: ?action=add-thing | add-subscription, ?thing=<id>.
-  useEffect(() => {
-    const action = params.get('action')
-    if (action === 'add-thing') setModal({ type: 'thing' })
-    else if (action === 'add-subscription') setModal({ type: 'subscription' })
-    const t = params.get('thing')
-    if (t) setThingId(t)
-    if (params.size) window.history.replaceState(null, '', window.location.pathname)
-  }, [params])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

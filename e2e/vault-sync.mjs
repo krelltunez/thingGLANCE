@@ -1,7 +1,7 @@
 // End-to-end: two browser contexts ("devices") syncing through a real
 // GLANCEvault, plus the shared roster, members and users (owner, responsible,
-// private, the member filter, handing over and removing) and the dayGLANCE
-// intent round-trip.
+// private, the member filter, handing over and removing), a write and a link
+// from outside the app, and the dayGLANCE intent round-trip.
 //
 // Needs the dev server (npm run dev) and a vault that allows this app and this
 // origin. A throwaway one from the sibling repo:
@@ -244,6 +244,24 @@ await A.keyboard.press('Escape')
 await syncNow(B)
 await goto(B, 'Things')
 check('B: the hand-over arrives, the laptop is Blake\'s', await B.getByRole('button', { name: /E2E Laptop.*Blake|Blake.*E2E Laptop/s }).first().isVisible().catch(() => false))
+
+// ── The two doors in from outside: a write, and a link ──────────────────────
+// No shell exists yet, so the dev server exposes both on window.__thingglance.
+const outsideId = crypto.randomUUID()
+const outsideWrite = { action: 'create_thing', clientId: outsideId, payload: { name: 'E2E Outside Write', price: 42 } }
+const landed = await A.evaluate((w) => window.__thingglance.intent(w), outsideWrite)
+const resent = await A.evaluate((w) => window.__thingglance.intent(w), outsideWrite)
+check('A: a write from outside lands, and re-sending it changes nothing', landed.success && landed.thing_id === outsideId && resent.deduped === true, JSON.stringify(resent))
+check('A: a write with no id is refused', (await A.evaluate(() => window.__thingglance.intent({ action: 'create_thing', payload: { name: 'No id' } }))).code === 'client_id_required')
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+await goto(B, 'Things')
+check('B: the outside write syncs like any other', (await B.getByText('E2E Outside Write').count()) === 1)
+await B.evaluate((id) => window.__thingglance.openLink(`thingglance://thing/${id}`), outsideId)
+await B.waitForTimeout(600)
+check('B: a link opens the thing it names', (await B.getByText('E2E Outside Write').count()) >= 2)
+await B.keyboard.press('Escape')
+await B.waitForTimeout(300)
 
 // ── Intents: send to dayGLANCE, then play dayGLANCE's reply ──────────────────
 await A.getByRole('button', { name: 'Settings', exact: true }).click()

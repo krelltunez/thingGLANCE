@@ -14,6 +14,7 @@ import type { DataSet, Day, EventType, HorizonEvent, Subscription, Thing } from 
 import { DAY, addDays, fmtDay, relative } from './dates'
 import { buildHorizon } from './horizon'
 import { handlerOfEvent, visibleTo } from './household'
+import { eventLink } from './links'
 
 // Each date gets at most two nudges. The first comes when it enters its lead
 // window (LEAD_DAYS in horizon.ts: the same moment it joins the queue), while
@@ -58,6 +59,8 @@ export interface Reminder {
   daysBefore: number
   title: string
   body: string
+  // What a tap opens (core/links.ts).
+  link: string
   thingId?: string
   subscriptionId?: string
   amount?: number
@@ -122,7 +125,7 @@ export function planReminders(all: DataSet, ctx: ReminderContext): Reminder[] {
       if (at <= now) continue
       out.push({
         id: `${e.key}@${stage}`, eventKey: e.key, type: e.type, stage, at, day, eventDate: e.date, daysBefore,
-        ...text(e, daysBefore), thingId: e.thingId, subscriptionId: e.subscriptionId, amount: e.amount,
+        ...text(e, daysBefore), link: eventLink(e.key), thingId: e.thingId, subscriptionId: e.subscriptionId, amount: e.amount,
       })
     }
   }

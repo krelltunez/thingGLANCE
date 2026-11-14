@@ -15,13 +15,13 @@ import { Field, Segmented, Sheet, Toggle } from './ui'
 import { cx, num, whoFields, type WhoDraft } from './kit'
 import { HouseholdFields, MembersPicker } from './HouseholdFields'
 
-export function SubscriptionForm({ id, thingId }: { id?: string; thingId?: string }) {
+export function SubscriptionForm({ id, thingId, initialName }: { id?: string; thingId?: string; initialName?: string }) {
   const d = useData()
   const ui = useUI()
   const { currency } = useSettings()
   const existing = id ? d.subById.get(id) : undefined
   const [f, setF] = useState(() => ({
-    name: existing?.name ?? '',
+    name: existing?.name ?? initialName ?? '',
     provider: existing?.provider ?? '',
     amount: existing ? String(existing.amount) : '',
     cycle: (existing?.cycle ?? 'monthly') as Cycle,

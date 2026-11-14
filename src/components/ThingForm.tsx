@@ -153,12 +153,15 @@ function Lookup({ onResult }: { onResult: (r: LookupResult) => void }) {
   )
 }
 
-export function ThingForm({ id, initialCategory }: { id?: string; initialCategory?: CategoryId }) {
+export function ThingForm({ id, initialCategory, initialName }: { id?: string; initialCategory?: CategoryId; initialName?: string }) {
   const d = useData()
   const ui = useUI()
   const { webLookup, currency } = useSettings()
   const existing = id ? d.thingById.get(id) : undefined
-  const [f, setF] = useState<Draft>(() => fromThing(existing, initialCategory, d.meId))
+  const [f, setF] = useState<Draft>(() => {
+    const draft = fromThing(existing, initialCategory, d.meId)
+    return !existing && initialName ? { ...draft, name: initialName } : draft
+  })
   const [warrantyYears, setWarrantyYears] = useState(1)
   const [supportNote, setSupportNote] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)

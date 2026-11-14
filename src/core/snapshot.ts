@@ -12,6 +12,7 @@ import { today } from './dates'
 import { attentionQueue, buildHorizon } from './horizon'
 import { lifecycle, replacementFund, type Verdict } from './health'
 import { handlerOfEvent, visibleTo } from './household'
+import { eventLink } from './links'
 import { monthlyCost } from './money'
 import { capReminders, planReminders, type Reminder, type ReminderPrefs } from './reminders'
 
@@ -59,6 +60,8 @@ export interface SnapshotEvent {
   amount?: number
   // The member who deals with it, or null when it falls to nobody.
   handlerId: string | null
+  // What a tap opens (core/links.ts).
+  link: string
 }
 
 export interface SnapshotThing {
@@ -108,6 +111,7 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
     key: e.key, type: e.type, date: e.date, days: e.days, severity: e.severity, title: e.title, detail: e.detail,
     thingId: e.thingId, subscriptionId: e.subscriptionId, amount: e.amount,
     handlerId: handlerOfEvent(e, thingById, subById, users),
+    link: eventLink(e.key),
   })
   const active = data.things.filter((t) => t.status === 'active')
   const monthly = data.subscriptions.reduce((t, s) => t + monthlyCost(s), 0)

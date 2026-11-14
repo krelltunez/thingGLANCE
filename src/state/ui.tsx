@@ -2,14 +2,17 @@
 // context so any component can open a form without prop-drilling.
 
 import { createContext, useContext } from 'react'
+import type { LinkSettings, LinkView } from '@/core/links'
 import type { CategoryId } from '@/core/types'
 
-export type View = 'glance' | 'horizon' | 'things' | 'plans'
-export type SettingsSection = 'general' | 'vault' | 'household' | 'integrations' | 'data' | 'about'
+// The same names links use (core/links.ts), so a link can name any of them.
+export type View = LinkView
+export type SettingsSection = LinkSettings
 
 export type Modal =
-  | { type: 'thing'; id?: string; category?: CategoryId }
-  | { type: 'subscription'; id?: string; thingId?: string }
+  // `name` prefills a new one (a link or a share can supply it).
+  | { type: 'thing'; id?: string; category?: CategoryId; name?: string }
+  | { type: 'subscription'; id?: string; thingId?: string; name?: string }
   | { type: 'coverage'; thingId: string; id?: string }
   | { type: 'settings'; section?: SettingsSection }
   | { type: 'passphrase' }

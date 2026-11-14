@@ -22,20 +22,27 @@ export async function clearCachedVaultKeys(): Promise<void> {
   await clearIntentsRootKey().catch(() => { /* nothing cached */ })
 }
 
+// The shared roster's vault app. Named here as well as in rosterVault.ts so
+// this module does not have to import the engine.
+const ROSTER_APP = 'glance-users'
+
 // ── Test before saving ───────────────────────────────────────────────────────
 
 export type VaultTestOutcome =
-  | { ok: true; fresh: boolean; appAllowed: boolean | null }
+  // `rosterAllowed` is about the shared household roster (glance-users): a
+  // server that leaves it out still syncs things, but no GLANCE app can share
+  // members through it.
+  | { ok: true; fresh: boolean; appAllowed: boolean | null; rosterAllowed: boolean | null }
   | { ok: false; code: 'AUTH_FAILURE' | 'FORBIDDEN' | 'NETWORK_ERROR' }
 
-// Does this server accept the `thingglance` app? /healthz lists the allowed
-// apps on current servers; null when it does not say.
-async function probeAppAllowed(vaultUrl: string): Promise<boolean | null> {
+// Which apps this server accepts. /healthz lists them on current servers
+// (no credential needed); null when it does not say or cannot be reached.
+export async function probeAllowedApps(vaultUrl: string): Promise<string[] | null> {
   try {
     const res = await fetch(`${vaultUrl.replace(/\/+$/, '')}/healthz`, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return null
     const body = (await res.json()) as { allowedApps?: unknown }
-    return Array.isArray(body.allowedApps) ? body.allowedApps.includes(APP_ID) : null
+    return Array.isArray(body.allowedApps) ? body.allowedApps.filter((a): a is string => typeof a === 'string') : null
   } catch {
     return null
   }
@@ -46,8 +53,8 @@ async function probeAppAllowed(vaultUrl: string): Promise<boolean | null> {
 export async function testVaultConnection(input: Pick<VaultConfig, 'vaultUrl' | 'vaultToken' | 'accountId'>): Promise<VaultTestOutcome> {
   try {
     const client = createVaultClient({ vaultUrl: input.vaultUrl, vaultToken: input.vaultToken, brake: false })
-    const [salt, appAllowed] = await Promise.all([client.getSalt(input.accountId), probeAppAllowed(input.vaultUrl)])
-    return { ok: true, fresh: !salt || salt.length === 0, appAllowed }
+    const [salt, apps] = await Promise.all([client.getSalt(input.accountId), probeAllowedApps(input.vaultUrl)])
+    return { ok: true, fresh: !salt || salt.length === 0, appAllowed: apps ? apps.includes(APP_ID) : null, rosterAllowed: apps ? apps.includes(ROSTER_APP) : null }
   } catch (err) {
     const status = (err as { status?: unknown })?.status
     if (status === 401) return { ok: false, code: 'AUTH_FAILURE' }

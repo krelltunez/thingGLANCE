@@ -8,7 +8,8 @@ import { DB_CRYPTO_CONFIG, createDbEngine, isUnknownAppError, markAllLocalEntiti
 import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
 import { registerDbEngine } from './dirtyTracker'
 import { getVaultConfig, isVaultEnabled } from './vaultConfig'
-import { createRosterDbEngine } from '@/multiuser/rosterVault'
+import { probeAllowedApps } from './vaultConnect'
+import { ROSTER_VAULT_APP, createRosterDbEngine } from '@/multiuser/rosterVault'
 import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { clearIntentsRootKey, loadIntentsRootKey } from '@/intents/keyStore'
@@ -25,7 +26,12 @@ export interface SyncState {
   errorMessage: string | null
   // The server does not list `thingglance` in its allowed apps.
   unsupported: boolean
+  // The server refuses the shared roster's app (glance-users is not in its
+  // allowed apps), so no GLANCE app can share members through it.
   rosterUnsupported: boolean
+  // The last roster cycle did not reach the vault (sync is pausing after a
+  // failure). Not the same as an empty roster.
+  rosterPaused: boolean
   // The key cached on this device does not open what the account's other
   // GLANCE apps wrote: it came from a different passphrase. Sync is held (it
   // would only add rows nobody else can read) until the right one is entered.
@@ -46,7 +52,7 @@ export interface SyncState {
 
 let state: SyncState = {
   phase: 'off', pro: false, lastSynced: null, errorCode: null, errorMessage: null,
-  unsupported: false, keyConflict: false, rosterUnsupported: false, rosterCheckedAt: null, rosterError: null, rosterSkipped: 0, rosterRejected: 0,
+  unsupported: false, keyConflict: false, rosterUnsupported: false, rosterPaused: false, rosterCheckedAt: null, rosterError: null, rosterSkipped: 0, rosterRejected: 0,
   skipped: 0, pending: 0, live: 'off',
 }
 const listeners = new Set<() => void>()
@@ -60,6 +66,23 @@ export const subscribeSync = (fn: () => void): (() => void) => { listeners.add(f
 
 let engine: DbSyncEngine | null = null
 let roster: DbSyncEngine | null = null
+// What the server's /healthz says about the roster's app. Null until asked,
+// or when the server does not say.
+let rosterAllowed: boolean | null = null
+
+async function probeRoster(): Promise<void> {
+  const cfg = getVaultConfig()
+  if (!cfg) return
+  const apps = await probeAllowedApps(cfg.vaultUrl)
+  rosterAllowed = apps ? apps.includes(ROSTER_VAULT_APP) : null
+  if (rosterAllowed !== null) set({ rosterUnsupported: !rosterAllowed })
+}
+
+// "Check again" in Settings: ask the server afresh, then read the roster.
+export async function recheckRoster(): Promise<void> {
+  await probeRoster()
+  await roster?.dbSyncCycle().catch(() => { /* reported through onError */ })
+}
 let started = false
 
 const CADENCE_MS = 5 * 60 * 1000
@@ -126,9 +149,17 @@ export async function startSync(): Promise<void> {
   roster = createRosterDbEngine({
     onError: (message, code) => { if (message) console.warn('[thingglance] roster sync error:', code ?? '(no code)', message) },
     onUnsupported: () => set({ rosterUnsupported: true }),
-    onChecked: (o) => set({ rosterCheckedAt: new Date().toISOString(), rosterError: o.error, rosterSkipped: o.skipped, rosterRejected: o.rejected }),
+    onChecked: (o) => set({
+      rosterUnsupported: false, rosterPaused: !o.ran && !o.error,
+      rosterCheckedAt: o.ran || o.error ? new Date().toISOString() : state.rosterCheckedAt,
+      rosterError: o.error, rosterSkipped: o.skipped, rosterRejected: o.rejected,
+    }),
+    allowed: () => rosterAllowed,
   })
   registerRosterDbEngine(roster)
+  // Before the first cycle, so a server that refuses the roster is named as
+  // such rather than discovered through a failed request.
+  await probeRoster()
 
   set({ phase: 'idle', lastSynced: engine?.getLastSynced() ?? null, pending: engine?.getDirtySet().length ?? 0 })
 

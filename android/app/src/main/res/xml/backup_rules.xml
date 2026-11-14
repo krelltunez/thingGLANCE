@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same exclusions as data_extraction_rules.xml, for Android 11 and
+     older, which read this file instead. -->
+<full-backup-content>
+    <exclude domain="root" path="app_webview/" />
+    <exclude domain="sharedpref" path="thingglance_secure_store.xml" />
+    <exclude domain="sharedpref" path="thingglance_shared.xml" />
+</full-backup-content>

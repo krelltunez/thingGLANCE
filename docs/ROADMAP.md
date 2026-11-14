@@ -39,7 +39,7 @@ These are cheap now and expensive or impossible to change later.
 
 | Thing | Proposed value | Why it matters |
 | --- | --- | --- |
-| Bundle / application ID | `com.thingglance.app` on Android, iOS and the Mac App Store | lastGLANCE's iOS ID (`com.lastglance`) and Android ID (`com.lastglance.app`) never matched, and its docs say mixing them up silently breaks App Groups. Use one. Matching iOS and Mac IDs is also what allows Universal Purchase. |
+| Bundle / application ID | **Decided, 2026-11-14:** `com.thingglance.app` on Android, iOS and the Mac App Store | lastGLANCE's iOS ID (`com.lastglance`) and Android ID (`com.lastglance.app`) never matched, and its docs say mixing them up silently breaks App Groups. Use one. Matching iOS and Mac IDs is also what allows Universal Purchase. |
 | App Group (iOS) | `group.com.thingglance.app` | Must be on every App ID before widgets work. A wrong group fails silently. |
 | URL scheme | `thingglance://` | One router for widgets, notifications, shortcuts, tray and launcher. |
 | Desktop origin | `app://thingglance` | IndexedDB and localStorage are keyed by it. It can never move after the first build. |
@@ -51,7 +51,7 @@ These are cheap now and expensive or impossible to change later.
 
 ### 2. Pricing
 
-See [Pricing](#pricing-paywall-or-paid) at the end. The short version: **create the Play listing as paid**, because that is the only choice that keeps both models available.
+**Decided, 2026-11-14: a paid app at $9.99, with no paywall.** Create the Play listing as paid. [Pricing](#pricing-paywall-or-paid) at the end has the reasoning, which is also why no billing code is being built.
 
 ### 3. The wire contract
 
@@ -147,6 +147,8 @@ Each of these is built once in the web app and reused by every shell. Doing them
 A review before Phase 2 went through these as the first shell would use them and found what only a real keystore and a real native transport would have shown: a keystore that refuses, hangs or cannot be read; deadlines that depended on the transport honouring a cancel signal; values from outside that were the right shape and nonsense; and a snapshot that could not say what was already handled. Those are fixed and tested. [shells.md](shells.md), [snapshot.md](snapshot.md) and [links-and-intents.md](links-and-intents.md) describe what a shell can now rely on.
 
 ## Phase 2: Android (L)
+
+> Status, 2026-11-14: the shell is scaffolded and runs. It has the Keystore-backed secure store, native networking, `thingglance://` links, the back button and the status bar, and it syncs with a web device through a real vault. A script drives the real app on an emulator to check all of that ([android.md](android.md)). Nothing below is built yet, and nothing has been signed or uploaded.
 
 Scaffold with Capacitor 8, then follow the order lastGLANCE's native plan settled on.
 
@@ -315,6 +317,8 @@ So the two starting points are not symmetrical:
 - **Start free**: paid is gone on Play permanently.
 
 Whatever you prefer long term, **the Play listing should be created as paid**.
+
+> Decided, 2026-11-14: paid, $9.99, one price, no paywall and no in-app purchases. The rest of this section is the reasoning that led there.
 
 ### Recommendation: a paid app, one price
 

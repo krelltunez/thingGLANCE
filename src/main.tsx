@@ -7,6 +7,7 @@ import './index.css'
 import { i18nReady } from './i18n'
 import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
+import { startCapacitorShell } from './native/capacitor'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
 import { settleKeyStorage } from './sync/keyHooks'
 import { hydrateSecrets } from './sync/secrets'
@@ -22,6 +23,10 @@ if (typeof crypto.randomUUID !== 'function') {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}` as `${string}-${string}-${string}-${string}-${string}`
   }
 }
+
+// A native shell hands over its keystore and its network stack before
+// anything else looks for them. Does nothing in a browser.
+startCapacitorShell()
 
 // Shell markers for platform-only styling (same class contract as lastGLANCE).
 const where = shell()

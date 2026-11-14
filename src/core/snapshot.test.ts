@@ -31,8 +31,8 @@ describe('the snapshot contract', () => {
     expect(keys(s.counts)).toEqual(['attention', 'subscriptions', 'things', 'urgent'])
     expect(keys(s.burn)).toEqual(['monthly', 'replacementMonthly', 'yearly'])
     expect(keys(s.things[0])).toEqual(['category', 'daysLeft', 'id', 'lifeEnd', 'name', 'ownerMemberId', 'remaining', 'verdict'])
-    expect(keys(s.attention[0])).toEqual(['amount', 'date', 'days', 'detail', 'handlerId', 'key', 'severity', 'subscriptionId', 'thingId', 'title', 'type'])
-    expect(keys(s.reminders[0])).toEqual(['amount', 'at', 'body', 'day', 'daysBefore', 'eventDate', 'eventKey', 'id', 'stage', 'subscriptionId', 'thingId', 'title', 'type'])
+    expect(keys(s.attention[0])).toEqual(['amount', 'date', 'days', 'detail', 'handlerId', 'key', 'link', 'severity', 'subscriptionId', 'thingId', 'title', 'type'])
+    expect(keys(s.reminders[0])).toEqual(['amount', 'at', 'body', 'day', 'daysBefore', 'eventDate', 'eventKey', 'id', 'link', 'stage', 'subscriptionId', 'thingId', 'title', 'type'])
   })
   it('survives being stored and read back', () => {
     const s = snap()
@@ -59,6 +59,11 @@ describe('what the snapshot says', () => {
       'renewal:s1:2027-12-01@heads-up', 'renewal:s1:2027-12-01@last-call',
     ])
     expect(buildSnapshot(all, { viewerId: 'ben', userIds: ['ann', 'ben'], ref: REF, now: NOW }).reminders).toEqual([])
+  })
+  it('gives every date and reminder a link a tap can open', () => {
+    const s = snap()
+    expect(s.attention[0].link).toBe('thingglance://event/' + encodeURIComponent(s.attention[0].key))
+    expect(s.reminders[0].link).toBe('thingglance://event/' + encodeURIComponent(s.reminders[0].eventKey))
   })
   it('caps the reminders when asked', () => {
     expect(buildSnapshot(all, { viewerId: 'ann', userIds: ['ann'], ref: REF, now: NOW, maxReminders: 1 }).reminders).toHaveLength(1)

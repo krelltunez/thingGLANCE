@@ -48,6 +48,7 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `thingId`, `subscriptionId` | string, optional | What a tap should open. |
 | `amount` | number, optional | In `currency`. |
 | `handlerId` | member id or null | Who deals with it. Null when it falls to nobody. |
+| `link` | string | What a tap opens: a `thingglance://event/<key>` link. Hand it to the app as it is. |
 
 ### A thing
 
@@ -66,6 +67,7 @@ Built by `planReminders()` in `src/core/reminders.ts`. A shell makes the platfor
 | `day` | `YYYY-MM-DD` | The local day it fires on. |
 | `eventDate`, `daysBefore` | day, number | The date it is about and how far ahead of it this fires. |
 | `title`, `body` | string | The notification's text. |
+| `link` | string | What a tap opens, as on an event. |
 | `thingId`, `subscriptionId`, `amount` | optional | As on an event. |
 
 The list is capped (56 by default, under the iOS limit of 64 pending per app) and keeps what fires soonest. Every later run plans again and pulls the next ones in.

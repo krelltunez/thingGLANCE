@@ -57,9 +57,11 @@ async function promoteFamilies(thingIds: string[] | undefined): Promise<void> {
 // ownershipHistory is never written directly: changing the owner writes it.
 export type ThingInput = Omit<Thing, 'id' | 'kind' | 'createdAt' | 'updatedAt' | 'sample' | 'ownershipHistory'>
 
-export async function createThing(input: ThingInput): Promise<Thing> {
+// `id` lets a caller that already has one (an outside write naming its own
+// id, so that sending it twice makes one thing) supply it.
+export async function createThing(input: ThingInput, id: string = uuid()): Promise<Thing> {
   const stamp = nowIso()
-  const thing = clean({ ...input, id: uuid(), kind: 'thing', createdAt: stamp, updatedAt: stamp }) as Thing
+  const thing = clean({ ...input, id, kind: 'thing', createdAt: stamp, updatedAt: stamp }) as Thing
   await db.things.add(thing)
   markDirty(thing.id)
   return thing

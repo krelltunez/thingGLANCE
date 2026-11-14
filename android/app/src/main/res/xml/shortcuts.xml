@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon. Each is a thingglance:// link, so it only opens
+     the app somewhere (docs/links-and-intents.md). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_thing"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_add_thing"
+        android:shortcutLongLabel="@string/shortcut_add_thing">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.thingglance.app"
+            android:targetClass="com.thingglance.app.MainActivity"
+            android:data="thingglance://action/add" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="add_plan"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_add_plan"
+        android:shortcutLongLabel="@string/shortcut_add_plan">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.thingglance.app"
+            android:targetClass="com.thingglance.app.MainActivity"
+            android:data="thingglance://action/add-plan" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="queue"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_queue"
+        android:shortcutShortLabel="@string/shortcut_queue"
+        android:shortcutLongLabel="@string/shortcut_queue">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.thingglance.app"
+            android:targetClass="com.thingglance.app.MainActivity"
+            android:data="thingglance://queue" />
+    </shortcut>
+</shortcuts>

@@ -9,13 +9,14 @@
 // ran, so it works out "T-12d" itself from each date; the unit templates it
 // needs for that travel with the labels.
 
-import { registerPlugin } from '@capacitor/core'
+import { registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { liveQuery } from 'dexie'
 import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import { db } from '@/db/client'
 import i18n from '@/i18n'
-import { currentSnapshot } from '@/intents/inbound'
+import type { ExternalWrite } from '@/intents/handleIntent'
+import { currentSnapshot, dispatchExternalWrite } from '@/intents/inbound'
 import { subscribeHousehold } from '@/multiuser/settings'
 import { subscribeSettings } from '@/state/settings'
 
@@ -25,6 +26,8 @@ export interface WidgetLabels {
   nextTitle: string
   nextEmpty: string
   today: string
+  // What the tick on a row is called, for screen readers.
+  done: string
   // "{{n}}d", "{{n}}mo", "{{n}}y": the units of the T-minus countdown.
   days: string
   months: string
@@ -40,6 +43,11 @@ interface WidgetBridgePlugin {
   updateSnapshot(options: { json: string }): Promise<void>
   // Asks the launcher to offer one of the widgets for the home screen.
   pinWidget(options: { kind: 'decide' | 'next' }): Promise<{ supported: boolean }>
+  // Writes made on the home screen and not yet applied: a JSON array of
+  // { action, payload, clientId }. They stay queued until acknowledged.
+  pendingWrites(): Promise<{ writes: string }>
+  acknowledgeWrites(options: { clientIds: string[] }): Promise<void>
+  addListener(eventName: 'pendingWrites', listener: () => void): Promise<PluginListenerHandle>
 }
 
 export const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge')
@@ -59,6 +67,7 @@ export function widgetLabels(): WidgetLabels {
     nextTitle: tr('widget.next.title'),
     nextEmpty: tr('widget.next.empty'),
     today: tr('widget.today'),
+    done: tr('notify.done'),
     days: template('time.days'),
     months: template('time.months'),
     years: template('time.years'),
@@ -72,6 +81,43 @@ export async function widgetPayload(): Promise<WidgetPayload> {
 // Everything in the payload except the moment it was made, so an unchanged
 // one is not written (and every widget redrawn) again.
 const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '', reminders: [] } })
+
+// ── Writes made on the home screen ───────────────────────────────────────────
+
+// A tick on a widget row cannot run the app, so the native side queues the
+// write and this applies it: through the one door every write from outside
+// uses, with the id the widget minted, so applying it twice changes nothing.
+//
+// The order matters. A write is acknowledged (and so removed from the queue)
+// only after the widgets have been handed a snapshot that already reflects it.
+// Acknowledge first, and the row would flash back until the next snapshot.
+let collecting: Promise<void> = Promise.resolve()
+
+export function collectWidgetWrites(afterApplying: () => Promise<void>): Promise<void> {
+  collecting = collecting.then(async () => {
+    let writes: ExternalWrite[] = []
+    try {
+      const parsed: unknown = JSON.parse((await WidgetBridge.pendingWrites()).writes)
+      if (Array.isArray(parsed)) writes = parsed.filter((w): w is ExternalWrite => !!w && typeof w === 'object' && typeof (w as ExternalWrite).clientId === 'string')
+    } catch {
+      return
+    }
+    if (!writes.length) return
+    const settled: string[] = []
+    for (const write of writes) {
+      try {
+        // Applied, already applied, or refused for good (the date is gone):
+        // all three are finished with. Only an exception is worth another try.
+        await dispatchExternalWrite(write)
+        settled.push(write.clientId!)
+      } catch { /* left queued for the next collection */ }
+    }
+    if (!settled.length) return
+    await afterApplying().catch(() => {})
+    await WidgetBridge.acknowledgeWrites({ clientIds: settled }).catch(() => {})
+  }).catch(() => {})
+  return collecting
+}
 
 // `onSnapshot` is handed every snapshot as it is made, changed or not: the
 // reminder plan inside it moves with the clock, which the widgets' own
@@ -93,6 +139,8 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
     }
   }
   const soon = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void push(), SETTLE_MS) }
+  const now = async () => { if (timer) clearTimeout(timer); await push() }
+  const collect = () => void collectWidgetWrites(now)
 
   // Any write to the data, made here or pulled from the vault.
   liveQuery(async () => {
@@ -104,9 +152,13 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
   subscribeHousehold(soon)
   subscribeSettings(soon)
   i18n.on('languageChanged', soon)
+  // Ticks made on the home screen: collected at start, whenever the native
+  // side says there is one (the app is running), and on coming to the front.
+  collect()
+  void WidgetBridge.addListener('pendingWrites', collect)
   // Coming back after midnight, the same data makes a different snapshot.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') soon()
+    if (document.visibilityState === 'visible') { collect(); soon() }
     // On the way to the background there may be no "later": write now.
     else { if (timer) clearTimeout(timer); void push() }
   })

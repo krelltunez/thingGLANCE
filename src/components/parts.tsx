@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import dayjs from 'dayjs'
-import { Check, Send, Undo2 } from 'lucide-react'
+import { Check, Hand, Send, Undo2 } from 'lucide-react'
 import type { HorizonEvent, Thing } from '@/core/types'
 import { VERDICTS, type Lifecycle, type Verdict } from '@/core/health'
 import { EVENT_META } from '@/core/horizon'
 import { daysBetween, fmtDay, fmtMonth, today } from '@/core/dates'
 import { money, type ForecastMonth } from '@/core/money'
 import { isIntentsEnabled } from '@/intents/config'
+import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { Chip, TBadge } from './ui'
 import { TONES, cx, severityTone, verdictTone } from './kit'
@@ -63,6 +64,12 @@ export function EventRow({ event, compact = false }: { event: HorizonEvent; comp
   const Icon = EVENT_ICONS[event.type]
   const tone = severityTone(event.severity)
   const sent = event.decision?.state === 'sent'
+  const d = useData()
+  // In a household, say who each date falls to. One that falls to nobody
+  // says nothing here (the queue notes how many there are) and offers a
+  // one-tap "I'll deal with this" instead.
+  const handler = d.multiUser ? d.handlerOf(event) : null
+  const canTake = !compact && d.needsSomeone(event) && !!d.meId && d.userIds.has(d.meId)
   return (
     <div className="group flex items-center gap-3 rounded-xl border border-line/10 bg-raised/40 px-3 py-2.5 transition hover:border-line/25 hover:bg-raised/70">
       <TBadge days={event.days} tone={tone} />
@@ -75,10 +82,14 @@ export function EventRow({ event, compact = false }: { event: HorizonEvent; comp
         </span>
       </button>
       {sent && <Chip tone="accent" icon={Send} className="hidden sm:inline-flex">In dayGLANCE</Chip>}
+      {handler && <Chip tone={handler === d.meId ? 'accent' : 'dim'} className="hidden sm:inline-flex">{handler === d.meId ? 'You' : d.memberName(handler)}</Chip>}
       {!compact && (
         <div className="flex shrink-0 items-center gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
           {!sent && isIntentsEnabled() && (
             <button type="button" className="icon-btn h-8 w-8" title="Send to dayGLANCE as a task" onClick={() => void actions.send(event)}><Send size={14} /></button>
+          )}
+          {canTake && (
+            <button type="button" className="icon-btn h-8 w-8 hover:!border-accent/40 hover:!text-accent" title="I'll deal with this" aria-label="I'll deal with this" onClick={() => void actions.take(event)}><Hand size={14} /></button>
           )}
           <button type="button" className="icon-btn h-8 w-8 hover:!border-ok/40 hover:!text-ok" title="Done with this" onClick={() => void actions.dismiss(event)}><Check size={15} /></button>
         </div>
@@ -136,6 +147,26 @@ export function ChargesChart({ months, className }: { months: ForecastMonth[]; c
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// An amount split by member (null is the household), as a row of chips. Used
+// for the upgrade fund by owner and plan costs by payer. This device's own
+// member reads "You" and stands out: "what I pay" is the question asked most.
+export function MemberSplit({ split, suffix = '/mo' }: { split: Map<string | null, number>; suffix?: string }) {
+  const d = useData()
+  const { currency } = useSettings()
+  const rows = [...split.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+  if (rows.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rows.map(([id, amount]) => (
+        <Chip key={id ?? 'household'} tone={id && id === d.meId ? 'accent' : 'dim'}>
+          {id === null ? 'Household' : id === d.meId ? 'You' : d.memberName(id) ?? 'Someone removed'}
+          <span className="num font-semibold">{money(amount, currency, { cents: false })}{suffix}</span>
+        </Chip>
+      ))}
     </div>
   )
 }

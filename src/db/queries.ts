@@ -6,7 +6,7 @@
 import { db } from './client'
 import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
 import { nowIso, today } from '@/core/dates'
-import { handDown, isTied, memberTies } from '@/core/household'
+import { handDown, isTied, memberTies, privateHeld, reassignPlan, reassignThing, userIds, type MemberTies } from '@/core/household'
 import { markDirty } from '@/sync/dirtyTracker'
 import { getDeviceId } from '@/sync/deviceId'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
@@ -210,6 +210,33 @@ export async function renameMember(id: string, name: string): Promise<void> {
 // caller reassigns first (memberTies says what is left). Returns whether the
 // member was removed. Their devices are detached and they come off any plan's
 // "covers" list, since neither is worth blocking over.
+// What still points at a member, read from the tables themselves: the views
+// only hold what this device may see, and a member's private items are exactly
+// what whoever is removing them cannot.
+export async function tiesFor(id: string): Promise<{ ties: MemberTies; hidden: number }> {
+  const [things, subscriptions] = await Promise.all([db.things.toArray(), db.subscriptions.toArray()])
+  return { ties: memberTies(id, { things, subscriptions }), hidden: privateHeld(id, { things, subscriptions }) }
+}
+
+// Hands everything a member owns, pays for or deals with to someone else (null
+// for the household), then removes them. An owner change is a hand-me-down
+// like any other, so each thing keeps a note of who had it.
+export async function reassignAndRemove(from: string, to: string | null): Promise<boolean> {
+  if (to === from) return false
+  const [things, subscriptions, members, devices] = await Promise.all([db.things.toArray(), db.subscriptions.toArray(), db.members.toArray(), db.devices.toArray()])
+  if (to && !members.some((m) => m.id === to)) return false
+  const users = userIds(devices, members)
+  for (const t of things) {
+    const patch = reassignThing(t, from, to, users)
+    if (patch) await updateThing(t.id, patch)
+  }
+  for (const s of subscriptions) {
+    const patch = reassignPlan(s, from, to, users)
+    if (patch) await patchSubscription(s.id, patch)
+  }
+  return removeMember(from)
+}
+
 export async function removeMember(id: string): Promise<boolean> {
   const [things, subscriptions] = await Promise.all([db.things.toArray(), db.subscriptions.toArray()])
   if (isTied(memberTies(id, { things, subscriptions }))) return false

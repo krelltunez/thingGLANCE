@@ -9,10 +9,10 @@ import { db } from '@/db/client'
 import type { Coverage, DataSet, DeviceLink, Member, Subscription } from '@/core/types'
 import { attentionQueue, buildHorizon } from '@/core/horizon'
 import { lifecycle, type Lifecycle } from '@/core/health'
-import { concernsPlan, concernsThing, memberOfDevice, userIds, visibleTo } from '@/core/household'
+import { concernsPlan, concernsThing, handlerOfEvent, memberOfDevice, needsSomeone, userIds, visibleTo } from '@/core/household'
 import { getDeviceId } from '@/sync/deviceId'
 import { DataContext, type DataValue } from './data'
-import { getMultiUserEnabled, getUserFilter, multiUserSnapshot, subscribeMultiUser, type UserFilter } from '@/multiuser/settings'
+import { getFocusMemberId, householdSnapshot, subscribeHousehold } from '@/multiuser/settings'
 
 const EMPTY: DataSet & { members: Member[]; devices: DeviceLink[] } = { things: [], coverages: [], subscriptions: [], decisions: [], members: [], devices: [] }
 
@@ -23,15 +23,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ])
     return { things, coverages, subscriptions, decisions, members, devices }
   }, [])
-  const mu = useSyncExternalStore(subscribeMultiUser, multiUserSnapshot)
+  const mu = useSyncExternalStore(subscribeHousehold, householdSnapshot)
 
   const value = useMemo<DataValue>(() => {
     const all = raw ?? EMPTY
-    const multiUser = getMultiUserEnabled()
+    const multiUser = all.members.length > 1
     const deviceId = getDeviceId()
-    const meId = multiUser ? memberOfDevice(all.devices, deviceId, all.members) : null
-    const filter: UserFilter = multiUser && meId ? getUserFilter() : 'all'
-    const focusId = filter === 'mine' ? meId : null
+    const meId = memberOfDevice(all.devices, deviceId, all.members)
+    // A filter left pointing at someone who has since been removed is no filter.
+    const stored = getFocusMemberId()
+    const focusId = multiUser && stored && all.members.some((m) => m.id === stored) ? stored : null
 
     // Privacy before anything else: nothing below ever sees another member's
     // private things or plans, so no view can show one by accident.
@@ -63,17 +64,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const events = buildHorizon(d, { memberId: focusId })
     const names = new Map(all.members.map((m) => [m.id, m.name]))
+    const users = userIds(all.devices, all.members)
 
     return {
       ...d,
       ready: raw !== undefined,
       members: [...all.members].sort((a, b) => a.name.localeCompare(b.name)),
       devices: all.devices,
-      userIds: userIds(all.devices, all.members),
+      userIds: users,
       deviceId,
       multiUser,
       meId,
-      filter,
+      focusId,
       visibleThings,
       activeThings: visibleThings.filter((t) => t.status === 'active'),
       retiredThings: visibleThings.filter((t) => t.status === 'retired'),
@@ -85,9 +87,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       subById,
       coveragesFor: (id) => byThing.get(id) ?? [],
       subsFor: (id) => subsByThing.get(id) ?? [],
+      handlerOf: (e) => handlerOfEvent(e, thingById, subById, users),
+      needsSomeone: (e) => needsSomeone(handlerOfEvent(e, thingById, subById, users), users),
       memberName: (id) => (id ? names.get(id) ?? null : null),
     }
-    // `mu` is the multi-user snapshot string: it changing is the dependency.
+    // `mu` is the household-preferences snapshot string: it changing is the dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw, mu])
 

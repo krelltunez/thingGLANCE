@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { DataSet, DeviceLink, Member, Subscription, Thing } from './types'
 import { normalizeSubscription, normalizeThing } from './shape'
 import {
-  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, handDown, isTied, memberOfDevice, memberTies, responsibleFor, userIds, visibleTo,
+  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, handlerOfEvent, isTied, memberOfDevice, memberTies,
+  handlerOfPlan, handlerOfThing, needsSomeone, planCostByPayer, privateHeld, reassignPlan, reassignThing, responsibleFor, userIds, visibleTo,
 } from './household'
 import { ownership } from './health'
 import { buildHorizon } from './horizon'
@@ -155,5 +156,102 @@ describe('removing a member', () => {
     expect(isTied(ties)).toBe(true)
     expect(describeTies(ties)).toBe('owns 1 thing, pays for 1 plan and is responsible for 1 item')
     expect(isTied(memberTies('gran', d))).toBe(false)
+  })
+})
+
+describe('who deals with a date', () => {
+  const users = new Set(['ann', 'ben'])
+  const phone = thing({ id: 'phone', responsibleMemberId: 'ann' })
+  const things = new Map([[phone.id, phone]])
+
+  it('gives a thing to whoever was picked, else to its owner if they use the app', () => {
+    expect(handlerOfThing(thing({ ownerMemberId: 'ben', responsibleMemberId: 'ann' }), users)).toBe('ann')
+    expect(handlerOfThing(thing({ ownerMemberId: 'ben' }), users)).toBe('ben')
+    expect(handlerOfThing(thing({ ownerMemberId: 'kid' }), users)).toBeNull()
+    expect(handlerOfThing(thing({}), users)).toBeNull()
+  })
+  it('gives a plan to whoever was picked, else its payer, else whoever handles what it is attached to', () => {
+    expect(handlerOfPlan(sub({ responsibleMemberId: 'ben', payerMemberId: 'ann', coversThingIds: ['phone'] }), things, users)).toBe('ben')
+    expect(handlerOfPlan(sub({ payerMemberId: 'ben', coversThingIds: ['phone'] }), things, users)).toBe('ben')
+    expect(handlerOfPlan(sub({ coversThingIds: ['phone'] }), things, users)).toBe('ann')
+    expect(handlerOfPlan(sub({}), things, users)).toBeNull()
+  })
+  it('reads a plan date from the plan and any other date from the thing', () => {
+    const plan = sub({ id: 'care', responsibleMemberId: 'ben', coversThingIds: ['phone'] })
+    const subs = new Map([[plan.id, plan]])
+    expect(handlerOfEvent({ thingId: 'phone', subscriptionId: 'care' }, things, subs, users)).toBe('ben')
+    expect(handlerOfEvent({ thingId: 'phone' }, things, subs, users)).toBe('ann')
+    expect(handlerOfEvent({ thingId: 'gone' }, things, subs, users)).toBeNull()
+  })
+  it('only says an item needs someone when there is more than one user to leave it to', () => {
+    expect(needsSomeone(null, users)).toBe(true)
+    expect(needsSomeone('ann', users)).toBe(false)
+    expect(needsSomeone(null, new Set(['ann']))).toBe(false)
+    expect(needsSomeone(null, new Set())).toBe(false)
+  })
+  it('treats someone who lost their last device as nobody', () => {
+    expect(handlerOfEvent({ thingId: 'phone' }, things, new Map(), new Set(['ben', 'cat']))).toBeNull()
+  })
+})
+
+describe('handing a member\'s things on', () => {
+  const users = new Set(['ben'])
+  it('moves ownership and responsibility, and leaves unrelated items alone', () => {
+    expect(reassignThing(thing({ ownerMemberId: 'ann', responsibleMemberId: 'ann' }), 'ann', 'ben', users)).toEqual({ ownerMemberId: 'ben', responsibleMemberId: 'ben' })
+    expect(reassignThing(thing({ ownerMemberId: 'ben' }), 'ann', 'ben', users)).toBeNull()
+  })
+  it('does not make someone without a device responsible', () => {
+    expect(reassignThing(thing({ responsibleMemberId: 'ann' }), 'ann', 'cat', users)).toEqual({ responsibleMemberId: null })
+    expect(reassignPlan(sub({ responsibleMemberId: 'ann' }), 'ann', null, users)).toEqual({ responsibleMemberId: null })
+  })
+  it('keeps a private item private only when it goes to a user', () => {
+    const secret = thing({ ownerMemberId: 'ann', visibility: 'private' })
+    expect(reassignThing(secret, 'ann', 'ben', users)).toEqual({ ownerMemberId: 'ben' })
+    expect(reassignThing(secret, 'ann', null, users)).toEqual({ ownerMemberId: null, visibility: 'shared' })
+    expect(reassignThing(secret, 'ann', 'cat', users)).toEqual({ ownerMemberId: 'cat', visibility: 'shared' })
+    expect(reassignPlan(sub({ payerMemberId: 'ann', visibility: 'private' }), 'ann', null, users)).toEqual({ payerMemberId: null, visibility: 'shared' })
+  })
+  it('leaves nothing tied once every item has been handed on', () => {
+    const before = data({
+      things: [thing({ id: 'a', ownerMemberId: 'ann' }), thing({ id: 'b', responsibleMemberId: 'ann' })],
+      subscriptions: [sub({ id: 'p', payerMemberId: 'ann', responsibleMemberId: 'ann' })],
+    })
+    const after = data({
+      things: before.things.map((t) => ({ ...t, ...reassignThing(t, 'ann', 'ben', users) })),
+      subscriptions: before.subscriptions.map((x) => ({ ...x, ...reassignPlan(x, 'ann', 'ben', users) })),
+    })
+    expect(isTied(memberTies('ann', before))).toBe(true)
+    expect(isTied(memberTies('ann', after))).toBe(false)
+  })
+  it('counts what is private to a member, which nobody else can see', () => {
+    expect(privateHeld('ann', data({
+      things: [thing({ id: 'a', ownerMemberId: 'ann', visibility: 'private' }), thing({ id: 'b', ownerMemberId: 'ann' })],
+      subscriptions: [sub({ payerMemberId: 'ann', visibility: 'private' }), sub({ id: 's2', payerMemberId: 'ben', visibility: 'private' })],
+    }))).toBe(2)
+  })
+})
+
+describe('totals by member', () => {
+  it('adds up what each payer\'s plans come to a month, the household under null', () => {
+    const split = planCostByPayer([
+      sub({ id: 'a', payerMemberId: 'ann', amount: 120, cycle: 'yearly' }),
+      sub({ id: 'b', payerMemberId: 'ann', amount: 5, cycle: 'monthly' }),
+      sub({ id: 'c', payerMemberId: null, amount: 20, cycle: 'monthly' }),
+      sub({ id: 'd', payerMemberId: 'ben', amount: 9, cycle: 'monthly', status: 'cancelled' }),
+    ])
+    expect(split.get('ann')).toBeCloseTo(15)
+    expect(split.get(null)).toBeCloseTo(20)
+    expect(split.has('ben')).toBe(false)
+  })
+  it('splits the upgrade fund by owner and leaves out what is already due', () => {
+    const split = fundByOwner([
+      { thing: thing({ id: 'a', ownerMemberId: 'ann' }), monthly: 30, monthsLeft: 10 },
+      { thing: thing({ id: 'b', ownerMemberId: 'ann' }), monthly: 10, monthsLeft: 4 },
+      { thing: thing({ id: 'c', ownerMemberId: null }), monthly: 25, monthsLeft: 6 },
+      { thing: thing({ id: 'd', ownerMemberId: 'ben' }), monthly: 599, monthsLeft: 0 },
+    ])
+    expect(split.get('ann')).toBe(40)
+    expect(split.get(null)).toBe(25)
+    expect(split.has('ben')).toBe(false)
   })
 })

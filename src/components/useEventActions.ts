@@ -1,14 +1,14 @@
 // What can be done with a horizon event from any list it appears in.
 
 import type { HorizonEvent } from '@/core/types'
-import { decide, undecide } from '@/db/queries'
+import { decide, patchSubscription, undecide, updateThing } from '@/db/queries'
 import { IntentsUnavailableError, sendEventToDayglance } from '@/intents/emit'
 import { useData } from '@/state/data'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
 
 export function useEventActions() {
-  const { thingById } = useData()
+  const { thingById, meId } = useData()
   const ui = useUI()
   return {
     openEvent: (e: HorizonEvent) => {
@@ -20,6 +20,14 @@ export function useEventActions() {
       toast({ title: 'Cleared from your queue', body: e.title, tone: 'ok', action: { label: 'Undo', run: () => void undecide(e.key) } })
     },
     restore: (e: HorizonEvent) => undecide(e.key),
+    // "I'll deal with this": this device's member becomes the one responsible
+    // for the plan (for a plan's date) or the thing (for anything else).
+    take: async (e: HorizonEvent) => {
+      if (!meId) return
+      if (e.subscriptionId) await patchSubscription(e.subscriptionId, { responsibleMemberId: meId })
+      else if (e.thingId) await updateThing(e.thingId, { responsibleMemberId: meId })
+      toast({ title: 'Yours to deal with now', body: e.detail, tone: 'ok' })
+    },
     send: async (e: HorizonEvent) => {
       try {
         await sendEventToDayglance(e, e.thingId ? thingById.get(e.thingId) : null)

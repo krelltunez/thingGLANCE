@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Cloud, CloudAlert, CloudOff, LayoutDashboard, Lock, Package, Plus, RefreshCw, Repeat, Search,
-  Settings as SettingsIcon, Sparkles, Telescope, type LucideIcon,
+  Settings as SettingsIcon, Sparkles, Telescope, Users, type LucideIcon,
 } from 'lucide-react'
 import { useData } from '@/state/data'
 import { DataProvider } from '@/state/DataProvider'
 import { UIContext, type Modal, type UI, type View } from '@/state/ui'
 import { useSync } from '@/state/sync'
-import { setUserFilter, takeLegacyMeId } from '@/multiuser/settings'
+import { getWhoAsked, householdSnapshot, setFocusMemberId, setWhoAsked, subscribeHousehold, takeLegacyMeId, takeLegacyMineFilter } from '@/multiuser/settings'
 import { startSync } from '@/sync/manager'
 import { describeDevice, setBadge } from '@/native/platform'
 import { attachThisDevice, removeSamples } from '@/db/queries'
@@ -21,7 +21,7 @@ import { CoverageForm, SubscriptionForm } from '@/components/PlanForms'
 import { Settings } from '@/components/Settings'
 import { CommandPalette, PassphraseModal, Welcome } from '@/components/Overlays'
 import { needsWelcome } from '@/state/welcome'
-import { Segmented, Toasts, Wordmark } from '@/components/ui'
+import { Toasts, Wordmark } from '@/components/ui'
 import { cx } from '@/components/kit'
 
 const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
@@ -49,6 +49,57 @@ function SyncButton({ onOpen }: { onOpen: (m: Modal) => void }) {
       onClick={() => onOpen(sync.phase === 'locked' ? { type: 'passphrase' } : { type: 'settings', section: 'vault' })}>
       <s.icon size={16} className={cx(s.spin && 'animate-spin')} />
     </button>
+  )
+}
+
+// Whose things the four views show: everyone's, or one member's (their own,
+// the ones they deal with, and the household's). A native select under a
+// styled face, so it is a proper picker on a phone and costs one icon's width.
+function MemberFilter() {
+  const d = useData()
+  if (!d.multiUser) return null
+  const focus = d.members.find((m) => m.id === d.focusId)
+  // The device's own member first: it is the choice made most often.
+  const ordered = [...d.members].sort((a, b) => Number(b.id === d.meId) - Number(a.id === d.meId))
+  return (
+    <label title="Whose things to show"
+      className={cx('relative flex h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-[13px] font-medium transition focus-within:ring-2 focus-within:ring-accent/30',
+        focus ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line/10 bg-raised/60 text-dim hover:border-line/25 hover:text-ink')}>
+      <Users size={15} className="shrink-0" />
+      <span className={cx('max-w-[9rem] truncate', !focus && 'hidden md:inline')}>{focus ? (focus.id === d.meId ? 'Mine' : focus.name) : 'Everyone'}</span>
+      <select aria-label="Whose things to show" className="absolute inset-0 cursor-pointer opacity-0" value={d.focusId ?? ''} onChange={(e) => setFocusMemberId(e.target.value || null)}>
+        <option value="">Everyone</option>
+        {ordered.map((m) => <option key={m.id} value={m.id}>{m.id === d.meId ? `${m.name} (me)` : m.name}</option>)}
+      </select>
+    </label>
+  )
+}
+
+// A roster that arrives on a device nobody has claimed (the household was set
+// up in another GLANCE app, or on another device) is offered once: which of
+// these people is holding this device? Saying so is what lets things be handed
+// to them and private items be theirs.
+function WhoBanner() {
+  const d = useData()
+  useSyncExternalStore(subscribeHousehold, householdSnapshot)
+  if (!d.ready || d.meId || d.members.length === 0 || getWhoAsked()) return null
+  const few = d.members.length <= 6
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/20 bg-accent/[0.06] px-3.5 py-2.5 text-xs text-dim lg:mb-5">
+      <Users size={14} className="shrink-0 text-accent" />
+      <span className="min-w-0 flex-1 basis-56 text-[13px] text-ink">
+        Found your household: {d.members.length === 1 ? '1 person' : `${d.members.length} people`}. <span className="text-dim">Which one is this device?</span>
+      </span>
+      <span className="flex flex-wrap items-center gap-1.5">
+        {few
+          ? d.members.map((m) => (
+              <button key={m.id} type="button" className="h-7 rounded-full border border-accent/40 bg-accent/15 px-3 text-xs font-medium text-accent transition hover:brightness-125"
+                onClick={() => void attachThisDevice(m.id, describeDevice())}>{m.name}</button>
+            ))
+          : <span>Choose under Settings, Household.</span>}
+        <button type="button" className="h-7 rounded-full px-2.5 text-xs font-medium text-dim transition hover:text-ink" onClick={setWhoAsked}>Not now</button>
+      </span>
+    </div>
   )
 }
 
@@ -90,6 +141,13 @@ function Shell({ ui }: { ui: UI }) {
   const { view, setView, modal, open } = ui
 
   useEffect(() => { setBadge(d.queue.length) }, [d.queue.length])
+
+  // The old Mine / Everyone switch becomes the member filter: a device that
+  // was on "Mine" stays on its own member.
+  const { ready, meId } = d
+  useEffect(() => {
+    if (ready && takeLegacyMineFilter() && meId) setFocusMemberId(meId)
+  }, [ready, meId])
   const samples = d.things.filter((t) => t.sample).length + d.subscriptions.filter((x) => x.sample).length
 
   const ViewBody = { glance: GlanceView, horizon: HorizonView, things: ThingsView, plans: PlansView }[view]
@@ -121,9 +179,7 @@ function Shell({ ui }: { ui: UI }) {
               <Search size={14} /> Search <kbd className="label ml-6 rounded border border-line/15 px-1.5 py-0.5">⌘K</kbd>
             </button>
             <button type="button" className="icon-btn md:hidden" aria-label="Search" onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
-            {d.multiUser && d.meId && (
-              <Segmented size="sm" value={d.filter} onChange={setUserFilter} options={[{ id: 'mine', label: 'Mine' }, { id: 'all', label: 'Everyone' }]} />
-            )}
+            <MemberFilter />
             <SyncButton onOpen={open} />
             <button type="button" className="icon-btn" aria-label="Settings" title="Settings" onClick={() => open({ type: 'settings' })}><SettingsIcon size={16} /></button>
             <div className="hidden lg:block"><AddMenu onOpen={open} variant="header" /></div>
@@ -132,6 +188,7 @@ function Shell({ ui }: { ui: UI }) {
       </header>
 
       <main className="mx-auto w-full max-w-[1560px] flex-1 px-4 pb-32 pt-5 lg:px-8 lg:pb-14 lg:pt-7">
+        <WhoBanner />
         {samples > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-accent/20 bg-accent/[0.06] px-3.5 py-2 text-xs text-dim lg:mb-5">
             <Sparkles size={13} className="shrink-0 text-accent" />

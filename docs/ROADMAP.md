@@ -75,7 +75,7 @@ Done when: the image runs on your server, two of your devices sync through your 
 
 ## Phase 0.5: household members and users (L, in stages)
 
-> Status, 2026-11-13: stage A is done, along with the parts of B, C and D that the two core goals needed (any number of members, and a user attaching themselves as one). [As built](household-members.md#as-built-2026-11-13) has the detail and the reasons. What is left in each stage is marked below.
+> Status, 2026-11-13: stages A, C and D are done except for merge, roster export and import, and the welcome step for a household with no roster yet. Stage B (the shared package) waits for a second app. Stage E's rule for who deals with a date is in `src/core`; the reminders that will use it are Phase 1. [As built](household-members.md#as-built-2026-11-13) has the detail and the reasons.
 
 The spec is [household-members.md](household-members.md). It was written without access to the code, so it is followed for its shape, not to the letter. Its findings section compares it with the roster code and is the source for the decisions below.
 
@@ -106,24 +106,27 @@ The rules are already pure, in `src/core/household.ts`. Extraction waits until a
 - It owns both records: the legacy `glance-users` row and the companion. `src/multiuser/rosterVault.ts` here shrinks to an adapter.
 - Tests include a "legacy writer" that plays an old sibling app renaming a member, proving the companion fields survive.
 
-### Stage C: the roster in the app (M). Partly done.
+### Stage C: the roster in the app (M). Done, except merge and export.
 
-- Done. Settings → Household: add a member by name alone, "This is me" and "Not me" on a device, detach another device, and removal blocked (with the reason) while the member owns, pays for or is responsible for anything. Still to do: the reassign prompt that clears the block in one step.
+- Done. Settings → Household: add a member by name alone, "This is me" and "Not me" on a device, detach another device.
+- Done. Removing a member who still owns, pays for or deals with something asks who gets it, hands it over and removes them. Private items the remover cannot see are counted and their fate stated.
 - Done. Hand-me-down: change owner on a thing, keep everything else, append to `ownershipHistory`. The detail drawer shows who had it before.
-- Merge, with a suggestion when two members share a name and a warning that the other GLANCE apps will not follow the merge until they adopt the package.
 - Done. Pickers: owner lists every member plus Household; responsible lists users only.
-- Onboarding: "Found your household: 4 people. Use them?" on first sync when a roster exists; otherwise add yourself and anyone else, skippable.
-- Roster export and import as a small file, for local-only households.
+- Done, in a different form. A roster that arrives on a device nobody has claimed is offered once: "Found your household: 2 people. Which one is this device?" The roster itself is adopted without asking.
+- To do. Merge, with a suggestion when two members share a name and a warning that the other GLANCE apps will not follow the merge until they adopt the package.
+- To do. The welcome step for a household with no roster yet: add yourself and anyone else, skippable.
+- To do. Roster export and import as a small file, for local-only households.
 
-### Stage D: views (M). Mostly to do.
+### Stage D: views (M). Done.
 
-- A member filter on Glance, Horizon, Things and Plans. It replaces the Mine / Everyone switch, and the device-local "multi-user" toggle goes away: owners show whenever the roster has more than one member. The filter logic already takes any member (`concernsThing`, `concernsPlan`); only the switch is still Mine / Everyone.
-- Upgrade fund per member plus the household total. Plan totals for the household and "what I pay".
+- Done. A member filter in the header, on Glance, Horizon, Things and Plans, in place of Mine / Everyone. The device-local "multi-user" switch is gone: owners show whenever the roster has more than one member.
+- Done. Upgrade fund split by owner; plan costs split by payer, with "You" marked.
 - Done. Private items hidden on every device that is not the owner's, with copy that says plainly this is hiding, not encryption.
-- A "needs someone" prompt for items with no responsible user.
+- Done. "Needs someone": with two or more users, the queue says how many dates fall to nobody and offers a one-tap "I'll deal with this". Each row otherwise names who it falls to.
 
 ### Stage E: who gets told (S, lands with the reminder logic in Phase 1)
 
+- Done: the rule. `handlerOfEvent()` answers who deals with any date (whoever was picked, else the owner or payer if they use the app). To do: reminders that use it.
 - The decision queue and reminders take the device's member as an input: responsible user only, everyone for unassigned items, owner's devices only for private ones. This lives in `src/core` with the rest of the reminder rules.
 - Done. `buildSnapshot()` now requires the device's member (`viewerId`) and leaves other members' private items out, so widgets, the tray, the launcher and MCP cannot show one. Its output shape did not change, so `SNAPSHOT_VERSION` is still 1.
 

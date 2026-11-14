@@ -80,14 +80,22 @@ export function responsibleFor(item: Pick<Thing | Subscription, 'responsibleMemb
 // owner, if they use the app. Most things are never assigned to anyone, and
 // "the person whose phone it is" is who everyone would expect to be asked.
 // (The task sent to dayGLANCE goes to the same person.)
+//
+// A private thing is its owner's alone: nobody else can see it, so nobody
+// else can be the one dealing with it, whatever was picked before it went
+// private.
 export function handlerOfThing(t: Thing, users: Set<string>): string | null {
-  return responsibleFor(t, users) ?? (t.ownerMemberId && users.has(t.ownerMemberId) ? t.ownerMemberId : null)
+  const owner = t.ownerMemberId && users.has(t.ownerMemberId) ? t.ownerMemberId : null
+  if (t.visibility === 'private') return owner
+  return responsibleFor(t, users) ?? owner
 }
 
 // A plan: whoever was picked, else whoever pays, else whoever deals with a
 // thing it is attached to (the person who handles the phone handles its plan).
 export function handlerOfPlan(s: Subscription, thingById: Map<string, Thing>, users: Set<string>): string | null {
-  const own = responsibleFor(s, users) ?? (s.payerMemberId && users.has(s.payerMemberId) ? s.payerMemberId : null)
+  const payer = s.payerMemberId && users.has(s.payerMemberId) ? s.payerMemberId : null
+  if (s.visibility === 'private') return payer
+  const own = responsibleFor(s, users) ?? payer
   if (own) return own
   for (const id of s.coversThingIds) {
     const t = thingById.get(id)

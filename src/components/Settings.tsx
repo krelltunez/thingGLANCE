@@ -413,7 +413,7 @@ function Integrations() {
             )}
         </Block>
       )}
-      <Block title="Other surfaces" hint="Widgets, the menu bar popup, GLANCElauncher cards and MCP tools will all read one object: the glance snapshot. This is what it holds right now.">
+      <Block title="Other surfaces" hint="Widgets, the menu bar popup, GLANCElauncher cards and MCP tools will all read one object: the glance snapshot. This is what it holds right now, including the reminders this device would get. Nothing schedules them yet: that arrives with the phone and desktop apps.">
         <SnapshotPeek />
       </Block>
     </div>
@@ -422,12 +422,20 @@ function Integrations() {
 
 function SnapshotPeek() {
   const d = useData()
-  const scope = { viewerId: d.meId, memberId: d.focusId }
+  const { currency } = useSettings()
+  const scope = { viewerId: d.meId, memberId: d.focusId, userIds: d.userIds, currency }
   const snap = buildSnapshot(d, { ...scope, limit: 3 })
+  const peek = {
+    counts: snap.counts,
+    burn: { monthly: +snap.burn.monthly.toFixed(2), replacementMonthly: +snap.burn.replacementMonthly.toFixed(2) },
+    attention: snap.attention.map((e) => ({ days: e.days, title: e.title, detail: e.detail })),
+    // What this device would be reminded of, once a shell exists to schedule it.
+    reminders: { pending: snap.reminders.length, next: snap.reminders.slice(0, 3).map((r) => ({ when: dayjs(r.at).format('MMM D, HH:mm'), title: r.title, body: r.body })) },
+  }
   return (
     <>
       <pre className="scrollbar-thin max-h-44 select-text overflow-auto rounded-lg border border-line/10 bg-bg/70 p-3 font-mono text-[10.5px] leading-relaxed text-dim">
-        {JSON.stringify({ counts: snap.counts, burn: { monthly: +snap.burn.monthly.toFixed(2), replacementMonthly: +snap.burn.replacementMonthly.toFixed(2) }, attention: snap.attention.map((e) => ({ days: e.days, title: e.title, detail: e.detail })) }, null, 2)}
+        {JSON.stringify(peek, null, 2)}
       </pre>
       <button type="button" className="btn mt-2 h-8 text-xs" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(buildSnapshot(d, scope), null, 2)); toast({ title: 'Full snapshot copied', tone: 'ok' }) }}><Copy size={13} /> Copy full snapshot</button>
     </>

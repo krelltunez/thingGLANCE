@@ -126,7 +126,7 @@ The rules are already pure, in `src/core/household.ts`. Extraction waits until a
 
 ### Stage E: who gets told (S, lands with the reminder logic in Phase 1)
 
-- Done: the rule. `handlerOfEvent()` answers who deals with any date (whoever was picked, else the owner or payer if they use the app). To do: reminders that use it.
+- Done. `handlerOfEvent()` answers who deals with any date (whoever was picked, else the owner or payer if they use the app; a private item is its owner's alone), and `planReminders()` uses it to decide whose devices are told.
 - The decision queue and reminders take the device's member as an input: responsible user only, everyone for unassigned items, owner's devices only for private ones. This lives in `src/core` with the rest of the reminder rules.
 - Done. `buildSnapshot()` now requires the device's member (`viewerId`) and leaves other members' private items out, so widgets, the tray, the launcher and MCP cannot show one. Its output shape did not change, so `SNAPSHOT_VERSION` is still 1.
 
@@ -140,8 +140,8 @@ Each of these is built once in the web app and reused by every shell. Doing them
 - **One inbound dispatcher.** A `handleIntent` that applies an external write (from a widget, the launcher, the tray, Tasker, MCP) through the same functions the forms use, with a `clientId` ledger so a re-sent write is never applied twice. Build the idempotency in from the start: every external write carries a caller-supplied id.
 - **Injectable network.** Route every vault request through one `shellFetchImpl()` so Capacitor, Electron main and the headless refresh can each substitute their own transport. The prototype calls `fetch` directly in a few places (`src/sync/vaultConnect.ts`, `src/intents/transport.ts`).
 - **Secure config shim.** Keep the vault token and derived keys out of plain localStorage on shells that have a keystore. lastGLANCE: `src/sync/secureConfigShim.ts`, `src/sync/nativeKeyHooks.ts`.
-- **Reminders as pure logic.** Decide in `src/core` which horizon events notify and when (the lead windows already exist in `horizon.ts`), so each platform only has to schedule what core tells it to. The household rules about who is told (Phase 0.5, stage E) belong in the same place.
-- **Freeze the snapshot.** `buildSnapshot()` is the object widgets, the tray, the launcher and MCP will read. Review its fields against what each surface needs, then treat it as versioned. Freeze it after the member dimension is in, not before.
+- **Reminders as pure logic.** Done: `planReminders()` in `src/core/reminders.ts` says which dates notify, when, and on whose device, with stable ids a shell can diff against what the platform has pending. The household rule about who is told is in the same place. Nothing schedules them yet; that is each shell's job. The rules are written out in [snapshot.md](snapshot.md#reminder-rules).
+- **Freeze the snapshot.** Done: version 1 is frozen, documented in [snapshot.md](snapshot.md) and pinned by a test. The review added the currency, whose device it was built for, who each date falls to, each thing's owner and days left, and the device's pending reminders.
 - **i18n.** Move strings to i18next as the siblings do. It is far cheaper before native code starts carrying its own string catalogs. Remember locale JSON has to be in the service worker precache.
 
 ## Phase 2: Android (L)

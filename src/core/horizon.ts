@@ -76,7 +76,7 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
   const thingsById = new Map(data.things.map((t) => [t.id, t]))
   const out: HorizonEvent[] = []
 
-  const push = (e: Omit<HorizonEvent, 'key' | 'days' | 'severity' | 'attention' | 'decision'> & { entityId: string; lead?: number }) => {
+  const push = (e: Omit<HorizonEvent, 'key' | 'days' | 'severity' | 'lead' | 'attention' | 'decision'> & { entityId: string; lead?: number }) => {
     if (e.date > to) return
     // The look-back only trims history. A device that fell out of support two
     // years ago is still out of support: those never age out of the list.
@@ -89,7 +89,7 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
     const decision = decided.get(key)
     const inWindow = days <= lead && days >= -PAST_GRACE[e.type]
     const settled = decision?.state === 'dismissed' || decision?.state === 'done'
-    out.push({ ...rest, key, days, severity: lead < 0 ? 'later' : severity(days, lead), attention: inWindow && !settled, decision })
+    out.push({ ...rest, key, days, lead, severity: lead < 0 ? 'later' : severity(days, lead), attention: inWindow && !settled, decision })
   }
 
   for (const t of data.things) {

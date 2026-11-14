@@ -2,6 +2,7 @@
 // of when products stop receiving updates, with a public CORS-enabled API.
 // This is the answer to "when do security updates end for this?".
 
+import { netFetch } from '@/sync/shellFetch'
 import dayjs from 'dayjs'
 import { DAY, today } from '@/core/dates'
 
@@ -61,7 +62,7 @@ const cache = new Map<string, Promise<{ label: string; releases: Release[] }>>()
 function loadProduct(product: string): Promise<{ label: string; releases: Release[] }> {
   let p = cache.get(product)
   if (!p) {
-    p = fetch(`${API}/${product}`, { signal: AbortSignal.timeout(12_000) })
+    p = netFetch(`${API}/${product}`, { signal: AbortSignal.timeout(12_000) })
       .then((r) => { if (!r.ok) throw new Error(`endoflife.date: ${r.status}`); return r.json() })
       .then((d: { result: { label: string; releases: Release[] } }) => d.result)
     p.catch(() => cache.delete(product))

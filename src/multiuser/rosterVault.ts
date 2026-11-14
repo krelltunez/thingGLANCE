@@ -17,7 +17,9 @@ import { db } from '@/db/client'
 import type { Member } from '@/core/types'
 import { APP_ID, getVaultConfig, isVaultEnabled } from '@/sync/vaultConfig'
 import { getDeviceId } from '@/sync/deviceId'
-import { CRYPTO_DB_NAME, isUnknownAppError } from '@/sync/dbEngine'
+import { isUnknownAppError } from '@/sync/dbEngine'
+import { dbCryptoConfig } from '@/sync/keyHooks'
+import { shellFetchImpl } from '@/sync/shellFetch'
 
 export const ROSTER_VAULT_APP = 'glance-users'
 // Per-app local state (cursor, dirty set, seed flag); the vault app is shared.
@@ -100,7 +102,8 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
     storageKeyPrefix: STORAGE_PREFIX,
     appId: ROSTER_VAULT_APP,
     vaultApp: ROSTER_VAULT_APP,
-    cryptoDBName: CRYPTO_DB_NAME,
+    ...dbCryptoConfig(),
+    fetchImpl: shellFetchImpl(),
     vaultUrl: cfg.vaultUrl,
     vaultToken: cfg.vaultToken,
     accountId: cfg.accountId,

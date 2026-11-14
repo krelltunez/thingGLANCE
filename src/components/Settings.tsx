@@ -16,7 +16,7 @@ import { setupIntentsEncryption } from '@/intents/setup'
 import { describeDevice, promptInstall } from '@/native/platform'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
-import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, testVaultConnection } from '@/sync/vaultConnect'
+import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
 import { APP_ID, getVaultConfig } from '@/sync/vaultConfig'
 import { useData } from '@/state/data'
 import { updateSettings, useSettings, type ThemePref } from '@/state/settings'
@@ -92,7 +92,7 @@ function Vault() {
   const [note, setNote] = useState<{ tone: Tone; text: string } | null>(null)
   const [confirm, setConfirm] = useState(false)
 
-  const done = () => window.location.reload()
+  const done = () => void reloadAfterConfigChange()
 
   const connectPro = async () => {
     setBusy(true); setNote(null)

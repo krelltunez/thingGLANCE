@@ -3,6 +3,7 @@
 // any site (`origin=*`), needs no key, and is not scraping, so this works the
 // same in the PWA, in Capacitor and in Electron, and is store-safe.
 
+import { netFetch } from '@/sync/shellFetch'
 import type { Spec } from '@/core/types'
 
 const API = 'https://en.wikipedia.org/w/api.php'
@@ -11,7 +12,7 @@ const TIMEOUT_MS = 12_000
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const timeout = AbortSignal.timeout(TIMEOUT_MS)
-  const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
+  const res = await netFetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
   if (!res.ok) throw new Error(`lookup failed: ${res.status}`)
   return (await res.json()) as T
 }

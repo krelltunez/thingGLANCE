@@ -2,8 +2,9 @@
 // WebDAV, iCloud or Direct Access roads), so this is the whole sync setup.
 // Same shape and semantics as lastGLANCE's src/sync/vaultConfig.ts.
 
+import { VAULT_CONFIG_KEY, readSecret, writeSecret } from './secrets'
+
 export const APP_ID = 'thingglance'
-const VAULT_CONFIG_KEY = `${APP_ID}-vault-config`
 
 export interface VaultConfig {
   enabled: boolean
@@ -15,7 +16,8 @@ export interface VaultConfig {
 
 export function getVaultConfig(): VaultConfig | null {
   try {
-    const raw = localStorage.getItem(VAULT_CONFIG_KEY)
+    // The token is a credential: it is kept wherever secrets.ts says.
+    const raw = readSecret(VAULT_CONFIG_KEY)
     if (!raw) return null
     const p = JSON.parse(raw) as Partial<VaultConfig>
     return {
@@ -31,8 +33,7 @@ export function getVaultConfig(): VaultConfig | null {
 }
 
 export function setVaultConfig(config: VaultConfig | null): void {
-  if (config) localStorage.setItem(VAULT_CONFIG_KEY, JSON.stringify(config))
-  else localStorage.removeItem(VAULT_CONFIG_KEY)
+  writeSecret(VAULT_CONFIG_KEY, config ? JSON.stringify(config) : null)
 }
 
 export function isVaultEnabled(): boolean {

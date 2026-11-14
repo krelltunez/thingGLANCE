@@ -5,6 +5,7 @@
 //   POST {vault}/intents/batch  { accountId, events: [{ eventId, envelope, expiresAt }] }
 //   GET  {vault}/intents/list?accountId=&since=&limit=   -> { rows, hasMore }
 
+import { netFetch } from '@/sync/shellFetch'
 import { buildIntentRow, parseIntentRow } from '@glance-apps/intents'
 import type { EncryptedEnvelope, Envelope, IntentEventRow } from '@glance-apps/intents'
 import { getVaultConfig } from '@/sync/vaultConfig'
@@ -27,7 +28,7 @@ async function vaultFetch(c: Conn, method: string, path: string, opts: { query?:
   const headers: Record<string, string> = { Authorization: `Bearer ${c.vaultToken}` }
   const body = opts.body !== undefined ? JSON.stringify(opts.body) : undefined
   if (body) headers['Content-Type'] = 'application/json'
-  return fetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) })
+  return netFetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) })
 }
 
 // Insert-only: re-sending a row whose eventId exists is a server no-op, so a

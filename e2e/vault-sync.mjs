@@ -1,7 +1,8 @@
 // End-to-end: two browser contexts ("devices") syncing through a real
 // GLANCEvault, plus the shared roster, members and users (owner, responsible,
 // private, the member filter, handing over and removing), a write and a link
-// from outside the app, and the dayGLANCE intent round-trip.
+// from outside the app, the dayGLANCE intent round-trip, and a third context
+// standing in for a shell with its own network transport and keystore.
 //
 // Needs the dev server (npm run dev) and a vault that allows this app and this
 // origin. A throwaway one from the sibling repo:
@@ -311,6 +312,68 @@ await A.waitForTimeout(4500)
 await syncNow(B)
 await goto(B, 'Things')
 check('B: delete made on A arrives', !(await B.getByText('E2E Laptop').first().isVisible().catch(() => false)))
+
+// ── Device C: the same bundle inside a shell ─────────────────────────────────
+// A stand-in for a Capacitor or Electron shell (docs/shells.md): it supplies
+// its own network transport and a keystore before the app boots. The keystore
+// here is sessionStorage under a prefix, which survives the reload a
+// connection change ends in. The platform fetch is wrapped to count any vault
+// request that did not come through the shell's transport; the live event
+// stream is the one request allowed to.
+const shellCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' })
+await shellCtx.addInitScript((vault) => {
+  try { localStorage.setItem('tg_welcomed', '1') } catch {}
+  const real = window.fetch.bind(window)
+  const url = (input) => (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+  window.__seam = { viaShell: 0, bypassed: [] }
+  let inShell = false
+  window.fetch = (input, init) => {
+    const u = url(input)
+    if (u.startsWith(vault) && !inShell && !u.includes('/events')) window.__seam.bypassed.push(u.slice(vault.length))
+    return real(input, init)
+  }
+  const key = (k) => `keystore:${k}`
+  window.thingglanceShell = {
+    fetch: (input, init) => {
+      window.__seam.viaShell += 1
+      inShell = true
+      try { return real(input, init) } finally { inShell = false }
+    },
+    secureStore: {
+      get: async (k) => sessionStorage.getItem(key(k)),
+      set: async (k, v) => { sessionStorage.setItem(key(k), v) },
+      remove: async (k) => { sessionStorage.removeItem(key(k)) },
+    },
+  }
+}, VAULT)
+const C = await shellCtx.newPage()
+C.on('pageerror', (e) => console.log('[C] pageerror', String(e)))
+await C.goto(APP)
+await C.waitForTimeout(600)
+await connect(C)
+await unlock(C, PASS)
+await C.waitForTimeout(2500)
+const seam = await C.evaluate(async (token) => {
+  const plain = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join('\n')
+  const dbs = (await indexedDB.databases()).map((d) => d.name)
+  return {
+    viaShell: window.__seam.viaShell,
+    bypassed: window.__seam.bypassed,
+    tokenInLocalStorage: plain.includes(token),
+    configInLocalStorage: localStorage.getItem('thingglance-vault-config') !== null,
+    configInKeystore: (sessionStorage.getItem('keystore:thingglance-vault-config') ?? '').includes(token),
+    rootKeyInKeystore: sessionStorage.getItem('keystore:crypto.db-root-key') !== null,
+    rootKeyDatabase: dbs.filter((n) => n && n.startsWith('thingglance-crypto')),
+  }
+}, TOKEN)
+check('C (shell): every vault request went out on the shell\'s transport', seam.viaShell > 0 && seam.bypassed.length === 0, `via shell ${seam.viaShell}, bypassed ${JSON.stringify(seam.bypassed)}`)
+check('C (shell): the vault token is in the keystore and not in localStorage', seam.configInKeystore && !seam.tokenInLocalStorage && !seam.configInLocalStorage)
+check('C (shell): the root key is in the keystore and not in IndexedDB', seam.rootKeyInKeystore && seam.rootKeyDatabase.length === 0, JSON.stringify(seam.rootKeyDatabase))
+await C.reload()
+await C.waitForTimeout(3000)
+check('C (shell): after a reload it is still connected and asks for no passphrase', !(await C.getByRole('textbox', { name: 'Passphrase' }).isVisible().catch(() => false)) && await C.getByRole('button', { name: /Synced|Up to date|Sync/ }).first().isVisible().catch(() => false))
+await goto(C, 'Things')
+check('C (shell): it syncs like any other device', await C.getByText('E2E Outside Write').first().isVisible().catch(() => false))
 
 console.log('\n' + results.map((r) => r.join('  ')).join('\n'))
 await browser.close()

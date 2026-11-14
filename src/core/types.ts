@@ -180,6 +180,9 @@ export interface HorizonEvent {
   date: Day
   days: number // from today; negative = already happened
   severity: Severity
+  // How many days ahead this event starts asking for attention. Negative for
+  // a routine renewal that never does.
+  lead: number
   title: string
   detail: string
   thingId?: string

@@ -24,6 +24,9 @@ const config: CapacitorConfig = {
     // keeps clear of it with env(safe-area-inset-top). The style is set to
     // match the theme at runtime (src/native/capacitor.ts).
     StatusBar: { style: 'DARK', overlaysWebView: true },
+    // The status-bar icon for reminders (res/drawable/ic_stat_notify.xml: the
+    // app's mark in one colour) and the tint Android gives it.
+    LocalNotifications: { smallIcon: 'ic_stat_notify', iconColor: '#0284C7' },
   },
 }
 

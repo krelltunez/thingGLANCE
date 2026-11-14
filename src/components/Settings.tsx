@@ -18,6 +18,7 @@ import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/conf
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
+import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
 import { WidgetBridge } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
@@ -51,6 +52,38 @@ function Block({ title, hint, children }: { title: string; hint?: ReactNode; chi
   )
 }
 
+// Android only: whether this device is reminded, and at what time of day.
+// The plan itself (which dates, whose device) is core's; this only holds the
+// two preferences and Android's own permission.
+function Reminders() {
+  const { t } = useTranslation()
+  const { reminders } = useSettings()
+  const [permission, setPermission] = useState<NotifyPermission | null>(null)
+  useEffect(() => { void notifyPermission().then(setPermission) }, [])
+  const on = reminders.enabled && permission === 'granted'
+  const toggle = async (enabled: boolean) => {
+    if (enabled && permission !== 'granted') setPermission((await requestNotifyPermission()) ? 'granted' : await notifyPermission())
+    updateSettings({ reminders: { ...reminders, enabled } })
+  }
+  const time = `${String(reminders.hour).padStart(2, '0')}:${String(reminders.minute).padStart(2, '0')}`
+  const setTime = (value: string) => {
+    const [hour, minute] = value.split(':').map(Number)
+    if (Number.isInteger(hour) && Number.isInteger(minute)) updateSettings({ reminders: { ...reminders, hour, minute } })
+  }
+  return (
+    <Block title={t('settings.general.reminders')} hint={t('settings.general.remindersHint')}>
+      <Toggle checked={on} onChange={(v) => void toggle(v)} label={t('settings.general.remindersOn')} />
+      {reminders.enabled && permission === 'denied' && <p className="mt-2 text-xs text-warn">{t('settings.general.remindersBlocked')}</p>}
+      {on && (
+        <label className="mt-3 flex items-center gap-3 text-sm text-dim">
+          {t('settings.general.remindersTime')}
+          <input type="time" className="input num w-32" aria-label={t('settings.general.remindersTime')} value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+      )}
+    </Block>
+  )
+}
+
 function General() {
   const { t } = useTranslation()
   // The launcher places the widget and asks the user to confirm. Where it
@@ -80,6 +113,7 @@ function General() {
           <LanguagePicker className="input w-56" />
         </Block>
       )}
+      {shell() === 'native' && <Reminders />}
       {shell() === 'native' && (
         <Block title={t('settings.general.widgets')} hint={t('settings.general.widgetsHint')}>
           <div className="flex flex-wrap gap-2">

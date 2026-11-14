@@ -37,6 +37,7 @@ To open the project in Android Studio: `npx cap open android`.
 - the back button closes the keyboard, then the sheet, then returns to the first screen, then leaves the app without closing it;
 - a thing added on the phone reaches a web device through a real vault, and the other way;
 - both widgets can be placed, show the right date and countdown, open the app on a tap, and empty when the date is cleared;
+- a reminder is scheduled at the chosen time, delivered by Android with the app in the background, and "Done with this" on it clears the date;
 - after being killed, the app is still connected and asks for no passphrase.
 
 ```bash
@@ -88,6 +89,19 @@ Settings has an "add to home screen" button for each (Android 8 and later, where
 
 `WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation and feeds the parser broken payloads. The device check places both widgets on the emulator's home screen, reads what they show, taps a row, and clears a date in the app to see them empty.
 
+## Reminders
+
+Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot; `src/native/notifications.ts` only makes what Android has pending match that plan.
+
+- **A diff, not a reschedule.** `diffReminders()` (in core, so every shell does it the same way) says what to schedule and what to cancel. Each notification carries a signature of what it shows, so one whose time or wording changed is replaced and one that is unchanged is left alone. It runs whenever the snapshot is rebuilt.
+- **Inexact alarms, on purpose.** "Your warranty ends in a week" does not need to arrive to the second. Exact alarms are a special permission on Android 12 and later that Play restricts to alarm clocks and calendars, so the app does not ask for it, and the manifest removes the one the notifications plugin declares. Expect a reminder a minute or two after its time.
+- **Permission is asked once**, by Android's own prompt, at the first moment there is something to remind about (Android 13 and later; older versions need none). Settings → General has the switch and the time of day. Without permission nothing is scheduled.
+- **A tap opens the date.** "Done with this" on the notification clears it, through the same door every write from outside uses (`dispatchExternalWrite`), with the reminder's own id, so a tap delivered twice clears once.
+- **Words come from the app.** The title and body are the snapshot's; the channel name and the action label come from the catalog and are registered again when the language changes.
+- **After a restart of the phone** the notifications plugin puts the pending ones back.
+
+The device check sets the reminder time two minutes ahead, adds a thing whose warranty ends in exactly seven days, waits for Android to deliver the notification with the app in the background, and taps "Done with this".
+
 Other choices worth knowing:
 
 - **Cleartext HTTP is allowed**, so a self-hosted vault on a home network (`http://192.168.x.x:8080`) works. Android cannot scope that to the local network. Everything sent to a vault is encrypted before it leaves; what plain HTTP exposes is the device token, so use HTTPS for a vault reachable from outside.
@@ -99,6 +113,6 @@ Other choices worth knowing:
 
 - **Live updates.** The web app holds the vault's event stream open; the phone does not yet. A change made elsewhere arrives when the app is opened, every five minutes while it is open, or after a local edit. A native stream reader is in the roadmap's hardening step.
 - **More widgets** (a single thing, plans this month, an add tile) and **action buttons on widgets** (clearing a date from the home screen).
-- **Notifications, shortcuts, the share target, Tasker.** The reminder plan they will read is already in the snapshot (`docs/snapshot.md`).
+- **"Send to dayGLANCE" on a notification**, shortcuts, the share target, Quick Settings tiles, Tasker.
 - **A background refresh.** If the app is not opened for days, the widgets keep counting down correctly but do not learn of dates that have since entered their window.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

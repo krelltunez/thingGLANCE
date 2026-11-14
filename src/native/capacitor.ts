@@ -10,6 +10,8 @@
 //   links      thingglance:// URLs the system hands the app go to openLink()
 //   back       the hardware back button closes what is on top, then leaves
 //   status bar follows the app's theme
+//   reminders  Android's pending notifications are kept equal to the reminder
+//              plan in the snapshot (native/notifications.ts)
 //   widgets    the snapshot is written to the native side whenever it changes
 //              (native/widgetBridge.ts)
 
@@ -18,6 +20,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { goBack } from './backStack'
 import { openLink } from './links'
+import { startNotifications, syncReminders } from './notifications'
 import { registerShell, type SecureStore } from './shell'
 import { startWidgetBridge } from './widgetBridge'
 
@@ -89,5 +92,10 @@ export function startCapacitorShell(): void {
   followLinks()
   handleBackButton()
   followTheme()
-  if (Capacitor.getPlatform() === 'android') startWidgetBridge()
+  if (Capacitor.getPlatform() === 'android') {
+    startNotifications()
+    // One snapshot feeds both: what the widgets show, and what Android should
+    // have pending as notifications.
+    startWidgetBridge((snapshot) => void syncReminders(snapshot.reminders))
+  }
 }

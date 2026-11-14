@@ -72,6 +72,8 @@ Built by `planReminders()` in `src/core/reminders.ts`. A shell makes the platfor
 | `link` | string | What a tap opens, as on an event. |
 | `thingId`, `subscriptionId`, `amount` | optional | As on an event. |
 
+A shell does not reschedule everything each time. `diffReminders(wanted, pending)` in `src/core/reminders.ts` answers what to schedule and what to cancel, given what the platform already holds; `reminderSignature()` is what tells an unchanged notification from one whose time or wording moved.
+
 The list is capped (56 by default, under the iOS limit of 64 pending per app) and keeps what fires soonest. Every later run plans again and pulls the next ones in.
 
 ## Reminder rules

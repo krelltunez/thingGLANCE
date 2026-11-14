@@ -73,13 +73,17 @@ export async function widgetPayload(): Promise<WidgetPayload> {
 // one is not written (and every widget redrawn) again.
 const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '', reminders: [] } })
 
-export function startWidgetBridge(): void {
+// `onSnapshot` is handed every snapshot as it is made, changed or not: the
+// reminder plan inside it moves with the clock, which the widgets' own
+// fingerprint deliberately ignores.
+export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => void): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let last = ''
   const push = async () => {
     timer = null
     try {
       const payload = await widgetPayload()
+      try { onSnapshot?.(payload.snapshot) } catch { /* a listener must not stop the widgets */ }
       const print = fingerprint(payload)
       if (print === last) return
       await WidgetBridge.updateSnapshot({ json: JSON.stringify(payload) })

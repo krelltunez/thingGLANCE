@@ -113,3 +113,99 @@ describe('event client', () => {
     client.stop()
   })
 })
+
+// ── a shell reads the stream and passes it in ───────────────────────────────
+
+describe('a stream read by a shell', async () => {
+  const { createBridgeSseClient, detectSseTransport } = await import('./vaultEventStream')
+  const { registerShell } = await import('@/native/shell')
+  const connection = { vaultUrl: 'https://vault.example', vaultToken: 'tok', accountId: 'home' }
+
+  function harness(over: { connection?: typeof connection | null } = {}) {
+    const events: unknown[] = []
+    const states: [string, unknown?][] = []
+    const native = { started: [] as unknown[], stopped: 0 }
+    let fire: (() => void) | null = null
+    const client = createBridgeSseClient({
+      getConnection: () => (over.connection === undefined ? connection : over.connection),
+      startNative: (c) => native.started.push(c),
+      stopNative: () => { native.stopped += 1 },
+      onEvent: (e) => events.push(e),
+      onStateChange: (s, d) => states.push(d === undefined ? [s] : [s, d]),
+      readyTimeoutMs: 5000,
+      setTimeoutFn: ((fn: () => void) => { fire = fn; return 1 }) as unknown as typeof setTimeout,
+      clearTimeoutFn: (() => { fire = null }) as unknown as typeof clearTimeout,
+    })
+    return { client, events, states, native, timeout: () => fire?.() }
+  }
+
+  it('says the stream is wanted once, with the connection', () => {
+    const h = harness()
+    expect(h.client.start()).toBe(true)
+    expect(h.client.start()).toBe(false)
+    expect(h.native.started).toEqual([connection])
+    expect(h.states).toEqual([['connecting']])
+  })
+  it('does not start with nothing to connect to', () => {
+    const h = harness({ connection: null })
+    expect(h.client.start()).toBe(false)
+    expect(h.native.started).toEqual([])
+  })
+  it('turns the shell\'s frames into the same events the web reader produces', () => {
+    const h = harness()
+    h.client.start()
+    h.client.receive({ type: 'open' })
+    h.client.receive({ type: 'frame', block: 'event: activity\ndata: {"seq":7,"app":"thingglance"}' })
+    h.client.receive(JSON.stringify({ type: 'frame', block: 'data: {"seq":8}' }))
+    expect(h.events).toEqual([{ seq: 7, app: 'thingglance' }, { seq: 8 }])
+  })
+  it('drops what makes no sense, and anything arriving when it is not running', () => {
+    const h = harness()
+    h.client.receive({ type: 'frame', block: 'data: {"seq":1}' })
+    h.client.start()
+    for (const junk of [null, 42, 'not json', {}, { type: 'frame' }, { type: 'frame', block: 'data: not json' }, { type: 'unknown' }]) h.client.receive(junk)
+    expect(h.events).toEqual([])
+  })
+  it('reports an open stream that stays silent as stalled, once a frame would have come', () => {
+    const quiet = harness()
+    quiet.client.start()
+    quiet.client.receive({ type: 'open' })
+    quiet.timeout()
+    expect(quiet.states.map((s) => s[0])).toEqual(['connecting', 'open', 'stalled'])
+    const healthy = harness()
+    healthy.client.start()
+    healthy.client.receive({ type: 'open' })
+    healthy.client.receive({ type: 'frame', block: 'data: {"seq":1}' })
+    healthy.timeout()
+    expect(healthy.states.map((s) => s[0])).toEqual(['connecting', 'open'])
+  })
+  it('tells a final stop from a passing error', () => {
+    const h = harness()
+    h.client.start()
+    h.client.receive({ type: 'error', message: 'read timed out' })
+    h.client.receive({ type: 'closed' })
+    h.client.receive({ type: 'error', code: 'auth', message: 'refused' })
+    h.client.receive({ type: 'error', code: 'unsupported', message: 'no /events' })
+    expect(h.states.slice(1)).toEqual([['error', 'read timed out'], ['closed'], ['error', { code: 'auth', message: 'refused' }], ['unsupported-server']])
+  })
+  it('tells the shell when the stream is no longer wanted', () => {
+    const h = harness()
+    h.client.start()
+    h.client.stop()
+    h.client.stop()
+    expect(h.native.stopped).toBe(1)
+    expect(h.client.isRunning()).toBe(false)
+  })
+  it('is chosen over the web reader whenever a shell offers one', () => {
+    vi.stubGlobal('window', {})
+    try {
+      registerShell({ fetch: (async () => new Response('')) as typeof fetch })
+      expect(detectSseTransport()).toBe('none')
+      registerShell({ fetch: (async () => new Response('')) as typeof fetch, eventStream: { start: () => {}, stop: () => {}, listen: () => () => {} } })
+      expect(detectSseTransport()).toBe('shell')
+    } finally {
+      registerShell(null)
+      vi.unstubAllGlobals()
+    }
+  })
+})

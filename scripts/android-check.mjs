@@ -251,6 +251,20 @@ const arrived = await waitFor(() => P.getByText('Web Check Laptop').first().isVi
 check('phone: the thing added on the web arrives when the app comes back to the front', arrived.ok, `after ${arrived.ms} ms`)
 shot('things')
 
+// Live updates: the native reader holds the vault's event stream while the
+// app is on screen, so a change made elsewhere arrives without anyone
+// touching the phone.
+const stream = await waitFor(async () => { const d = await P.evaluate(() => window.__glanceVaultSse); return d?.transport === 'shell' && d.events >= 1 }, 15_000)
+const diag = await P.evaluate(() => window.__glanceVaultSse)
+check('the phone holds the vault\'s live stream, read natively', stream.ok, JSON.stringify(diag))
+await W.keyboard.press('n')
+await W.getByLabel('Name', { exact: true }).fill('Web Live Item')
+await W.getByRole('button', { name: 'Add thing' }).click()
+await W.waitForTimeout(600)
+await W.keyboard.press('Escape')
+const live = await waitFor(() => P.getByText('Web Live Item').first().isVisible().catch(() => false), 20_000)
+check('a change on the web reaches the open phone by itself', live.ok, `after ${Math.round(live.ms / 100) / 10} s`)
+
 // ── Kill the app and start it again ──────────────────────────────────────────
 adb('shell', 'am', 'force-stop', APP_ID)
 await sleep(500)

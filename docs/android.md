@@ -37,6 +37,7 @@ To open the project in Android Studio: `npx cap open android`.
 - something shared from another app opens the add form with its name, and the app icon has its shortcuts;
 - the back button closes the keyboard, then the sheet, then returns to the first screen, then leaves the app without closing it;
 - a thing added on the phone reaches a web device through a real vault, and the other way;
+- the native reader holds the live stream, and a change made on the web reaches the open phone by itself;
 - both widgets can be placed, show the right date and countdown, and open the app on a tap;
 - the tick on a widget row clears the date with the app not running, the write waits in a queue, and the app applies it once when it next runs;
 - a reminder is scheduled at the chosen time, delivered by Android with the app in the background, and "Done with this" on it clears the date;
@@ -54,10 +55,11 @@ node scripts/android-check.mjs emulator-5554
 
 **It wipes the app's data on its target, so it refuses anything that is not an emulator.** If a real phone is plugged in too, always pass the emulator's serial to `adb` (`-s emulator-5554`): a bare `adb install` with two devices attached fails, and with one attached it goes to the phone.
 
-Two things to know when writing checks like it:
+Three things to know when writing checks like it:
 
 - While DevTools is attached, the page is held "visible". It never hears that the app went to the background and came back, so the sync that runs on coming to the front does not run. Detach before sending the app to the background and attach again afterwards.
 - The first back press in a form goes to the on-screen keyboard, as in any Android app.
+- Do not use `force-stop` to stand in for a closed app. It puts the package in the "stopped" state, and Android 15 then disables its widgets until the user opens the app. The check ends the process from inside the app's own sandbox instead (`run-as`), which is what Android reclaiming memory looks like.
 
 ## What the shell does
 
@@ -67,10 +69,23 @@ Everything goes through the seams in [shells.md](shells.md). The Android side of
 | --- | --- |
 | Keystore | `SecureStorePlugin` and `SecureStore` (`android/app/src/main/java/com/thingglance/app`). AES-GCM values in a private preferences file, the key in the Android Keystore. Nothing stored answers `null`; a Keystore that cannot be used rejects, and the web side tells the two apart. An entry that can never be read again (restored onto another device) is dropped. |
 | Network | `CapacitorHttp` replaces `window.fetch` with the native HTTP stack. `src/native/capacitor.ts` registers it as the shell's transport, which also puts the app's deadlines on it (it ignores `AbortSignal` by itself). |
+| Live updates | `VaultSsePlugin` and `VaultSseClient` (`sse/`) hold the vault's event stream natively and pass each event block to the web app, which treats it exactly as the web reader's. |
 | Links | The manifest takes `thingglance://` URLs. `@capacitor/app` hands them to `openLink()`, both when the app is running and when a link starts it. `LaunchLinks` turns every other way of starting the app into such a link first, so the web side still has one router. |
 | Back button | `src/native/backStack.ts`: the app registers what "back" closes; the shell leaves the app only when nothing was closed. |
 | Status bar | Transparent, with icons that follow the app's theme. The layout keeps clear of it with the safe-area insets. |
 | Service worker | Never registered in the WebView. |
+
+## Live updates
+
+While the app is on screen it holds the vault's event stream open, so a change made on another device shows up in a few seconds. The WebView cannot read that stream itself (its requests go out on a native stack that returns whole responses, and this one never ends), so the shell does:
+
+- **`VaultSseClient`** connects to `{vault}/events` with the device token, splits the stream into event blocks, and reconnects with backoff when it drops. It is the sibling apps' reader, ported.
+- **It runs only while the app wants it and is on screen.** It drops in the background, where Android would cut the socket anyway, and on reconnect the vault's first frame says where things stand, so nothing is missed.
+- **The web app treats a block exactly as the web reader's**: the same parser, the same coalescer, the same sync (`createBridgeSseClient` in `src/sync/vaultEventStream.ts`). A nudge only ever makes the app sync sooner; polling carries on underneath and nothing depends on a nudge arriving.
+- **The token does not travel in the clear over the internet.** Plain HTTP is accepted for this connection only to the device itself, a private network range or a `.local` name. Anything else stops the reader with `insecure`, and the app keeps polling.
+- **A refused token or a vault without `/events` stops it for good** (`auth`, `unsupported`); Settings → GLANCEvault shows live updates as off or unsupported.
+
+`window.__glanceVaultSse` in the WebView has the reader's state, as on the web, for diagnosing a build with no tools attached.
 
 ## Other ways in
 
@@ -123,7 +138,6 @@ Other choices worth knowing:
 
 ## Not there yet
 
-- **Live updates.** The web app holds the vault's event stream open; the phone does not yet. A change made elsewhere arrives when the app is opened, every five minutes while it is open, or after a local edit. A native stream reader is in the roadmap's hardening step.
 - **More widgets** (a single thing, plans this month, an add tile).
 - **"Send to dayGLANCE" on a notification**, Quick Settings tiles, Tasker.
 - **A background refresh.** If the app is not opened for days, the widgets keep counting down correctly but do not learn of dates that have since entered their window.

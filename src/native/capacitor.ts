@@ -7,6 +7,8 @@
 //              so the vault needs no CORS entry for https://localhost. It is
 //              registered as the shell's transport, which also puts the app's
 //              deadlines on it (it ignores AbortSignal by itself).
+//   live sync  the vault's event stream is read natively and passed in
+//              (native/vaultSse.ts)
 //   links      thingglance:// URLs the system hands the app go to openLink()
 //   back       the hardware back button closes what is on top, then leaves
 //   status bar follows the app's theme
@@ -22,6 +24,7 @@ import { goBack } from './backStack'
 import { openLink } from './links'
 import { startNotifications, syncReminders } from './notifications'
 import { registerShell, type SecureStore } from './shell'
+import { nativeEventStream } from './vaultSse'
 import { startWidgetBridge } from './widgetBridge'
 
 interface SecureStorePlugin {
@@ -88,6 +91,7 @@ export function startCapacitorShell(): void {
     // Looked up on each call: CapacitorHttp replaces window.fetch at startup.
     fetch: (input, init) => window.fetch(input, init),
     secureStore: keystore,
+    eventStream: nativeEventStream() ?? undefined,
   })
   followLinks()
   handleBackButton()

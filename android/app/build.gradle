@@ -86,6 +86,9 @@ dependencies {
     // Home-screen widgets.
     implementation "androidx.glance:glance-appwidget:$glanceVersion"
     implementation "androidx.glance:glance-material3:$glanceVersion"
+    // The native reader for the vault's event stream (sse/VaultSseClient.kt).
+    // Already present through Glance; named here so that cannot change it.
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     // The real org.json for unit tests on the JVM: android.jar's copy is a stub.
     testImplementation "org.json:json:20240303"
     testImplementation "junit:junit:$junitVersion"

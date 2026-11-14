@@ -17,7 +17,8 @@ import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { clearIntentsRootKey, loadIntentsRootKey } from '@/intents/keyStore'
 import { drainIntents, startIntentsPoller } from '@/intents/receive'
-import { createNudgeCoalescer, createVaultEventClient, detectSseTransport, openWebSseStream, type SseClientState } from './vaultEventStream'
+import { shellBridge } from '@/native/shell'
+import { createBridgeSseClient, createNudgeCoalescer, createVaultEventClient, detectSseTransport, openWebSseStream, type SseClientState } from './vaultEventStream'
 
 export type SyncPhase = 'off' | 'locked' | 'idle' | 'syncing' | 'synced' | 'error'
 
@@ -204,12 +205,13 @@ export async function startSync(): Promise<void> {
 // is visible, closed while hidden; the reconnect's `ready` frame reconciles
 // whatever was missed.
 function startEventStream(): void {
-  if (detectSseTransport() !== 'web') return
+  const transport = detectSseTransport()
+  if (transport === 'none') return
 
   // Inspectable in a packaged build with no devtools open: the same
   // `window.__glanceVaultSse` the sibling apps expose. Many connects with few
   // events is a reconnect storm; `stalled` is a buffering reverse proxy.
-  const diag = { state: 'idle' as SseClientState | 'idle', connects: 0, events: 0, drains: 0, lastEventSeq: null as number | null, lastError: null as string | null, lastConnectedAt: null as string | null }
+  const diag = { transport, state: 'idle' as SseClientState | 'idle', connects: 0, events: 0, drains: 0, lastEventSeq: null as number | null, lastError: null as string | null, lastConnectedAt: null as string | null }
   ;(window as unknown as Record<string, unknown>).__glanceVaultSse = diag
 
   const coalescer = createNudgeCoalescer({
@@ -217,40 +219,61 @@ function startEventStream(): void {
     onDrainError: (err) => console.warn('[thingglance] live sync drain failed:', err),
   })
 
-  const client = createVaultEventClient({
-    getConnection: () => {
-      const c = getVaultConfig()
-      return c && c.vaultUrl && c.vaultToken && c.accountId ? { vaultUrl: c.vaultUrl, vaultToken: c.vaultToken, accountId: c.accountId } : null
-    },
-    openStream: openWebSseStream,
-    onEvent: (evt) => {
-      diag.events += 1
-      const seq = (evt as { seq?: number } | null)?.seq
-      if (typeof seq === 'number') diag.lastEventSeq = seq
-      // The first frame proves the path end to end; 'open' alone does not.
-      if (state.live !== 'on') set({ live: 'on' })
-      coalescer.handleEvent(evt)
-    },
-    onStateChange: (s, detail) => {
-      diag.state = s
-      if (s === 'connecting') { diag.connects += 1; if (state.live === 'off') set({ live: 'connecting' }) }
-      else if (s === 'open') diag.lastConnectedAt = new Date().toISOString()
-      else if (s === 'stalled') {
-        set({ live: 'stalled' })
-        console.warn('[thingglance] live sync: the stream opened but nothing arrived. A reverse proxy is probably buffering /events; polling is covering.')
-      } else if (s === 'unsupported-server') {
-        set({ live: 'unsupported' })
-      } else if (s === 'error') {
-        diag.lastError = detail instanceof Error ? detail.message : String(detail ?? 'error')
-        if (state.live === 'on') set({ live: 'connecting' })
-      } else if (s === 'closed' && state.live === 'on') {
-        set({ live: 'connecting' })
-      } else if (s === 'stopped') {
-        set({ live: 'off' })
-      }
-    },
-  })
+  // Both readers are given the same three things, so a nudge means the same
+  // whichever one produced it.
+  const getConnection = () => {
+    const c = getVaultConfig()
+    return c && c.vaultUrl && c.vaultToken && c.accountId ? { vaultUrl: c.vaultUrl, vaultToken: c.vaultToken, accountId: c.accountId } : null
+  }
+  const onEvent = (evt: unknown) => {
+    diag.events += 1
+    const seq = (evt as { seq?: number } | null)?.seq
+    if (typeof seq === 'number') diag.lastEventSeq = seq
+    // The first frame proves the path end to end; 'open' alone does not.
+    if (state.live !== 'on') set({ live: 'on' })
+    coalescer.handleEvent(evt)
+  }
+  const onStateChange = (s: SseClientState, detail?: unknown) => {
+    diag.state = s
+    if (s === 'connecting') { diag.connects += 1; if (state.live === 'off') set({ live: 'connecting' }) }
+    else if (s === 'open') { if (transport === 'shell') diag.connects += 1; diag.lastConnectedAt = new Date().toISOString() }
+    else if (s === 'stalled') {
+      set({ live: 'stalled' })
+      console.warn('[thingglance] live sync: the stream opened but nothing arrived. A reverse proxy is probably buffering /events; polling is covering.')
+    } else if (s === 'unsupported-server') {
+      set({ live: 'unsupported' })
+    } else if (s === 'error') {
+      const coded = detail && typeof detail === 'object' ? (detail as { code?: string; message?: string }) : null
+      diag.lastError = coded ? `${coded.code}: ${coded.message ?? ''}` : detail instanceof Error ? detail.message : String(detail ?? 'error')
+      // A coded error from a shell's reader is final: it has stopped. Polling
+      // is covering, so this is "no live updates", not a sync failure.
+      if (coded) set({ live: 'off' })
+      else if (state.live === 'on') set({ live: 'connecting' })
+    } else if (s === 'closed' && state.live === 'on') {
+      set({ live: 'connecting' })
+    } else if (s === 'stopped') {
+      set({ live: 'off' })
+    }
+  }
 
+  if (transport === 'shell') {
+    // The shell holds the connection and decides when: it connects while the
+    // app is on screen and drops in the background by itself. Here it is only
+    // told the stream is wanted, once.
+    const stream = shellBridge()?.eventStream
+    if (!stream) return
+    const client = createBridgeSseClient({
+      getConnection, onEvent, onStateChange,
+      startNative: (connection) => { void Promise.resolve(stream.start(connection)).catch((err) => onStateChange('error', err instanceof Error ? err.message : String(err))) },
+      stopNative: () => { void Promise.resolve(stream.stop()).catch(() => {}) },
+    })
+    stream.listen(client.receive)
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') coalescer.cancel() })
+    client.start()
+    return
+  }
+
+  const client = createVaultEventClient({ getConnection, openStream: openWebSseStream, onEvent, onStateChange })
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') client.start()
     else { client.stop(); coalescer.cancel() }

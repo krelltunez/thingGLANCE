@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         // App-local plugins have to be registered before the bridge starts.
         registerPlugin(SecureStorePlugin.class);
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(com.thingglance.app.sse.VaultSsePlugin.class);
         // Whatever started the app is turned into a thingglance:// link (or
         // into nothing, if Android is only replaying an old start) before the
         // bridge reads it. A non-null saved state means the system is

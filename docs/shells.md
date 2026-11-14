@@ -9,6 +9,7 @@ Nothing below is used by a shell yet. Each seam is built and tested in the web a
 | Say what it is | `shell()`, `desktopBridge()` and the `html.native` / `html.desktop-<platform>` classes | `src/native/platform.ts` |
 | Make the app's requests itself | `registerShell({ fetch })` | `src/native/shell.ts`, `src/sync/shellFetch.ts` |
 | Keep credentials in the keystore | `registerShell({ secureStore })` | `src/native/shell.ts`, `src/sync/secrets.ts`, `src/sync/keyHooks.ts` |
+| Bring live updates | `registerShell({ eventStream })` | `src/native/shell.ts`, `src/sync/vaultEventStream.ts` |
 | Open the app at a place | `openLink(link)` | `src/native/links.ts`, [links-and-intents.md](links-and-intents.md) |
 | Change or ask something | `dispatchExternalWrite({ action, payload, clientId })` | `src/intents/inbound.ts`, [links-and-intents.md](links-and-intents.md) |
 | Show something outside the app | `buildSnapshot()` | `src/core/snapshot.ts`, [snapshot.md](snapshot.md) |
@@ -45,7 +46,7 @@ With no shell both are the browser's `fetch`. With one, every request goes out o
 
 **Deadlines are enforced here, not left to the transport.** A request that carries an `AbortSignal` is settled by that signal even on a transport that ignores it (Capacitor's patched `fetch` never reads it). A request on a shell's transport that carries none gets a 60-second ceiling, because the vault client sets no timeout of its own. One stalled request can never hold up sync for good.
 
-**One exception:** the vault's live event stream on the web reads a response as it streams, which a transport that returns whole bodies cannot do. It runs only when there is no shell, and "no shell" means both that the platform says so (`shell()`) and that no bridge supplies a `fetch`. A shell brings its own stream reader, as the sibling apps do.
+**One exception:** the vault's live event stream on the web reads a response as it streams, which a transport that returns whole bodies cannot do. It runs only when there is no shell, and "no shell" means both that the platform says so (`shell()`) and that no bridge supplies a `fetch`. A shell brings its own stream reader, as the sibling apps do: `registerShell({ eventStream })`, three calls (`start(connection)`, `stop()`, `listen(listener)`) passing the sibling apps' message shapes (`open`, `frame` with a raw block, `closed`, `error` with an optional final `code`). The shell owns the socket, its reconnects and when it runs; the app only says the stream is wanted. Android's is `src/native/vaultSse.ts`. A shell without one has no live updates and polls.
 
 **Not covered:** images. A product photo is an `<img>`, so it loads on the WebView's own stack. That is fine on Android; a desktop renderer with no network of its own will need them fetched by the main process.
 

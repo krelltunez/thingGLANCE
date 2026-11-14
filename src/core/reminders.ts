@@ -15,6 +15,7 @@ import { DAY, addDays, fmtDay, relative } from './dates'
 import { buildHorizon } from './horizon'
 import { handlerOfEvent, visibleTo } from './household'
 import { eventLink } from './links'
+import { tr } from './text'
 
 // Each date gets at most two nudges. The first comes when it enters its lead
 // window (LEAD_DAYS in horizon.ts: the same moment it joins the queue), while
@@ -99,8 +100,8 @@ function worthReminding(e: HorizonEvent, prefs: ReminderPrefs): boolean {
 }
 
 function text(e: HorizonEvent, daysBefore: number): { title: string; body: string } {
-  const when = daysBefore === 0 ? 'today' : `${relative(daysBefore)}, ${fmtDay(e.date, 'MMM D')}`
-  return { title: e.title, body: `${e.detail} · ${when}` }
+  const when = daysBefore === 0 ? tr('reminder.today') : tr('reminder.when', { relative: relative(daysBefore), date: fmtDay(e.date, 'MMM D') })
+  return { title: e.title, body: tr('reminder.body', { detail: e.detail, when }) }
 }
 
 export function planReminders(all: DataSet, ctx: ReminderContext): Reminder[] {

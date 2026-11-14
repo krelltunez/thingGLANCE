@@ -9,6 +9,7 @@ import { netFetch } from '@/sync/shellFetch'
 import { buildIntentRow, parseIntentRow } from '@glance-apps/intents'
 import type { EncryptedEnvelope, Envelope, IntentEventRow } from '@glance-apps/intents'
 import { getVaultConfig } from '@/sync/vaultConfig'
+import { tr } from '@/core/text'
 import { getIntentsConfig } from './config'
 
 const LIST_LIMIT = 500
@@ -36,7 +37,7 @@ async function vaultFetch(c: Conn, method: string, path: string, opts: { query?:
 // move the receive cursor.
 export async function sendEnvelope(envelope: Envelope | EncryptedEnvelope): Promise<void> {
   const c = conn()
-  if (!c) throw new Error('GLANCEvault is not connected')
+  if (!c) throw new Error(tr('intents.notConnected'))
   const row = buildIntentRow(envelope, { ttlMs: getIntentsConfig().ttlMs })
   const res = await vaultFetch(c, 'POST', '/intents/batch', { body: { accountId: c.accountId, events: [row] } })
   if (!res.ok) throw new Error(`intents batch failed: ${res.status}`)

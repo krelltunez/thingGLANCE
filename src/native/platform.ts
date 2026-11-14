@@ -7,6 +7,8 @@
 //   desktop   Electron: adds html.desktop + html.desktop-<platform>, no service
 //             worker, tray popup rendered from the same bundle with ?tray=1
 
+import { tr } from '@/core/text'
+
 export type Shell = 'web' | 'native' | 'desktop'
 
 interface DesktopBridge { info: { platform: string } }
@@ -28,10 +30,10 @@ export function describeDevice(): string {
   const ua = navigator.userAgent
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
   const kind = shell()
-  if (kind === 'desktop') return os ? `${os} app` : 'Desktop app'
-  if (kind === 'native') return os ? `${os} app` : 'Phone app'
-  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser'
-  return os ? `${browser} on ${os}` : browser
+  if (kind === 'desktop') return os ? tr('device.osApp', { os }) : tr('device.desktopApp')
+  if (kind === 'native') return os ? tr('device.osApp', { os }) : tr('device.phoneApp')
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : tr('device.browser')
+  return os ? tr('device.browserOn', { browser, os }) : browser
 }
 
 export const isStandalone = (): boolean =>

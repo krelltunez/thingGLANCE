@@ -2,6 +2,7 @@ import type { Coverage, Day, Subscription, Thing } from './types'
 import { addMonths, daysBetween, today } from './dates'
 import { category } from './categories'
 import { yearlyCost } from './money'
+import { tr } from './text'
 
 export type Verdict = 'prime' | 'solid' | 'watch' | 'replace' | 'overdue' | 'retired' | 'unknown'
 
@@ -19,15 +20,19 @@ export interface Lifecycle {
   verdict: Verdict
 }
 
-export const VERDICTS: Record<Verdict, { label: string; hint: string; tone: 'ok' | 'accent' | 'warn' | 'bad' | 'dim' }> = {
-  prime: { label: 'Prime', hint: 'Covered and current', tone: 'ok' },
-  solid: { label: 'Solid', hint: 'Plenty of life left', tone: 'accent' },
-  watch: { label: 'Watch', hint: 'Start thinking about what is next', tone: 'warn' },
-  replace: { label: 'Replace soon', hint: 'Its window closes within six months', tone: 'bad' },
-  overdue: { label: 'Past its window', hint: 'Out of support or past your plan', tone: 'bad' },
-  retired: { label: 'Retired', hint: 'No longer in service', tone: 'dim' },
-  unknown: { label: 'No dates yet', hint: 'Add a purchase date to start the clock', tone: 'dim' },
+export const VERDICTS: Record<Verdict, { tone: 'ok' | 'accent' | 'warn' | 'bad' | 'dim' }> = {
+  prime: { tone: 'ok' },
+  solid: { tone: 'accent' },
+  watch: { tone: 'warn' },
+  replace: { tone: 'bad' },
+  overdue: { tone: 'bad' },
+  retired: { tone: 'dim' },
+  unknown: { tone: 'dim' },
 }
+
+// Functions, not fields: the words follow the language in use when asked.
+export const verdictLabel = (v: Verdict): string => tr(`verdict.${v}.label`)
+export const verdictHint = (v: Verdict): string => tr(`verdict.${v}.hint`)
 
 export function lifecycle(thing: Thing, coverages: Coverage[] = [], ref: Day = today()): Lifecycle {
   const start = thing.purchaseDate ?? thing.releaseDate ?? null

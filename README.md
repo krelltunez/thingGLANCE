@@ -102,6 +102,7 @@ src/
   core/        Pure domain logic. No React, no Dexie, no DOM.
                types · dates · money · health (lifecycle, verdict, fund) ·
                horizon (events, queue) · snapshot
+  locales/     One translation.json per language; core/text.ts and i18n.ts read them
   db/          Dexie tables, the one write path (queries.ts), samples, backup
   sync/        Vault config, engine wiring, connect / test, the sync manager
   multiuser/   glance-users roster engine + device-local preferences
@@ -121,7 +122,7 @@ src/
 
 ## Not done yet
 
-Deliberately out of scope for the prototype: i18n (strings are inline English), local notifications, currency conversion (one currency for everything), receipt or photo attachments, and billing.
+Deliberately out of scope for the prototype: translations (every string is in a catalog and a language is one file to add, but only English ships; see [docs/i18n.md](docs/i18n.md)), local notifications, currency conversion (one currency for everything), receipt or photo attachments, and billing.
 
 ## License
 

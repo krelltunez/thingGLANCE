@@ -15,6 +15,7 @@ import { handlerOfEvent, visibleTo } from './household'
 import { eventLink } from './links'
 import { monthlyCost } from './money'
 import { capReminders, planReminders, type Reminder, type ReminderPrefs } from './reminders'
+import { textLocale } from './text'
 
 // THE SHAPE BELOW IS A CONTRACT (docs/snapshot.md). Native widgets, the tray,
 // the launcher and MCP tools are separate programs that read a stored copy of
@@ -33,6 +34,10 @@ export interface GlanceSnapshot {
   day: Day
   // ISO 4217 code for every amount in the snapshot. Nothing is converted.
   currency: string
+  // The BCP 47 tag the text in this snapshot is written for (titles, details,
+  // reminder bodies). A surface formatting its own dates and amounts should
+  // use it too, so they read as one language.
+  locale: string
   // Whose device this was built for (null: nobody has claimed it), and the
   // member the dated lists were narrowed to (null: everyone).
   scope: { viewerId: string | null; memberId: string | null }
@@ -120,6 +125,7 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
     generatedAt: new Date(now).toISOString(),
     day: ref,
     currency: opts.currency ?? 'USD',
+    locale: textLocale(),
     scope: { viewerId: opts.viewerId, memberId: opts.memberId ?? null },
     counts: {
       things: active.length,

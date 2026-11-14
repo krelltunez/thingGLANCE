@@ -26,6 +26,7 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `generatedAt` | ISO timestamp | When it was built. A reader can show "as of" from this, and the launcher uses it as a heartbeat. |
 | `day` | `YYYY-MM-DD` | The local day it was built for. `days` values count from here. |
 | `currency` | ISO 4217 code | The currency of every amount. Nothing is converted. |
+| `locale` | BCP 47 tag | The language and region the text in this snapshot is written for (`title`, `detail`, a reminder's `title` and `body`). Format your own dates and amounts for the same tag. |
 | `scope.viewerId` | member id or null | The member this device belongs to. Null when nobody has claimed it. |
 | `scope.memberId` | member id or null | The member the dated lists were narrowed to. Null for everyone. |
 | `counts` | object | `things` in service, `subscriptions` not cancelled, `attention` (the queue's length), `urgent` (queue items due within two weeks or past). |

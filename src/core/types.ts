@@ -185,6 +185,9 @@ export interface HorizonEvent {
   lead: number
   title: string
   detail: string
+  // The plan's or the coverage's own name, for text built around it (the
+  // title already has it inside a sentence in the user's language).
+  name?: string
   thingId?: string
   subscriptionId?: string
   coverageId?: string

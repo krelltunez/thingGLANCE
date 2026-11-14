@@ -4,6 +4,7 @@
 
 import { clearDbRootKey, getSyncPassphrase, hasDbRootKey, initDbRootKey, setSyncPassphrase } from '@glance-apps/sync'
 import type { DbSyncEngine, SyncErrorCode } from '@glance-apps/sync'
+import { tr } from '@/core/text'
 import { createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './dbEngine'
 import { dbCryptoConfig } from './keyHooks'
 import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
@@ -90,17 +91,17 @@ const CADENCE_MS = 5 * 60 * 1000
 
 export function syncErrorText(code: string | null, message: string | null): string {
   switch (code) {
-    case 'KEY_MISMATCH': return 'The passphrase on this device does not match this vault account. Re-enter the passphrase your other GLANCE apps use.'
+    case 'KEY_MISMATCH': return tr('sync.error.keyMismatch')
     case 'AUTH_FAILURE':
-    case 'CREDENTIAL_INVALID': return 'The vault rejected this device\'s credential. Reconnect in Settings.'
-    case 'FORBIDDEN': return 'The vault refused access to this account.'
-    case 'NETWORK_ERROR': return 'Could not reach the vault. It will retry on its own.'
-    case 'QUOTA_EXCEEDED': return 'The vault account is over its quota. Uploads are paused; downloads continue.'
+    case 'CREDENTIAL_INVALID': return tr('sync.error.credential')
+    case 'FORBIDDEN': return tr('sync.error.forbidden')
+    case 'NETWORK_ERROR': return tr('sync.error.network')
+    case 'QUOTA_EXCEEDED': return tr('sync.error.quota')
     case 'RATE_LIMITED':
-    case 'SYNC_SUPPRESSED': return 'Sync is pausing briefly and will resume on its own.'
-    case 'VERIFIER_UNSUPPORTED': return 'This vault server is too old to verify the encryption key. Update the server.'
-    case 'UNKNOWN_APP': return 'This vault does not accept thingGLANCE yet. Add "thingglance" to the server\'s allowed apps (GLANCEVAULT_ALLOWED_APPS) and recreate its container.'
-    default: return message || 'Sync failed.'
+    case 'SYNC_SUPPRESSED': return tr('sync.error.pausing')
+    case 'VERIFIER_UNSUPPORTED': return tr('sync.error.verifier')
+    case 'UNKNOWN_APP': return tr('sync.error.unknownApp')
+    default: return message || tr('sync.error.failed')
   }
 }
 
@@ -266,16 +267,15 @@ async function cachedKeyConflicts(): Promise<boolean> {
   }
 }
 
-const WRONG_PASSPHRASE = 'That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.'
 
 // Resolves to null on success, or a message to show under the passphrase field.
 export async function submitPassphrase(typed: string): Promise<string | null> {
-  if (!engine) return 'The vault is not connected.'
+  if (!engine) return tr('sync.passphrase.notConnected')
   const rejected = async (): Promise<string> => {
     // The wrong key is cached now; drop it so the next attempt derives afresh.
     await clearDbRootKey(dbCryptoConfig()).catch(() => {})
     setSyncPassphrase(null)
-    return WRONG_PASSPHRASE
+    return tr('sync.passphrase.wrong')
   }
 
   // First against the other apps on the account, before thingGLANCE's own

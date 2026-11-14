@@ -5,6 +5,7 @@
 // Every caller reloads afterwards so the engines are rebuilt from clean state.
 
 import { clearDbRootKey, createVaultClient } from '@glance-apps/sync'
+import { tr } from '@/core/text'
 import { getDeviceId } from './deviceId'
 import { dbCryptoConfig } from './keyHooks'
 import { flushSecretWrites } from './secrets'
@@ -119,7 +120,7 @@ export class ProEnrollError extends Error {
 // an account-key server). The key is sent once and never stored.
 export async function connectVaultPro(accountKey: string, vaultUrl = PRO_VAULT_URL): Promise<void> {
   const key = accountKey.trim()
-  if (!key) throw new ProEnrollError('KEY_REJECTED', 'No account key entered.')
+  if (!key) throw new ProEnrollError('KEY_REJECTED', tr('sync.enroll.noKey'))
   let res: Response
   try {
     res = await netFetch(`${vaultUrl.replace(/\/+$/, '')}/enroll`, {
@@ -129,14 +130,14 @@ export async function connectVaultPro(accountKey: string, vaultUrl = PRO_VAULT_U
       signal: AbortSignal.timeout(20_000),
     })
   } catch {
-    throw new ProEnrollError('UNAVAILABLE', 'Could not reach GLANCEvault Pro.')
+    throw new ProEnrollError('UNAVAILABLE', tr('sync.enroll.unreachable'))
   }
-  if (res.status === 401 || res.status === 403) throw new ProEnrollError('KEY_REJECTED', 'That account key was not accepted.')
-  if (res.status === 404) throw new ProEnrollError('UNAVAILABLE', 'This server does not offer enrollment.')
-  if (res.status !== 200 && res.status !== 201) throw new ProEnrollError('SERVER_ERROR', `Enrollment failed (status ${res.status}).`)
+  if (res.status === 401 || res.status === 403) throw new ProEnrollError('KEY_REJECTED', tr('sync.enroll.rejected'))
+  if (res.status === 404) throw new ProEnrollError('UNAVAILABLE', tr('sync.enroll.notOffered'))
+  if (res.status !== 200 && res.status !== 201) throw new ProEnrollError('SERVER_ERROR', tr('sync.enroll.status', { status: res.status }))
   const body = (await res.json().catch(() => null)) as { credential?: unknown; accountId?: unknown } | null
   if (typeof body?.credential !== 'string' || !body.credential || typeof body?.accountId !== 'string' || !body.accountId) {
-    throw new ProEnrollError('SERVER_ERROR', 'The enrollment reply was missing the credential.')
+    throw new ProEnrollError('SERVER_ERROR', tr('sync.enroll.noCredential'))
   }
   await applyConnection({ enabled: true, vaultUrl, vaultToken: body.credential, accountId: body.accountId, pro: true })
   // Pro turns on intents too, as in the sibling apps.

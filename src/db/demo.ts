@@ -9,6 +9,7 @@ import dayjs from 'dayjs'
 import { db } from './client'
 import type { Coverage, Subscription, Thing } from '@/core/types'
 import { DAY } from '@/core/dates'
+import { tr } from '@/core/text'
 
 const monthsAgo = (m: number, dayOffset = 0) => dayjs().subtract(m, 'month').add(dayOffset, 'day').format(DAY)
 const inDays = (d: number) => dayjs().add(d, 'day').format(DAY)
@@ -48,14 +49,14 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     purchaseDate: monthsAgo(24, 3), price: 2399, retailer: 'Apple Store', releaseDate: monthsAgo(36),
     supportEnd: inMonths(60), supportBasis: 'estimate', lifespanMonths: 60, pinned: true,
     specs: [
-      { label: 'Chip', value: 'Apple M3 Pro (11-core CPU, 14-core GPU)' },
-      { label: 'Memory', value: '18 GB unified' },
-      { label: 'Storage', value: '1 TB SSD' },
-      { label: 'Display', value: '14.2″ Liquid Retina XDR, 120 Hz' },
+      { label: tr('lookup.spec.chip'), value: 'Apple M3 Pro (11-core CPU, 14-core GPU)' },
+      { label: tr('lookup.spec.memory'), value: '18 GB unified' },
+      { label: tr('lookup.spec.storage'), value: '1 TB SSD' },
+      { label: tr('lookup.spec.display'), value: '14.2″ Liquid Retina XDR, 120 Hz' },
     ],
-    notes: 'Battery at 91% health last check.',
+    notes: tr('sample.noteBattery'),
   })
-  cover(mbp, { type: 'warranty', name: 'Limited warranty', provider: 'Apple', startDate: monthsAgo(24, 3), endDate: monthsAgo(12, 3) })
+  cover(mbp, { type: 'warranty', name: tr('sample.limitedWarranty'), provider: 'Apple', startDate: monthsAgo(24, 3), endDate: monthsAgo(12, 3) })
   cover(mbp, { type: 'extended', name: 'AppleCare+', provider: 'Apple', startDate: monthsAgo(24, 3), endDate: inMonths(12, 3), cost: 279 })
 
   // Phone: on a three-year plan, so it is coming up.
@@ -64,15 +65,15 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     purchaseDate: monthsAgo(26, -4), price: 1099, retailer: 'Apple Store', releaseDate: monthsAgo(38),
     supportEnd: inMonths(46), supportBasis: 'estimate', lifespanMonths: 36,
     specs: [
-      { label: 'Chip', value: 'A17 Pro' },
-      { label: 'Storage', value: '256 GB' },
-      { label: 'Display', value: '6.1″ Super Retina XDR, ProMotion' },
-      { label: 'Connector', value: 'USB-C (USB 3)' },
+      { label: tr('lookup.spec.chip'), value: 'A17 Pro' },
+      { label: tr('lookup.spec.storage'), value: '256 GB' },
+      { label: tr('lookup.spec.display'), value: '6.1″ Super Retina XDR, ProMotion' },
+      { label: tr('sample.connector'), value: 'USB-C (USB 3)' },
     ],
   })
-  cover(phone, { type: 'warranty', name: 'Limited warranty', provider: 'Apple', startDate: monthsAgo(26, -4), endDate: monthsAgo(14, -4) })
+  cover(phone, { type: 'warranty', name: tr('sample.limitedWarranty'), provider: 'Apple', startDate: monthsAgo(26, -4), endDate: monthsAgo(14, -4) })
   sub({ thingId: phone, name: 'AppleCare+ with Theft and Loss', provider: 'Apple', amount: 13.49, cycle: 'monthly', anchorDate: monthsAgo(26, -4), review: true })
-  sub({ thingId: phone, name: 'Unlimited Plus plan', provider: 'Verizon', amount: 65, cycle: 'monthly', anchorDate: monthsAgo(30, 9) })
+  sub({ thingId: phone, name: tr('sample.unlimitedPlan'), provider: 'Verizon', amount: 65, cycle: 'monthly', anchorDate: monthsAgo(30, 9) })
 
   // Tablet: inside six months of its plan.
   thing({
@@ -86,16 +87,16 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     name: 'Pixel 6', category: 'phone', brand: 'Google', model: '128 GB, Stormy Black',
     purchaseDate: monthsAgo(60, 2), price: 599, retailer: 'Google Store', releaseDate: monthsAgo(61),
     supportEnd: inDays(-19), supportBasis: 'official', lifespanMonths: 72,
-    notes: 'Handed down. Still gets used for two-factor codes.',
+    notes: tr('sample.noteHandedDown'),
   })
 
   // Headphones: warranty runs out in days.
   const cans = thing({
     name: 'WH-1000XM5', category: 'audio', brand: 'Sony', model: 'Wireless noise cancelling',
     purchaseDate: monthsAgo(12, 12), price: 399, retailer: 'Best Buy', lifespanMonths: 48,
-    notes: 'Right ear cup creaks. Get it looked at before the warranty ends.',
+    notes: tr('sample.noteEarCup'),
   })
-  cover(cans, { type: 'warranty', name: 'Manufacturer warranty', provider: 'Sony', startDate: monthsAgo(12, 12), endDate: inDays(12) })
+  cover(cans, { type: 'warranty', name: tr('sample.manufacturerWarranty'), provider: 'Sony', startDate: monthsAgo(12, 12), endDate: inDays(12) })
 
   // TV: long plan, long protection plan.
   const tv = thing({
@@ -103,7 +104,7 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     purchaseDate: monthsAgo(30), price: 1799, retailer: 'Best Buy', lifespanMonths: 96,
     supportEnd: inMonths(30), supportBasis: 'estimate',
   })
-  cover(tv, { type: 'warranty', name: 'Manufacturer warranty', provider: 'LG', startDate: monthsAgo(30), endDate: monthsAgo(18) })
+  cover(tv, { type: 'warranty', name: tr('sample.manufacturerWarranty'), provider: 'LG', startDate: monthsAgo(30), endDate: monthsAgo(18) })
   cover(tv, { type: 'extended', name: 'Geek Squad Protection (5 yr)', provider: 'Best Buy', startDate: monthsAgo(30), endDate: inMonths(30), cost: 349 })
 
   // NAS: annual backup plan about to renew.
@@ -111,7 +112,7 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     name: 'Synology DS923+', category: 'storage', brand: 'Synology', model: '4-bay, 4 × 8 TB',
     purchaseDate: monthsAgo(20, 6), price: 1260, retailer: 'B&H', lifespanMonths: 84,
   })
-  cover(nas, { type: 'warranty', name: '3-year warranty', provider: 'Synology', startDate: monthsAgo(20, 6), endDate: inMonths(16, 6) })
+  cover(nas, { type: 'warranty', name: tr('sample.threeYearWarranty'), provider: 'Synology', startDate: monthsAgo(20, 6), endDate: inMonths(16, 6) })
   sub({ thingId: nas, name: 'C2 Storage 1 TB', provider: 'Synology', amount: 69.99, cycle: 'yearly', anchorDate: inDays(23) })
 
   // Router: quietly ageing.
@@ -125,7 +126,7 @@ export function buildSamples(): { things: Thing[]; coverages: Coverage[]; subscr
     name: 'Video Doorbell Pro 2', category: 'security', brand: 'Ring', model: 'Hardwired',
     purchaseDate: monthsAgo(15), price: 229, retailer: 'Amazon', lifespanMonths: 72,
   })
-  cover(bell, { type: 'warranty', name: 'Limited warranty', provider: 'Ring', startDate: monthsAgo(15), endDate: monthsAgo(3) })
+  cover(bell, { type: 'warranty', name: tr('sample.limitedWarranty'), provider: 'Ring', startDate: monthsAgo(15), endDate: monthsAgo(3) })
   sub({ thingId: bell, name: 'Ring Home Standard', provider: 'Ring', amount: 99.99, cycle: 'yearly', anchorDate: inMonths(3, 4) })
 
   // Retired, for the cost-of-ownership story.

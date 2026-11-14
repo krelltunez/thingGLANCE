@@ -23,7 +23,7 @@ describe('the snapshot contract', () => {
     expect(snap().version).toBe(1)
   })
   it('has exactly these top-level fields', () => {
-    expect(keys(snap())).toEqual(['attention', 'burn', 'counts', 'currency', 'day', 'generatedAt', 'reminders', 'scope', 'things', 'upcoming', 'version'])
+    expect(keys(snap())).toEqual(['attention', 'burn', 'counts', 'currency', 'day', 'generatedAt', 'locale', 'reminders', 'scope', 'things', 'upcoming', 'version'])
   })
   it('has exactly these fields inside', () => {
     const s = snap()

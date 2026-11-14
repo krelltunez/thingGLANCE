@@ -3,6 +3,7 @@
 import { db } from './client'
 import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
 import { normalizeSubscription, normalizeThing } from '@/core/shape'
+import { tr } from '@/core/text'
 import { markDirty } from '@/sync/dirtyTracker'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
 
@@ -56,8 +57,8 @@ export async function downloadBackup(): Promise<void> {
 export async function importBackup(text: string): Promise<{ added: number; updated: number }> {
   // `users` is what version 1 called the roster.
   const data = JSON.parse(text) as Partial<Backup> & { users?: Member[] }
-  if (data.format !== BACKUP_FORMAT) throw new Error('This file is not a thingGLANCE backup.')
-  if ((data.version ?? 0) > BACKUP_VERSION) throw new Error('This backup was made by a newer version of thingGLANCE.')
+  if (data.format !== BACKUP_FORMAT) throw new Error(tr('backup.notABackup'))
+  if ((data.version ?? 0) > BACKUP_VERSION) throw new Error(tr('backup.tooNew'))
   let added = 0
   let updated = 0
   const merge = async <T extends { id: string; updatedAt: string }>(

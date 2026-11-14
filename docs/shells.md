@@ -14,6 +14,8 @@ Nothing below is used by a shell yet. Each seam is built and tested in the web a
 | Show something outside the app | `buildSnapshot()` | `src/core/snapshot.ts`, [snapshot.md](snapshot.md) |
 | Schedule notifications | The snapshot's `reminders`, or `planReminders()` | `src/core/reminders.ts`, [snapshot.md](snapshot.md#reminder-rules) |
 | Know a write from outside landed | The `tg:external-write` event on `window` | `src/intents/inbound.ts` |
+| Set or follow the language | `setLanguage(tag)`, or `setLanguage(null)` to follow the device | `src/i18n.ts`, [i18n.md](i18n.md) |
+| Show words of its own | The catalog files, and the snapshot's `locale` | `src/locales/<tag>/translation.json`, [i18n.md](i18n.md#other-surfaces) |
 
 ## Supplying the bridge
 

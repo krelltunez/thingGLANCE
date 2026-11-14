@@ -4,6 +4,7 @@
 // refresh.
 
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/client'
 import type { Coverage, DataSet, DeviceLink, Member, Subscription } from '@/core/types'
@@ -24,6 +25,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { things, coverages, subscriptions, decisions, members, devices }
   }, [])
   const mu = useSyncExternalStore(subscribeHousehold, householdSnapshot)
+  // The horizon's titles are written in the language in use: a new language
+  // means building them again.
+  const language = useTranslation().i18n.language
 
   const value = useMemo<DataValue>(() => {
     const all = raw ?? EMPTY
@@ -91,9 +95,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       needsSomeone: (e) => needsSomeone(handlerOfEvent(e, thingById, subById, users), users),
       memberName: (id) => (id ? names.get(id) ?? null : null),
     }
-    // `mu` is the household-preferences snapshot string: it changing is the dependency.
+    // `mu` is the household-preferences snapshot string, and `language` the
+    // one the titles are in: each changing is the dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [raw, mu])
+  }, [raw, mu, language])
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

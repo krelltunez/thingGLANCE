@@ -1,6 +1,7 @@
 // The component kit. Small, dependency-free primitives every screen shares.
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, type LucideIcon } from 'lucide-react'
 import { tMinus } from '@/core/dates'
 import { dismissToast, useToasts } from '@/state/toast'
@@ -8,9 +9,8 @@ import { TONES, cx, useEscape, type Tone } from './kit'
 
 export function Wordmark({ className = '' }: { className?: string }) {
   return (
-    <span className={cx('select-none font-extrabold tracking-tight text-ink', className)}>
-      thing<span className="italic text-accent text-glow">GLANCE</span>
-    </span>
+    // eslint-disable-next-line i18next/no-literal-string -- the app's name is never translated
+    <span className={cx('select-none font-extrabold tracking-tight text-ink', className)}>thing<span className="italic text-accent text-glow">GLANCE</span></span>
   )
 }
 
@@ -123,6 +123,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, width = 'max
   // For a sheet that should hold one height (the max-height still caps it).
   className?: string
 }) {
+  const { t } = useTranslation()
   useEscape(onClose)
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
@@ -133,7 +134,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, width = 'max
             <h2 className="truncate text-base font-semibold text-ink">{title}</h2>
             {subtitle && <p className="mt-0.5 text-xs text-dim">{subtitle}</p>}
           </div>
-          <button type="button" className="icon-btn -mr-1.5 -mt-1 h-8 w-8" onClick={onClose} aria-label="Close"><X size={16} /></button>
+          <button type="button" className="icon-btn -mr-1.5 -mt-1 h-8 w-8" onClick={onClose} aria-label={t('common.close')}><X size={16} /></button>
         </header>
         <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-5">{children}</div>
         {footer && <footer className="safe-bottom flex items-center justify-end gap-2 border-t border-line/10 px-5 py-3">{footer}</footer>}

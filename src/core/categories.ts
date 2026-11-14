@@ -1,9 +1,8 @@
 import type { CategoryId } from './types'
+import { tr } from './text'
 
 export interface Category {
   id: CategoryId
-  label: string
-  plural: string
   // lucide-react icon name; resolved in src/components/icons.tsx so core stays
   // free of React.
   icon: string
@@ -12,30 +11,34 @@ export interface Category {
 }
 
 export const CATEGORIES: Category[] = [
-  { id: 'phone', label: 'Phone', plural: 'Phones', icon: 'Smartphone', lifespanMonths: 48 },
-  { id: 'laptop', label: 'Laptop', plural: 'Laptops', icon: 'Laptop', lifespanMonths: 60 },
-  { id: 'desktop', label: 'Desktop', plural: 'Desktops', icon: 'PcCase', lifespanMonths: 72 },
-  { id: 'tablet', label: 'Tablet', plural: 'Tablets', icon: 'Tablet', lifespanMonths: 60 },
-  { id: 'watch', label: 'Watch', plural: 'Watches', icon: 'Watch', lifespanMonths: 48 },
-  { id: 'audio', label: 'Audio', plural: 'Audio', icon: 'Headphones', lifespanMonths: 48 },
-  { id: 'tv', label: 'TV', plural: 'TVs', icon: 'Tv', lifespanMonths: 84 },
-  { id: 'display', label: 'Display', plural: 'Displays', icon: 'Monitor', lifespanMonths: 84 },
-  { id: 'console', label: 'Console', plural: 'Consoles', icon: 'Gamepad2', lifespanMonths: 72 },
-  { id: 'camera', label: 'Camera', plural: 'Cameras', icon: 'Camera', lifespanMonths: 72 },
+  { id: 'phone', icon: 'Smartphone', lifespanMonths: 48 },
+  { id: 'laptop', icon: 'Laptop', lifespanMonths: 60 },
+  { id: 'desktop', icon: 'PcCase', lifespanMonths: 72 },
+  { id: 'tablet', icon: 'Tablet', lifespanMonths: 60 },
+  { id: 'watch', icon: 'Watch', lifespanMonths: 48 },
+  { id: 'audio', icon: 'Headphones', lifespanMonths: 48 },
+  { id: 'tv', icon: 'Tv', lifespanMonths: 84 },
+  { id: 'display', icon: 'Monitor', lifespanMonths: 84 },
+  { id: 'console', icon: 'Gamepad2', lifespanMonths: 72 },
+  { id: 'camera', icon: 'Camera', lifespanMonths: 72 },
   // Doorbells and cameras that watch the house. Apart from `camera` (the kind
   // you take pictures with) and from `smarthome` (bulbs, plugs, thermostats).
-  { id: 'security', label: 'Security camera', plural: 'Security cameras', icon: 'Cctv', lifespanMonths: 72 },
-  { id: 'network', label: 'Network', plural: 'Network', icon: 'Router', lifespanMonths: 60 },
-  { id: 'storage', label: 'Storage', plural: 'Storage', icon: 'HardDrive', lifespanMonths: 72 },
-  { id: 'smarthome', label: 'Smart home', plural: 'Smart home', icon: 'Lightbulb', lifespanMonths: 60 },
-  { id: 'printer', label: 'Printer', plural: 'Printers', icon: 'Printer', lifespanMonths: 72 },
-  { id: 'accessory', label: 'Accessory', plural: 'Accessories', icon: 'Cable', lifespanMonths: 48 },
-  { id: 'software', label: 'Software', plural: 'Software', icon: 'AppWindow', lifespanMonths: 36 },
-  { id: 'other', label: 'Other', plural: 'Other', icon: 'Box', lifespanMonths: 60 },
+  { id: 'security', icon: 'Cctv', lifespanMonths: 72 },
+  { id: 'network', icon: 'Router', lifespanMonths: 60 },
+  { id: 'storage', icon: 'HardDrive', lifespanMonths: 72 },
+  { id: 'smarthome', icon: 'Lightbulb', lifespanMonths: 60 },
+  { id: 'printer', icon: 'Printer', lifespanMonths: 72 },
+  { id: 'accessory', icon: 'Cable', lifespanMonths: 48 },
+  { id: 'software', icon: 'AppWindow', lifespanMonths: 36 },
+  { id: 'other', icon: 'Box', lifespanMonths: 60 },
 ]
 
 const byId = new Map(CATEGORIES.map((c) => [c.id, c]))
 export const category = (id: CategoryId | undefined): Category => byId.get(id ?? 'other') ?? byId.get('other')!
+
+// Functions, not fields: the words follow the language in use when asked.
+export const categoryLabel = (id: CategoryId | undefined): string => tr(`category.${category(id).id}.label`)
+export const categoryPlural = (id: CategoryId | undefined): string => tr(`category.${category(id).id}.plural`)
 
 // Guess a category from free text (a product name or a Wikipedia description).
 export function guessCategory(text: string): CategoryId | null {

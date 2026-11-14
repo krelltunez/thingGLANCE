@@ -4,6 +4,7 @@ import '@fontsource-variable/inter/wght.css'
 import '@fontsource-variable/inter/wght-italic.css'
 import '@fontsource-variable/jetbrains-mono/wght.css'
 import './index.css'
+import { i18nReady } from './i18n'
 import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
@@ -33,10 +34,11 @@ watchSystemTheme()
 watchInstallPrompt()
 settleServiceWorker()
 
-// Credentials a shell keeps in its keystore have to be in memory before the
-// first render: the sync engines read the connection as they mount. On the web
-// this resolves at once.
-void hydrateSecrets().finally(() => {
+// Two things have to be in memory before the first render. Credentials a shell
+// keeps in its keystore: the sync engines read the connection as they mount.
+// And the starting language, so nothing paints in English first. On the web,
+// in English, both resolve at once.
+void Promise.allSettled([hydrateSecrets(), i18nReady]).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

@@ -7,6 +7,7 @@ import { addDays, daysBetween, today } from './dates'
 import { lifecycle } from './health'
 import { concernsPlan, concernsThing } from './household'
 import { cycleShort, renewalsBetween } from './money'
+import { tr } from './text'
 
 // How far ahead each kind of event starts asking for attention, in days.
 export const LEAD_DAYS: Record<EventType, number> = {
@@ -32,14 +33,18 @@ const PAST_GRACE: Record<EventType, number> = {
   'sub-end': 7,
 }
 
-export const EVENT_META: Record<EventType, { label: string; verb: string; tone: 'ok' | 'accent' | 'warn' | 'sub' | 'bad' }> = {
-  'coverage-end': { label: 'Coverage', verb: 'ends', tone: 'ok' },
-  'support-end': { label: 'Support', verb: 'ends', tone: 'accent' },
-  replace: { label: 'Replace', verb: 'planned', tone: 'warn' },
-  renewal: { label: 'Renewal', verb: 'renews', tone: 'sub' },
-  'trial-end': { label: 'Trial', verb: 'converts', tone: 'bad' },
-  'sub-end': { label: 'Ends', verb: 'ends', tone: 'sub' },
+export const EVENT_META: Record<EventType, { tone: 'ok' | 'accent' | 'warn' | 'sub' | 'bad' }> = {
+  'coverage-end': { tone: 'ok' },
+  'support-end': { tone: 'accent' },
+  replace: { tone: 'warn' },
+  renewal: { tone: 'sub' },
+  'trial-end': { tone: 'bad' },
+  'sub-end': { tone: 'sub' },
 }
+
+// The one-word name of a kind of date ("Coverage", "Renewal"). A function,
+// not a field: the words follow the language in use when they are asked for.
+export const eventKindLabel = (type: EventType): string => tr(`event.kind.${type}`)
 
 export const eventKey = (type: EventType, entityId: string, date: Day): string => `${type}:${entityId}:${date}`
 
@@ -98,19 +103,19 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
     const life = lifecycle(t, mine, ref)
 
     for (const c of mine) {
-      push({ type: 'coverage-end', entityId: c.id, date: c.endDate, thingId: t.id, coverageId: c.id, title: `${c.name} ends`, detail: t.name })
+      push({ type: 'coverage-end', entityId: c.id, date: c.endDate, thingId: t.id, coverageId: c.id, name: c.name, title: tr('event.title.coverageEnds', { name: c.name }), detail: t.name })
     }
     if (life.supportEnd) {
       push({
         type: 'support-end', entityId: t.id, date: life.supportEnd, thingId: t.id,
-        title: t.supportBasis === 'estimate' ? 'Updates likely end' : 'Security updates end',
+        title: t.supportBasis === 'estimate' ? tr('event.title.updatesLikelyEnd') : tr('event.title.securityUpdatesEnd'),
         detail: t.name,
       })
     }
     // The plan only earns its own marker when it is what closes the window;
     // if support ends first, that event already says "replace".
     if (life.replaceBy && life.lifeEndReason === 'plan') {
-      push({ type: 'replace', entityId: t.id, date: life.replaceBy, thingId: t.id, title: 'Planned replacement', detail: t.name, amount: t.price })
+      push({ type: 'replace', entityId: t.id, date: life.replaceBy, thingId: t.id, title: tr('event.title.plannedReplacement'), detail: t.name, amount: t.price })
     }
   }
 
@@ -122,19 +127,19 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
     if (attached.length > 0 && live.length === 0) continue
     if (opts.memberId && !concernsPlan(s, opts.memberId, thingsById)) continue
     const thing = live[0]
-    const where = thing ? (live.length > 1 ? `${thing.name} + ${live.length - 1} more` : thing.name) : s.provider ?? 'Subscription'
-    const base = { thingId: thing?.id, subscriptionId: s.id }
+    const where = thing ? (live.length > 1 ? tr('event.detail.andMore', { name: thing.name, count: live.length - 1 }) : thing.name) : s.provider ?? tr('event.detail.subscription')
+    const base = { thingId: thing?.id, subscriptionId: s.id, name: s.name }
 
     if (s.status === 'cancelled') {
-      if (s.endDate) push({ ...base, type: 'sub-end', entityId: s.id, date: s.endDate, title: `${s.name} access ends`, detail: where })
+      if (s.endDate) push({ ...base, type: 'sub-end', entityId: s.id, date: s.endDate, title: tr('event.title.accessEnds', { name: s.name }), detail: where })
       continue
     }
     if (s.status === 'trial' && s.trialEnd) {
-      push({ ...base, type: 'trial-end', entityId: s.id, date: s.trialEnd, title: `${s.name} trial converts`, detail: `${where} · then ${s.amount}/${cycleShort(s.cycle)}`, amount: s.amount })
+      push({ ...base, type: 'trial-end', entityId: s.id, date: s.trialEnd, title: tr('event.title.trialConverts', { name: s.name }), detail: tr('event.detail.thenPrice', { where, amount: s.amount, cycle: cycleShort(s.cycle) }), amount: s.amount })
     }
     if (!s.autoRenew) {
       const end = s.endDate ?? renewalsBetween(s, ref, to)[0]
-      if (end) push({ ...base, type: 'sub-end', entityId: s.id, date: end, title: `${s.name} expires`, detail: where })
+      if (end) push({ ...base, type: 'sub-end', entityId: s.id, date: end, title: tr('event.title.expires', { name: s.name }), detail: where })
       continue
     }
     const long = s.cycle === 'yearly' || s.cycle === 'quarterly'
@@ -145,7 +150,7 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
       // A trial's conversion day is already its own event.
       if (s.status === 'trial' && d === s.trialEnd) continue
       const repeat = !long && d >= ref && ahead++ > 0
-      push({ ...base, type: 'renewal', entityId: s.id, date: d, title: `${s.name} renews`, detail: where, amount: s.amount, lead, quiet: lead < 0, repeat })
+      push({ ...base, type: 'renewal', entityId: s.id, date: d, title: tr('event.title.renews', { name: s.name }), detail: where, amount: s.amount, lead, quiet: lead < 0, repeat })
     }
   }
 

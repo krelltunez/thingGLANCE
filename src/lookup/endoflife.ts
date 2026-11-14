@@ -5,6 +5,7 @@
 import { netFetch } from '@/sync/shellFetch'
 import dayjs from 'dayjs'
 import { DAY, today } from '@/core/dates'
+import { tr } from '@/core/text'
 
 const API = 'https://endoflife.date/api/v1/products'
 
@@ -106,17 +107,17 @@ export async function findSupport(name: string): Promise<SupportInfo | null> {
   }
   if (r.eolFrom) {
     const ended = r.eolFrom <= today()
-    return { ...base, supportEnd: r.eolFrom, basis: 'official', ended, note: ended ? 'Support has ended' : 'Published end-of-support date' }
+    return { ...base, supportEnd: r.eolFrom, basis: 'official', ended, note: ended ? tr('lookup.note.ended') : tr('lookup.note.published') }
   }
-  if (r.isEol) return { ...base, basis: 'official', ended: true, note: 'No longer supported' }
+  if (r.isEol) return { ...base, basis: 'official', ended: true, note: tr('lookup.note.unsupported') }
   if (r.releaseDate) {
     return {
       ...base,
       supportEnd: dayjs(r.releaseDate).add(family.typicalYears, 'year').format(DAY),
       basis: 'estimate',
       ended: false,
-      note: `Still supported. No end date announced; estimated at ${family.typicalYears} years from release.`,
+      note: tr('lookup.note.estimated', { years: family.typicalYears }),
     }
   }
-  return { ...base, basis: 'estimate', ended: false, note: 'Still supported. No end date announced.' }
+  return { ...base, basis: 'estimate', ended: false, note: tr('lookup.note.noDate') }
 }

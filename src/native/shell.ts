@@ -7,6 +7,8 @@
 //                request of its own (the main process makes them), and an
 //                Android headless refresh has no browser fetch worth trusting.
 //                See sync/shellFetch.ts.
+//   eventStream  the vault's live stream, read natively and passed in. Without
+//                one a shell simply has no live updates; polling covers it.
 //   secureStore  the platform keystore (Android Keystore, iOS Keychain,
 //                Electron safeStorage), so the vault token and the encryption
 //                root key are not left in WebView storage where anything with
@@ -22,9 +24,22 @@ export interface SecureStore {
   remove(key: string): Promise<void>
 }
 
+// The vault's live event stream, read by the shell. A transport that hands
+// back whole responses cannot stream, so a shell that carries the app's
+// requests reads this one itself and passes each message in. The messages are
+// the sibling apps' shapes (native/vaultSse.ts); sync/vaultEventStream.ts
+// turns them into the same nudges the web reader produces.
+export interface ShellEventStream {
+  start(connection: { vaultUrl: string; vaultToken: string; accountId: string }): Promise<void> | void
+  stop(): Promise<void> | void
+  // Every reader message. Answers the unsubscribe.
+  listen(listener: (message: unknown) => void): () => void
+}
+
 export interface ShellBridge {
   fetch?: typeof fetch
   secureStore?: SecureStore
+  eventStream?: ShellEventStream
 }
 
 let registered: ShellBridge | null = null

@@ -21,7 +21,7 @@
 // createBridgeSseClient does. Until then a shell falls back to polling.
 
 import { shell } from '@/native/platform'
-import { hasShellTransport } from '@/native/shell'
+import { hasShellTransport, shellBridge } from '@/native/shell'
 
 // ─── SSE frame parsing ───────────────────────────────────────────────────────
 
@@ -68,12 +68,15 @@ export function drainSseBuffer(buffer: string, onEvent: (evt: unknown) => void):
 
 // ─── transport ───────────────────────────────────────────────────────────────
 
-export type SseTransport = 'web' | 'none'
+// 'web': the page reads the stream itself. 'shell': a shell reads it and
+// passes the messages in (native/shell.ts: eventStream). 'none': polling only.
+export type SseTransport = 'web' | 'shell' | 'none'
 
 export function detectSseTransport(): SseTransport {
   if (typeof window === 'undefined') return 'none'
-  // A shell brings its own reader: this one reads a streaming response on
-  // the page's own fetch, which a shell either forbids or cannot stream.
+  if (shellBridge()?.eventStream) return 'shell'
+  // The web reader streams a response on the page's own fetch, which a shell
+  // either forbids or cannot stream. A shell with no reader of its own polls.
   if (shell() !== 'web' || hasShellTransport()) return 'none'
   return typeof fetch === 'function' && typeof ReadableStream !== 'undefined' ? 'web' : 'none'
 }
@@ -289,5 +292,106 @@ export function createVaultEventClient({
       onStateChange?.('stopped')
     },
     isRunning: () => !stopped,
+  }
+}
+
+// ─── shell-fed client (the shell owns the socket) ────────────────────────────
+
+export interface BridgeSseClient {
+  // Fed every message the shell's reader produces.
+  receive: (message: unknown) => void
+  start: () => boolean
+  stop: () => void
+  isRunning: () => boolean
+}
+
+/**
+ * The page's half when a shell reads the stream (ported from the sibling
+ * apps). The shell owns the socket and all of its life: it connects while the
+ * app is on screen, drops in the background, and reconnects with backoff. This
+ * only says "wanted" or "not wanted" with the connection, and feeds the raw
+ * blocks the shell passes in through the same parseSseFrame and onEvent the
+ * web reader uses. There is no reconnect loop here on purpose: one owner per
+ * transport.
+ *
+ * A message with a `code` means the reader stopped for good ('auth',
+ * 'insecure', 'unsupported') and is reported once. As on the web, a stream
+ * that opens and delivers nothing within readyTimeoutMs is reported 'stalled':
+ * the vault sends a frame at once, so silence means something in between is
+ * holding the response back.
+ */
+export function createBridgeSseClient({
+  getConnection, startNative, stopNative, onEvent, onStateChange,
+  readyTimeoutMs = 5000, setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout,
+}: {
+  getConnection: () => VaultSseConnection | null
+  startNative: (connection: VaultSseConnection) => void
+  stopNative: () => void
+  onEvent: (evt: unknown) => void
+  onStateChange?: (state: SseClientState, detail?: unknown) => void
+  readyTimeoutMs?: number
+  setTimeoutFn?: typeof setTimeout
+  clearTimeoutFn?: typeof clearTimeout
+}): BridgeSseClient {
+  let running = false
+  let readyTimer: ReturnType<typeof setTimeout> | null = null
+  const clearReady = () => { if (readyTimer) { clearTimeoutFn(readyTimer); readyTimer = null } }
+
+  const receive = (message: unknown) => {
+    // A shell that stringifies its messages is handled too. Never throws: a
+    // message that makes no sense is dropped.
+    if (typeof message === 'string') {
+      try { message = JSON.parse(message) } catch { return }
+    }
+    if (!running || !message || typeof message !== 'object') return
+    const m = message as { type?: string; block?: string; message?: string; code?: string }
+    switch (m.type) {
+      case 'open':
+        onStateChange?.('open')
+        clearReady()
+        readyTimer = setTimeoutFn(() => { readyTimer = null; onStateChange?.('stalled') }, readyTimeoutMs)
+        break
+      case 'frame': {
+        clearReady()
+        if (typeof m.block !== 'string') break
+        const evt = parseSseFrame(m.block)
+        if (evt) onEvent(evt)
+        break
+      }
+      case 'closed':
+        clearReady()
+        onStateChange?.('closed')
+        break
+      case 'error':
+        clearReady()
+        if (m.code === 'unsupported') onStateChange?.('unsupported-server')
+        else onStateChange?.('error', m.code ? { message: m.message, code: m.code } : m.message)
+        break
+    }
+  }
+
+  return {
+    receive,
+    start() {
+      if (running) return false
+      const connection = getConnection()
+      if (!connection) return false
+      running = true
+      onStateChange?.('connecting')
+      try {
+        startNative(connection)
+      } catch (err) {
+        onStateChange?.('error', err instanceof Error ? err.message : String(err))
+      }
+      return true
+    },
+    stop() {
+      if (!running) return
+      running = false
+      clearReady()
+      try { stopNative() } catch { /* stopping must not throw */ }
+      onStateChange?.('stopped')
+    },
+    isRunning: () => running,
   }
 }

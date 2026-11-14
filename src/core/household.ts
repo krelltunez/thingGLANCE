@@ -8,7 +8,8 @@
 // The roster itself (who exists) is the shared `glance-users` vault app. See
 // docs/household-members.md.
 
-import type { DataSet, Day, DeviceLink, Member, OwnershipSpan, Subscription, Thing } from './types'
+import type { DataSet, Day, DeviceLink, HorizonEvent, Member, OwnershipSpan, Subscription, Thing } from './types'
+import { monthlyCost } from './money'
 
 // ── Who is a user ────────────────────────────────────────────────────────────
 
@@ -75,6 +76,45 @@ export function responsibleFor(item: Pick<Thing | Subscription, 'responsibleMemb
   return item.responsibleMemberId && users.has(item.responsibleMemberId) ? item.responsibleMemberId : null
 }
 
+// Who actually deals with a thing: whoever was picked, or failing that its
+// owner, if they use the app. Most things are never assigned to anyone, and
+// "the person whose phone it is" is who everyone would expect to be asked.
+// (The task sent to dayGLANCE goes to the same person.)
+export function handlerOfThing(t: Thing, users: Set<string>): string | null {
+  return responsibleFor(t, users) ?? (t.ownerMemberId && users.has(t.ownerMemberId) ? t.ownerMemberId : null)
+}
+
+// A plan: whoever was picked, else whoever pays, else whoever deals with a
+// thing it is attached to (the person who handles the phone handles its plan).
+export function handlerOfPlan(s: Subscription, thingById: Map<string, Thing>, users: Set<string>): string | null {
+  const own = responsibleFor(s, users) ?? (s.payerMemberId && users.has(s.payerMemberId) ? s.payerMemberId : null)
+  if (own) return own
+  for (const id of s.coversThingIds) {
+    const t = thingById.get(id)
+    const via = t ? handlerOfThing(t, users) : null
+    if (via) return via
+  }
+  return null
+}
+
+// Who deals with a date on the horizon: the plan's handler for a plan's
+// renewal or end, the thing's for everything else. This is also who a reminder
+// for it will go to.
+export function handlerOfEvent(
+  e: Pick<HorizonEvent, 'thingId' | 'subscriptionId'>,
+  thingById: Map<string, Thing>, subById: Map<string, Subscription>, users: Set<string>,
+): string | null {
+  const s = e.subscriptionId ? subById.get(e.subscriptionId) : undefined
+  if (s) return handlerOfPlan(s, thingById, users)
+  const t = e.thingId ? thingById.get(e.thingId) : undefined
+  return t ? handlerOfThing(t, users) : null
+}
+
+// With two or more users, an item nobody is assigned to is asked of everyone,
+// which in practice means each assumes the other has it. With one user there
+// is nobody to confuse.
+export const needsSomeone = (handler: string | null, users: Set<string>): boolean => users.size >= 2 && handler === null
+
 // ── Hand-me-downs ────────────────────────────────────────────────────────────
 
 // Changing the owner keeps the thing and everything hanging off it, and
@@ -125,4 +165,62 @@ export function describeTies(t: MemberTies): string {
     t.responsible ? `is responsible for ${n(t.responsible, 'item', 'items')}` : '',
   ].filter(Boolean)
   return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+// Handing a member's things and plans to someone else (or to the household),
+// which is what clears the way to remove them. Each answers the fields that
+// change, or null when the item has nothing to do with `from`.
+//
+// Private follows the same rule as everywhere else: it needs a user to be
+// private to. Handed to the household, or to a member with no device, a
+// private item becomes shared rather than hidden from every device.
+export function reassignThing(t: Thing, from: string, to: string | null, users: Set<string>): Partial<Pick<Thing, 'ownerMemberId' | 'responsibleMemberId' | 'visibility'>> | null {
+  const out: Partial<Pick<Thing, 'ownerMemberId' | 'responsibleMemberId' | 'visibility'>> = {}
+  if (t.ownerMemberId === from) {
+    out.ownerMemberId = to
+    if (t.visibility === 'private' && !(to && users.has(to))) out.visibility = 'shared'
+  }
+  if (t.responsibleMemberId === from) out.responsibleMemberId = to && users.has(to) ? to : null
+  return Object.keys(out).length ? out : null
+}
+
+export function reassignPlan(s: Subscription, from: string, to: string | null, users: Set<string>): Partial<Pick<Subscription, 'payerMemberId' | 'responsibleMemberId' | 'visibility'>> | null {
+  const out: Partial<Pick<Subscription, 'payerMemberId' | 'responsibleMemberId' | 'visibility'>> = {}
+  if (s.payerMemberId === from) {
+    out.payerMemberId = to
+    if (s.visibility === 'private' && !(to && users.has(to))) out.visibility = 'shared'
+  }
+  if (s.responsibleMemberId === from) out.responsibleMemberId = to && users.has(to) ? to : null
+  return Object.keys(out).length ? out : null
+}
+
+// How many of a member's things and plans are private to them. Nobody else can
+// see these, so whoever removes the member has to be told they exist.
+export const privateHeld = (memberId: string, data: Pick<DataSet, 'things' | 'subscriptions'>): number =>
+  data.things.filter((t) => t.visibility === 'private' && t.ownerMemberId === memberId).length +
+  data.subscriptions.filter((s) => s.visibility === 'private' && s.payerMemberId === memberId).length
+
+// ── Totals by member ─────────────────────────────────────────────────────────
+// Keyed by member id, with null for the household.
+
+// What each payer's plans come to a month.
+export function planCostByPayer(subs: Subscription[]): Map<string | null, number> {
+  const out = new Map<string | null, number>()
+  for (const s of subs) {
+    const m = monthlyCost(s)
+    if (m > 0) out.set(s.payerMemberId, (out.get(s.payerMemberId) ?? 0) + m)
+  }
+  return out
+}
+
+// The monthly upgrade-fund target split by who owns each thing. Takes the rows
+// replacementFund() answers; a thing already due adds nothing to a monthly
+// target, as there.
+export function fundByOwner(rows: { thing: Thing; monthly: number; monthsLeft: number }[]): Map<string | null, number> {
+  const out = new Map<string | null, number>()
+  for (const r of rows) {
+    if (r.monthsLeft <= 0) continue
+    out.set(r.thing.ownerMemberId, (out.get(r.thing.ownerMemberId) ?? 0) + r.monthly)
+  }
+  return out
 }

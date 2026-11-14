@@ -1,6 +1,7 @@
 // End-to-end: two browser contexts ("devices") syncing through a real
 // GLANCEvault, plus the shared roster, members and users (owner, responsible,
-// private) and the dayGLANCE intent round-trip.
+// private, the member filter, handing over and removing) and the dayGLANCE
+// intent round-trip.
 //
 // Needs the dev server (npm run dev) and a vault that allows this app and this
 // origin. A throwaway one from the sibling repo:
@@ -147,7 +148,6 @@ check('B: change on A arrives on its own (live push)', arrived, arrived ? '' : `
 const household = async (page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('button', { name: 'Household', exact: true }).click()
-  await page.getByRole('switch').first().click()
 }
 const addMember = async (page, name) => {
   await page.getByPlaceholder('Add a member').fill(name)
@@ -164,7 +164,8 @@ await A.waitForTimeout(4500)
 await A.keyboard.press('Escape')
 await household(B)
 await B.waitForTimeout(3000)
-check('B: member added on A arrives through glance-users', await B.getByText('Alex').first().isVisible().catch(() => false))
+// Scoped to the dialog: the header's member filter also lists every name.
+check('B: member added on A arrives through glance-users', await B.getByRole('dialog').getByText('Alex').first().isVisible().catch(() => false))
 check('B: sees that Alex uses the app (the device link synced)', await B.getByText(/Uses the app: .*Chrome on/).first().isVisible().catch(() => false))
 check('B: Casey is a member without a device', (await B.getByText('Does not use the app').count()) === 1)
 
@@ -214,6 +215,35 @@ await saveLaptop(A, form)
 await syncNow(B)
 await goto(B, 'Things')
 check('B: shared again, it comes back', await B.getByText('E2E Laptop').first().isVisible().catch(() => false))
+
+// The member filter. The laptop is Alex's and Blake deals with it, so it has
+// nothing to do with Casey.
+const filter = B.getByLabel('Whose things to show')
+await filter.selectOption({ label: 'Casey' })
+await B.waitForTimeout(500)
+check('B: filtered to Casey, a thing that is not theirs drops out', !(await B.getByText('E2E Laptop').first().isVisible().catch(() => false)))
+await filter.selectOption({ label: 'Blake (me)' })
+await B.waitForTimeout(500)
+check('B: filtered to the member who deals with it, it shows', await B.getByText('E2E Laptop').first().isVisible().catch(() => false))
+await filter.selectOption({ label: 'Everyone' })
+
+// Removing a member who still owns something: hand it over, then remove.
+form = await editLaptop(A)
+await form.getByRole('button', { name: 'Casey', exact: true }).click()
+await saveLaptop(A, form)
+await household(A)
+const caseyRow = A.getByRole('dialog').getByRole('listitem').filter({ hasText: 'Casey' })
+await caseyRow.getByTitle('Remove').click()
+await A.waitForTimeout(400)
+check('A: removing a member who owns a thing asks who gets it', await caseyRow.getByText(/Casey still owns 1 thing/).isVisible().catch(() => false))
+await caseyRow.getByLabel('Who gets what Casey has').selectOption({ label: 'Blake' })
+await caseyRow.getByRole('button', { name: 'Hand over and remove' }).click()
+await A.waitForTimeout(4500)
+check('A: Casey is gone from the list', (await A.getByRole('dialog').getByRole('listitem').filter({ hasText: 'Casey' }).count()) === 0)
+await A.keyboard.press('Escape')
+await syncNow(B)
+await goto(B, 'Things')
+check('B: the hand-over arrives, the laptop is Blake\'s', await B.getByRole('button', { name: /E2E Laptop.*Blake|Blake.*E2E Laptop/s }).first().isVisible().catch(() => false))
 
 // ── Intents: send to dayGLANCE, then play dayGLANCE's reply ──────────────────
 await A.getByRole('button', { name: 'Settings', exact: true }).click()

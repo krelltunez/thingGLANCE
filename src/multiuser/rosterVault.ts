@@ -18,7 +18,6 @@ import type { Member } from '@/core/types'
 import { APP_ID, getVaultConfig, isVaultEnabled } from '@/sync/vaultConfig'
 import { getDeviceId } from '@/sync/deviceId'
 import { CRYPTO_DB_NAME, isUnknownAppError } from '@/sync/dbEngine'
-import { getMultiUserEnabled } from './settings'
 
 export const ROSTER_VAULT_APP = 'glance-users'
 // Per-app local state (cursor, dirty set, seed flag); the vault app is shared.
@@ -87,8 +86,9 @@ export interface RosterCallbacks {
 
 const EMPTY = { applied: 0, skipped: 0, skippedEntityIds: [] } as DbSyncResult
 
-// Null when the vault is off. A cycle is a no-op while multi-user is off on
-// this device: there is no household to share.
+// Null when the vault is off. The roster syncs whenever the vault is on: it is
+// only names, and it is how a new device finds the household that is already
+// there.
 export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEngine | null {
   if (!isVaultEnabled()) return null
   const cfg = getVaultConfig()!
@@ -126,7 +126,6 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
 
   const runCycle = engine.dbSyncCycle.bind(engine)
   const dbSyncCycle = async (): Promise<DbSyncResult> => {
-    if (!getMultiUserEnabled()) return EMPTY
     const allowed = callbacks.allowed?.() ?? null
     if (allowed === false) {
       if (!unsupported) { unsupported = true; callbacks.onUnsupported?.() }

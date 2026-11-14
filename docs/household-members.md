@@ -223,6 +223,16 @@ The first pass covers the two things the spec is really for: the app tracks any 
 - **Private needs someone to be private to.** A private thing with no owner, or a private plan with no payer, reads as shared.
 - **A task sent to dayGLANCE** is assigned to whoever deals with the thing, or failing that its owner.
 
+### Added on 2026-11-13, second pass
+
+- **No "shared household" switch.** The household shows once the roster has more than one member, and the roster syncs whenever the vault is connected. It is only names, and it is how a new device finds the household that is already there.
+- **A member filter** in the header, in place of Mine / Everyone: everyone, or one member (their own things, the ones they deal with, and the household's). It is a device preference (`tg_member_filter`).
+- **"Which one is this device?"** A roster that arrives on a device nobody has claimed is offered once, as a banner with one button per member. This stands in for the spec's "Found your household. Use them?": the roster is used either way, so the useful question is who is holding the device.
+- **Hand over and remove.** Removing a member who still owns, pays for or deals with something asks who gets it (a member, or the household), hands it all over and then removes them. Owner changes are hand-me-downs like any other. Private items the remover cannot see are counted and named: they stay private only if they go to a user, and the panel says which will happen.
+- **Who deals with a date** (`handlerOfThing`, `handlerOfPlan`, `handlerOfEvent` in `src/core/household.ts`): whoever was picked, else the owner (or the plan's payer) if they use the app, else whoever handles a thing the plan is attached to. The queue shows that person's name on each row. This is the rule stage E's reminders will use.
+- **"Needs someone."** With two or more users, a date that falls to nobody is asked of everyone. The queue says how many there are, and each has a one-tap "I'll deal with this". Deliberately quiet: a household that never assigns anything should not see a warning on every row.
+- **Totals by member:** the upgrade fund split by owner on the Glance page, and plan costs split by payer ("who pays") on the Plans page, with this device's own member marked "You".
+
 ### Not built yet
 
-Merge and the duplicate-name hint, a reassign prompt when removing a member (today it is blocked with the reason), the onboarding offer to adopt an existing roster, roster export and import, the member filter in place of Mine / Everyone, fund and plan totals per member, the "needs someone" prompt, and routing alerts to the responsible user. The "shared household" switch in Settings is also still there; the spec derives it from the size of the roster.
+Merge and the duplicate-name hint, roster export and import, the welcome step that offers to add yourself and others when there is no roster yet, and routing reminders to whoever deals with an item (the rule exists; reminders themselves are Phase 1).

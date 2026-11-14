@@ -7,12 +7,13 @@ import { Eye, EyeOff, Plus, Repeat } from 'lucide-react'
 import type { Subscription } from '@/core/types'
 import { daysFromToday, fmtDay, fmtMonth } from '@/core/dates'
 import { cycleShort, forecast, isBilling, money, monthlyCost, nextRenewal } from '@/core/money'
+import { planCostByPayer } from '@/core/household'
 import { patchSubscription } from '@/db/queries'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
 import { Chip, Empty, TBadge } from '@/components/ui'
-import { ChargesChart } from '@/components/parts'
+import { ChargesChart, MemberSplit } from '@/components/parts'
 import { cx, type Tone } from '@/components/kit'
 
 function nextDate(s: Subscription): { day: string; label: string } | null {
@@ -75,6 +76,8 @@ export function PlansView() {
   const live = subs.filter((s) => s.status !== 'cancelled')
   const monthly = subs.reduce((t, s) => t + monthlyCost(s), 0)
   const months = useMemo(() => forecast(subs, 12), [subs])
+  // Who pays is about the whole household, whatever the member filter is on.
+  const byPayer = useMemo(() => planCostByPayer(d.subscriptions), [d.subscriptions])
   const peak = months.reduce((a, b) => (b.total > a.total ? b : a), months[0])
 
   const sorted = (list: Subscription[]) => [...list].sort((a, b) => (nextDate(a)?.day ?? '9999').localeCompare(nextDate(b)?.day ?? '9999'))
@@ -113,6 +116,12 @@ export function PlansView() {
             <p className="num mt-1.5 text-3xl font-semibold leading-none text-ink">{money(monthly * 12, currency, { compact: true })}</p>
             <p className="mt-1.5 text-xs text-dim">{peak && peak.total > 0 ? <>biggest month: {fmtMonth(peak.month)}</> : 'no charges ahead'}</p>
           </div>
+          {d.multiUser && byPayer.size > 0 && (
+            <div className="col-span-2 lg:col-span-1">
+              <p className="label mb-2">Who pays</p>
+              <MemberSplit split={byPayer} />
+            </div>
+          )}
           {reviewMonthly > 0 && (
             <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-3 py-2.5 lg:col-span-1">
               <p className="text-xs leading-relaxed text-dim"><Eye size={12} className="mr-1 inline text-accent" />Under review: <span className="num font-semibold text-ink">{money(reviewMonthly * 12, currency)}</span> a year you could get back.</p>

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 import {
   Cloud, Copy, Database, Download, Info, KeyRound, LoaderCircle, Lock, MonitorCog, Moon, Palette, Pencil,
@@ -8,13 +8,11 @@ import { CURRENCIES } from '@/core/money'
 import { buildSnapshot } from '@/core/snapshot'
 import { downloadBackup, importBackup, wipeLocalData } from '@/db/backup'
 import { loadSamples } from '@/db/demo'
-import { addMember, attachThisDevice, detachDevice, removeMember, removeSamples, renameMember } from '@/db/queries'
-import { describeTies, memberTies } from '@/core/household'
+import { addMember, attachThisDevice, detachDevice, reassignAndRemove, removeMember, removeSamples, renameMember, tiesFor } from '@/db/queries'
+import { describeTies, isTied, type MemberTies } from '@/core/household'
 import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/config'
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
-import { setMultiUserEnabled } from '@/multiuser/settings'
-import { syncRosterSoon } from '@/multiuser/rosterDirtyTracker'
 import { describeDevice, promptInstall } from '@/native/platform'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
@@ -224,11 +222,13 @@ function Household() {
   const sync = useSync()
   const [name, setName] = useState('')
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+  // The member being removed while things still point at them, and who gets those.
+  const [leaving, setLeaving] = useState<{ id: string; ties: MemberTies; hidden: number; to: string } | null>(null)
 
-  const toggle = (on: boolean) => {
-    setMultiUserEnabled(on)
-    if (on) syncRosterSoon(200)
-  }
+  // Opening this section reads the roster, so what is listed is what the
+  // vault holds now and not what the last scheduled sync happened to bring.
+  useEffect(() => { void recheckRoster() }, [])
+
   const add = async () => {
     if (!name.trim()) return
     const first = d.members.length === 0
@@ -238,69 +238,94 @@ function Household() {
     // the person holding it.
     if (first && !d.meId) await attachThisDevice(m.id, describeDevice())
   }
-  const remove = async (id: string, who: string) => {
-    if (await removeMember(id)) return
-    toast({ title: `${who} still ${describeTies(memberTies(id, d))}`, body: 'Give those to someone else first, then remove them.', tone: 'bad' })
+  const remove = async (id: string) => {
+    const { ties, hidden } = await tiesFor(id)
+    if (isTied(ties)) setLeaving({ id, ties, hidden, to: '' })
+    else await removeMember(id)
+  }
+  const handOver = async () => {
+    if (!leaving) return
+    const who = d.memberName(leaving.id) ?? 'They'
+    const ok = await reassignAndRemove(leaving.id, leaving.to || null)
+    setLeaving(null)
+    toast(ok ? { title: `${who} removed`, body: `Everything of theirs went to ${d.memberName(leaving.to) ?? 'the household'}.`, tone: 'ok' } : { title: 'Could not remove them', tone: 'bad' })
   }
 
   return (
     <div className="space-y-3">
-      <Block title="Multi-user">
-        <Toggle checked={d.multiUser} onChange={toggle} label="This is a shared household"
-          hint="Track things for everyone in the house, whether or not they use the app. The member list is the same roster dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account." />
-      </Block>
-      {d.multiUser && (
-        <>
-          <Block title="Members" hint={`A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'Members added here stay on this device for now.' : 'Shared with your other GLANCE apps through the vault.'}`}>
-            <ul className="divide-y divide-line/[0.07]">
-              {d.members.map((m) => {
-                const links = d.devices.filter((l) => l.memberId === m.id)
-                const me = m.id === d.meId
-                return (
-                  <li key={m.id} className="flex items-center gap-2 py-2">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-xs font-semibold uppercase text-accent">{m.name[0]}</span>
-                    {editing?.id === m.id
-                      ? <input className="input h-8 flex-1" autoFocus value={editing.name} onChange={(e) => setEditing({ id: m.id, name: e.target.value })}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && editing.name.trim()) { void renameMember(m.id, editing.name); setEditing(null) } }}
-                          onBlur={() => { if (editing.name.trim() && editing.name !== m.name) void renameMember(m.id, editing.name); setEditing(null) }} />
-                      : (
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-ink">{m.name}{me && <span className="ml-2 text-xs text-accent">you</span>}</span>
-                          <span className="block truncate text-xs text-faint">
-                            {links.length === 0 ? 'Does not use the app' : `Uses the app: ${links.map((l) => (l.id === d.deviceId ? 'this device' : l.label ?? 'a device')).join(', ')}`}
-                          </span>
+      <Block title="Members" hint={`Everyone the household tracks things for. A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'Members added here stay on this device for now.' : 'The same list dayGLANCE, lastGLANCE and lifeGLANCE use on this vault account.'}`}>
+        <ul className="divide-y divide-line/[0.07]">
+          {d.members.map((m) => {
+            const links = d.devices.filter((l) => l.memberId === m.id)
+            const me = m.id === d.meId
+            const going = leaving?.id === m.id ? leaving : null
+            return (
+              <li key={m.id} className="py-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-xs font-semibold uppercase text-accent">{m.name[0]}</span>
+                  {editing?.id === m.id
+                    ? <input className="input h-8 flex-1" autoFocus value={editing.name} onChange={(e) => setEditing({ id: m.id, name: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && editing.name.trim()) { void renameMember(m.id, editing.name); setEditing(null) } }}
+                        onBlur={() => { if (editing.name.trim() && editing.name !== m.name) void renameMember(m.id, editing.name); setEditing(null) }} />
+                    : (
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-ink">{m.name}{me && <span className="ml-2 text-xs text-accent">you</span>}</span>
+                        <span className="block truncate text-xs text-faint">
+                          {links.length === 0 ? 'Does not use the app' : `Uses the app: ${links.map((l) => (l.id === d.deviceId ? 'this device' : l.label ?? 'a device')).join(', ')}`}
                         </span>
-                      )}
-                    {me
-                      ? <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void detachDevice()}>Not me</button>
-                      : <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void attachThisDevice(m.id, describeDevice())}>This is me</button>}
-                    <button type="button" className="icon-btn h-8 w-8" title="Rename" onClick={() => setEditing({ id: m.id, name: m.name })}><Pencil size={13} /></button>
-                    <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title="Remove" onClick={() => void remove(m.id, m.name)}><Trash2 size={13} /></button>
-                  </li>
-                )
-              })}
-              {d.members.length === 0 && <li className="py-3 text-sm text-dim">No members yet.</li>}
-            </ul>
-            <RosterStatus empty={d.members.length === 0} />
-            <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add() }}>
-              <input className="input" placeholder="Add a member" value={name} onChange={(e) => setName(e.target.value)} />
-              <button type="submit" className="btn shrink-0" disabled={!name.trim()}>Add</button>
-            </form>
-          </Block>
-          {!d.meId && d.members.length > 0 && <p className="px-1 text-xs text-warn">Pick which member this device belongs to. It unlocks the Mine / Everyone switch in the header, and lets things be handed to you to deal with.</p>}
-          {d.devices.some((l) => l.id !== d.deviceId) && (
-            <Block title="Other devices" hint="Detaching a device stops it counting as that person. It does not sign the device out of the vault.">
-              <ul className="divide-y divide-line/[0.07]">
-                {d.devices.filter((l) => l.id !== d.deviceId).map((l) => (
-                  <li key={l.id} className="flex items-center gap-2 py-2">
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label ?? 'A device'} <span className="text-xs text-faint">· {d.memberName(l.memberId) ?? 'someone no longer on the list'} · since {dayjs(l.createdAt).format('MMM D, YYYY')}</span></span>
-                    <button type="button" className="btn-ghost h-8 px-2 text-xs hover:!text-bad" onClick={() => void detachDevice(l.id)}>Detach</button>
-                  </li>
-                ))}
-              </ul>
-            </Block>
-          )}
-        </>
+                      </span>
+                    )}
+                  {me
+                    ? <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void detachDevice()}>Not me</button>
+                    : <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => void attachThisDevice(m.id, describeDevice())}>This is me</button>}
+                  <button type="button" className="icon-btn h-8 w-8" title="Rename" onClick={() => setEditing({ id: m.id, name: m.name })}><Pencil size={13} /></button>
+                  <button type="button" className="icon-btn h-8 w-8 hover:!text-bad" title="Remove" onClick={() => void remove(m.id)}><Trash2 size={13} /></button>
+                </div>
+                {going && (
+                  <div className="mt-2 rounded-lg border border-warn/25 bg-warn/[0.07] p-3">
+                    <p className="text-xs leading-relaxed text-ink">{m.name} still {describeTies(going.ties)}. Hand {going.ties.owns + going.ties.pays + going.ties.responsible === 1 ? 'it' : 'them'} to someone first.</p>
+                    {going.hidden > 0 && (
+                      <p className="mt-1.5 text-xs leading-relaxed text-warn">
+                        {going.hidden === 1 ? 'One of these is' : `${going.hidden} of these are`} private to {m.name}, so {me ? 'only you can see ' + (going.hidden === 1 ? 'it' : 'them') : 'you cannot see ' + (going.hidden === 1 ? 'it' : 'them')} now.{' '}
+                        {going.to && d.userIds.has(going.to)
+                          ? `${going.hidden === 1 ? 'It stays' : 'They stay'} private, to ${d.memberName(going.to)}.`
+                          : `${going.hidden === 1 ? 'It becomes' : 'They become'} visible to the whole household.`}
+                      </p>
+                    )}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <select aria-label={`Who gets what ${m.name} has`} className="input h-8 w-auto min-w-[10rem] flex-1 py-0 text-xs" value={going.to} onChange={(e) => setLeaving({ ...going, to: e.target.value })}>
+                        <option value="">The household</option>
+                        {d.members.filter((x) => x.id !== m.id).map((x) => <option key={x.id} value={x.id}>{x.name}{d.userIds.has(x.id) ? '' : ' (no device)'}</option>)}
+                      </select>
+                      <button type="button" className="btn-danger h-8 px-3 text-xs" onClick={() => void handOver()}>Hand over and remove</button>
+                      <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => setLeaving(null)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+          {d.members.length === 0 && <li className="py-3 text-sm text-dim">No members yet. Add yourself first.</li>}
+        </ul>
+        <RosterStatus empty={d.members.length === 0} />
+        <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add() }}>
+          <input className="input" placeholder="Add a member" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="btn shrink-0" disabled={!name.trim()}>Add</button>
+        </form>
+      </Block>
+      {!d.meId && d.members.length > 0 && <p className="px-1 text-xs text-warn">Pick which member this device belongs to. It lets things be handed to you to deal with, and private items be yours.</p>}
+      {d.members.length === 1 && <p className="px-1 text-xs text-dim">Owners, payers and the member filter show up once there is a second member.</p>}
+      {d.devices.some((l) => l.id !== d.deviceId) && (
+        <Block title="Other devices" hint="Detaching a device stops it counting as that person. It does not sign the device out of the vault.">
+          <ul className="divide-y divide-line/[0.07]">
+            {d.devices.filter((l) => l.id !== d.deviceId).map((l) => (
+              <li key={l.id} className="flex items-center gap-2 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label ?? 'A device'} <span className="text-xs text-faint">· {d.memberName(l.memberId) ?? 'someone no longer on the list'} · since {dayjs(l.createdAt).format('MMM D, YYYY')}</span></span>
+                <button type="button" className="btn-ghost h-8 px-2 text-xs hover:!text-bad" onClick={() => void detachDevice(l.id)}>Detach</button>
+              </li>
+            ))}
+          </ul>
+        </Block>
       )}
     </div>
   )
@@ -397,7 +422,7 @@ function Integrations() {
 
 function SnapshotPeek() {
   const d = useData()
-  const scope = { viewerId: d.meId, memberId: d.filter === 'mine' ? d.meId : null }
+  const scope = { viewerId: d.meId, memberId: d.focusId }
   const snap = buildSnapshot(d, { ...scope, limit: 3 })
   return (
     <>

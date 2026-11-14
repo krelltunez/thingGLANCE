@@ -8,13 +8,14 @@ import type { HorizonEvent } from '@/core/types'
 import { DAY, addDays, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
 import { EVENT_META } from '@/core/horizon'
 import { replacementFund } from '@/core/health'
+import { fundByOwner } from '@/core/household'
 import { forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
 import { Empty, Ring, TBadge } from '@/components/ui'
 import { TONES, cx } from '@/components/kit'
-import { ChargesChart, DecidedRow, EventRow, LifeBar, ThingAvatar, VerdictChip } from '@/components/parts'
+import { ChargesChart, DecidedRow, EventRow, LifeBar, MemberSplit, ThingAvatar, VerdictChip } from '@/components/parts'
 import { verdictTone } from '@/components/kit'
 import { useEventActions } from '@/components/useEventActions'
 
@@ -123,6 +124,8 @@ export function GlanceView() {
   const monthly = d.visibleSubs.reduce((t, s) => t + monthlyCost(s), 0)
   const fund = useMemo(() => replacementFund(d.activeThings, d.coverages), [d.activeThings, d.coverages])
   const months = useMemo(() => forecast(d.visibleSubs, 12), [d.visibleSubs])
+  const fundSplit = useMemo(() => fundByOwner(fund.rows), [fund])
+  const unassigned = d.queue.filter(d.needsSomeone).length
   const next30 = useMemo(() => {
     let total = 0
     let count = 0
@@ -197,6 +200,11 @@ export function GlanceView() {
           {d.queue.length === 0
             ? <Empty icon={CircleCheck} title="Queue is empty" body="When a warranty is about to lapse, a plan is about to renew or a device nears the end of its support, it shows up here." />
             : <div className="stagger space-y-2">{d.queue.map((e, i) => <div key={e.key} style={{ '--i': i } as React.CSSProperties}><EventRow event={e} /></div>)}</div>}
+          {unassigned > 0 && (
+            <p className="mt-3 px-1 text-xs leading-relaxed text-faint">
+              {unassigned === d.queue.length ? (unassigned === 1 ? 'This one falls' : 'These fall') : `${unassigned} of these fall`} to nobody in particular, so everyone is asked. The hand button makes one yours.
+            </p>
+          )}
           {decided.length > 0 && (
             <div className="mt-4 border-t border-line/10 pt-3">
               <p className="label mb-1">Recently cleared</p>
@@ -265,6 +273,7 @@ export function GlanceView() {
               </p>
             </div>
           </header>
+          {d.multiUser && !d.focusId && fundSplit.size > 0 && <div className="mb-3"><MemberSplit split={fundSplit} /></div>}
           {fund.rows.length === 0
             ? <p className="py-6 text-center text-sm text-dim"><Sparkles size={14} className="mr-1 inline text-accent" />Add prices and purchase dates to see this.</p>
             : (

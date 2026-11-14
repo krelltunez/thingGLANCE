@@ -4,7 +4,8 @@
 
 import { clearDbRootKey, getSyncPassphrase, hasDbRootKey, initDbRootKey, setSyncPassphrase } from '@glance-apps/sync'
 import type { DbSyncEngine, SyncErrorCode } from '@glance-apps/sync'
-import { DB_CRYPTO_CONFIG, createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './dbEngine'
+import { createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './dbEngine'
+import { dbCryptoConfig } from './keyHooks'
 import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
 import { registerDbEngine } from './dirtyTracker'
 import { getVaultConfig, isVaultEnabled } from './vaultConfig'
@@ -164,13 +165,13 @@ export async function startSync(): Promise<void> {
   set({ phase: 'idle', lastSynced: engine?.getLastSynced() ?? null, pending: engine?.getDirtySet().length ?? 0 })
 
   // Restore the cached root key; only ask for the passphrase when there is none.
-  const hasRoot = hasDbRootKey() || (await initDbRootKey(DB_CRYPTO_CONFIG).catch(() => false))
+  const hasRoot = hasDbRootKey() || (await initDbRootKey(dbCryptoConfig()).catch(() => false))
   if (!hasRoot && getSyncPassphrase() === null) set({ phase: 'locked' })
   else if (hasRoot && (await cachedKeyConflicts())) {
     // Remember that everything this device uploaded went up under the wrong
     // key, so it is uploaded again once the right passphrase is in.
     localStorage.setItem(REKEY_FLAG, '1')
-    await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => {})
+    await clearDbRootKey(dbCryptoConfig()).catch(() => {})
     await clearIntentsRootKey().catch(() => {})
     setSyncPassphrase(null)
     set({ phase: 'locked', keyConflict: true })
@@ -272,7 +273,7 @@ export async function submitPassphrase(typed: string): Promise<string | null> {
   if (!engine) return 'The vault is not connected.'
   const rejected = async (): Promise<string> => {
     // The wrong key is cached now; drop it so the next attempt derives afresh.
-    await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => {})
+    await clearDbRootKey(dbCryptoConfig()).catch(() => {})
     setSyncPassphrase(null)
     return WRONG_PASSPHRASE
   }
@@ -282,9 +283,9 @@ export async function submitPassphrase(typed: string): Promise<string | null> {
   let passphrase = typed
   let siblings: SiblingKeyCheck | 'fresh'
   try {
-    siblings = await tryPassphrase(passphrase, DB_CRYPTO_CONFIG)
+    siblings = await tryPassphrase(passphrase, dbCryptoConfig())
     // A pasted passphrase often carries a stray space or newline.
-    if (siblings === 'mismatch' && typed.trim() !== typed && (await tryPassphrase(typed.trim(), DB_CRYPTO_CONFIG)) === 'match') {
+    if (siblings === 'mismatch' && typed.trim() !== typed && (await tryPassphrase(typed.trim(), dbCryptoConfig())) === 'match') {
       passphrase = typed.trim()
       siblings = 'match'
     }

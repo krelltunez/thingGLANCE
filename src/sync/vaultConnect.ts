@@ -6,7 +6,9 @@
 
 import { clearDbRootKey, createVaultClient } from '@glance-apps/sync'
 import { getDeviceId } from './deviceId'
-import { DB_CRYPTO_CONFIG } from './dbEngine'
+import { dbCryptoConfig } from './keyHooks'
+import { flushSecretWrites } from './secrets'
+import { netFetch, shellFetchImpl } from './shellFetch'
 import {
   APP_ID, PRO_VAULT_URL, clearCredentialHalt, getVaultConfig, resetVaultSyncState,
   setVaultConfig, vaultIdentityChanged, type VaultConfig,
@@ -18,7 +20,7 @@ import { getIntentsConfig, saveIntentsConfig } from '@/intents/config'
 // account would encrypt this one's rows wrongly. Drop them on any identity
 // change; the app then asks for the passphrase again.
 export async function clearCachedVaultKeys(): Promise<void> {
-  await clearDbRootKey(DB_CRYPTO_CONFIG).catch(() => { /* nothing cached */ })
+  await clearDbRootKey(dbCryptoConfig()).catch(() => { /* nothing cached */ })
   await clearIntentsRootKey().catch(() => { /* nothing cached */ })
 }
 
@@ -39,7 +41,7 @@ export type VaultTestOutcome =
 // (no credential needed); null when it does not say or cannot be reached.
 export async function probeAllowedApps(vaultUrl: string): Promise<string[] | null> {
   try {
-    const res = await fetch(`${vaultUrl.replace(/\/+$/, '')}/healthz`, { signal: AbortSignal.timeout(10_000) })
+    const res = await netFetch(`${vaultUrl.replace(/\/+$/, '')}/healthz`, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return null
     const body = (await res.json()) as { allowedApps?: unknown }
     return Array.isArray(body.allowedApps) ? body.allowedApps.filter((a): a is string => typeof a === 'string') : null
@@ -52,7 +54,7 @@ export async function probeAllowedApps(vaultUrl: string): Promise<string[] | nul
 // with no salt yet is fine: the first sync registers one.
 export async function testVaultConnection(input: Pick<VaultConfig, 'vaultUrl' | 'vaultToken' | 'accountId'>): Promise<VaultTestOutcome> {
   try {
-    const client = createVaultClient({ vaultUrl: input.vaultUrl, vaultToken: input.vaultToken, brake: false })
+    const client = createVaultClient({ vaultUrl: input.vaultUrl, vaultToken: input.vaultToken, brake: false, fetchImpl: shellFetchImpl() })
     const [salt, apps] = await Promise.all([client.getSalt(input.accountId), probeAllowedApps(input.vaultUrl)])
     return { ok: true, fresh: !salt || salt.length === 0, appAllowed: apps ? apps.includes(APP_ID) : null, rosterAllowed: apps ? apps.includes(ROSTER_APP) : null }
   } catch (err) {
@@ -61,6 +63,14 @@ export async function testVaultConnection(input: Pick<VaultConfig, 'vaultUrl' | 
     if (status === 403) return { ok: false, code: 'FORBIDDEN' }
     return { ok: false, code: 'NETWORK_ERROR' }
   }
+}
+
+// A connection change ends in a reload (the sync package keeps its root key in
+// module state). Wait for the credentials to reach the secure store first, or
+// the page that comes back finds nothing.
+export async function reloadAfterConfigChange(): Promise<void> {
+  await flushSecretWrites()
+  window.location.reload()
 }
 
 // ── Save / disconnect ────────────────────────────────────────────────────────
@@ -112,7 +122,7 @@ export async function connectVaultPro(accountKey: string, vaultUrl = PRO_VAULT_U
   if (!key) throw new ProEnrollError('KEY_REJECTED', 'No account key entered.')
   let res: Response
   try {
-    res = await fetch(`${vaultUrl.replace(/\/+$/, '')}/enroll`, {
+    res = await netFetch(`${vaultUrl.replace(/\/+$/, '')}/enroll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accountKey: key, deviceId: getDeviceId() }),

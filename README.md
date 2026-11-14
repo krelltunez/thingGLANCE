@@ -115,7 +115,7 @@ src/
 
 - **Widgets, tray popup, GLANCElauncher, MCP** should read one object: `buildSnapshot()` in [src/core/snapshot.ts](src/core/snapshot.ts). It is plain JSON (counts, burn, the queue, upcoming events, per-thing verdicts) and versioned. Settings → Integrations shows the live one and copies it.
 - **Electron main / MCP server / headless refresh** can import `src/core` and `src/sync` directly: neither touches React. The sync manager is a plain observable module.
-- **Native shells** plug in at [src/native/platform.ts](src/native/platform.ts): it already keeps the service worker out of non-browser shells and applies the `html.native` / `html.desktop-<platform>` class contract lastGLANCE uses. `vite --mode electron` builds without the PWA plugin.
+- **Native shells** plug in at the seams listed in [docs/shells.md](docs/shells.md): what the shell is ([src/native/platform.ts](src/native/platform.ts), which also keeps the service worker out of non-browser shells), its own network transport, its keystore, links, outside writes, the snapshot and reminders. `vite --mode electron` builds without the PWA plugin.
 - **Links and outside writes** each have one door, documented in [docs/links-and-intents.md](docs/links-and-intents.md). `thingglance://` links only navigate and all go through one router; writes from a widget, the launcher, the tray or an MCP tool go through one handler that applies each exactly once. The web app accepts the same links as `/?link=thing/<id>`.
 - **Lookup providers** sit behind `lookupProduct()`, so a native build can add richer sources without touching the form.
 

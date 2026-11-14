@@ -13,12 +13,12 @@ import type { Coverage, Decision, DeviceLink, SyncEntity } from '@/core/types'
 import { normalizeSubscription, normalizeThing } from '@/core/shape'
 import { APP_ID, getVaultConfig, isVaultEnabled } from './vaultConfig'
 import { getDeviceId } from './deviceId'
+import { dbCryptoConfig } from './keyHooks'
+import { shellFetchImpl } from './shellFetch'
 
-export const CRYPTO_DB_NAME = 'thingglance-crypto'
 // One root key per account, shared by every vault engine in this app (things
 // and the roster) and derived from the same passphrase + salt as the sibling
-// GLANCE apps on the account.
-export const DB_CRYPTO_CONFIG = { cryptoDBName: CRYPTO_DB_NAME }
+// GLANCE apps on the account. Where it is cached is keyHooks.ts's business.
 
 // Applies are durable the moment they return (straight into Dexie), so the
 // pull cursor may advance per page and a large backlog resumes mid-way.
@@ -129,7 +129,8 @@ export function createDbEngine(callbacks: DbEngineCallbacks = {}): DbSyncEngine 
     storageKeyPrefix: APP_ID,
     appId: APP_ID,
     vaultApp: APP_ID,
-    cryptoDBName: CRYPTO_DB_NAME,
+    ...dbCryptoConfig(),
+    fetchImpl: shellFetchImpl(),
     vaultUrl: cfg.vaultUrl,
     vaultToken: cfg.vaultToken,
     accountId: cfg.accountId,

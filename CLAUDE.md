@@ -21,11 +21,13 @@ Sibling repos sit next to this one (`../lastGLANCE` is the closest model: same s
 - **Other surfaces read `buildSnapshot()`** (`src/core/snapshot.ts`). Its shape is a frozen contract: read `docs/snapshot.md` before touching it. Adding a field keeps the version; anything else bumps `SNAPSHOT_VERSION`. `snapshot.test.ts` pins the field lists.
 - **Reminders are decided in `src/core/reminders.ts`**, never in a shell. A shell only makes the platform's pending notifications match `planReminders()` (also in the snapshot as `reminders`).
 - **Two doors in from outside, and they stay separate** (`docs/links-and-intents.md`). A link (`src/core/links.ts`) only navigates and is acted on in one place, `src/state/useLinks.ts`: never add a link that changes data. A write from outside goes through `handleIntent()` (`src/intents/`), must carry a `clientId`, and is applied once. A shell calls `openLink()` or `dispatchExternalWrite()` and nothing else.
+- **Every request goes through `src/sync/shellFetch.ts`** (`netFetch`, or `fetchImpl: shellFetchImpl()` on a vault client or sync engine). No bare `fetch()`: a shell cannot carry a request it cannot see, and `shellFetch.test.ts` fails on one.
+- **Credentials go through `src/sync/secrets.ts`, and the root key config is always `dbCryptoConfig()`** (`src/sync/keyHooks.ts`). Never read or write the vault config in localStorage directly. `docs/shells.md` lists every seam a shell uses.
 - **Colours are CSS variables** (`src/index.css`) mapped in `tailwind.config.ts`. Use the semantic names (`bg-panel`, `text-dim`, `text-accent`, `ok` / `warn` / `bad` / `sub`), never raw palette classes, so light and dark stay one set of class names.
 - **Live push is additive.** `src/sync/vaultEventStream.ts` only ever triggers the same drains the polling cadence runs. Never make anything depend on a nudge arriving.
 - **A passphrase is proven against the sibling apps before it is trusted** (`src/sync/keyCheck.ts`). The sync engine only checks a key against the app's own namespace, which is empty when thingGLANCE joins an existing account, so on its own it accepts any passphrase. Never call `engine.ensureRootKey()` on a new passphrase without that check first.
 - **Vault intents are always encrypted.** No plaintext path, send or receive.
-- A config change to the vault connection ends in `window.location.reload()`: the sync package keeps its root key in module state.
+- A config change to the vault connection ends in a reload, through `reloadAfterConfigChange()` (`src/sync/vaultConnect.ts`): the sync package keeps its root key in module state, and the reload has to wait for a shell's keystore.
 - Release notes contain no em dashes (family rule). Times are Mountain Time (America/Denver).
 
 ## Verifying

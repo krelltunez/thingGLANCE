@@ -15,6 +15,8 @@
 import {
   KEYCHECK_ENTITY_ID, KEYCHECK_PAYLOAD, clearDbRootKey, createVaultClient, decryptEntity, encryptEntity, setupDbRootKey,
 } from '@glance-apps/sync'
+import type { DbCryptoConfig } from './keyHooks'
+import { shellFetchImpl } from './shellFetch'
 import { APP_ID, getVaultConfig } from './vaultConfig'
 
 // Every namespace another GLANCE app may have left a verifier in, the shared
@@ -29,7 +31,7 @@ export type SiblingKeyCheck = 'match' | 'mismatch' | 'none'
 const client = () => {
   const cfg = getVaultConfig()
   if (!cfg) throw new Error('The vault is not connected.')
-  return { vault: createVaultClient({ vaultUrl: cfg.vaultUrl, vaultToken: cfg.vaultToken, brake: false }), accountId: cfg.accountId }
+  return { vault: createVaultClient({ vaultUrl: cfg.vaultUrl, vaultToken: cfg.vaultToken, brake: false, fetchImpl: shellFetchImpl() }), accountId: cfg.accountId }
 }
 
 const isAnswer = (err: unknown): boolean => {
@@ -66,7 +68,7 @@ export async function checkKeyAgainstSiblings(): Promise<SiblingKeyCheck> {
 // the siblings. 'fresh' when the account has no salt yet: nothing to prove
 // against, and the engine registers the salt on its first cycle. On anything
 // but a mismatch the derived key is left cached, ready for the engine.
-export async function tryPassphrase(passphrase: string, crypto: { cryptoDBName: string }): Promise<SiblingKeyCheck | 'fresh'> {
+export async function tryPassphrase(passphrase: string, crypto: DbCryptoConfig): Promise<SiblingKeyCheck | 'fresh'> {
   const { vault, accountId } = client()
   const salt = await vault.getSalt(accountId)
   if (!salt || salt.length === 0) return 'fresh'

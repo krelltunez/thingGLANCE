@@ -7,6 +7,7 @@ import './index.css'
 import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
+import { hydrateSecrets } from './sync/secrets'
 
 // crypto.randomUUID() only exists in secure contexts (HTTPS / localhost). This
 // covers plain-HTTP access over a LAN IP, e.g. a self-hosted Docker install.
@@ -32,8 +33,13 @@ watchSystemTheme()
 watchInstallPrompt()
 settleServiceWorker()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Credentials a shell keeps in its keystore have to be in memory before the
+// first render: the sync engines read the connection as they mount. On the web
+// this resolves at once.
+void hydrateSecrets().finally(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})

@@ -9,15 +9,15 @@
 // Needs:
 //   - an emulator running, with a build whose WebView can be driven:
 //       ./build-android.sh --webview-debug
-//       adb -s emulator-5554 install -r android/app/build/outputs/apk/debug/app-debug.apk
+//     (the check installs that APK itself, replacing whatever is there)
 //   - the dev server (npm run dev) for the web device it syncs against
 //   - a throwaway vault on this machine, as for npm run test:e2e
 //     (header of e2e/vault-sync.mjs)
 //
 //   node scripts/android-check.mjs [serial]
 //
-// It wipes the app's data on the target first, so it refuses anything that is
-// not an emulator.
+// It reinstalls the app on the target first, which wipes its data and removes
+// its widgets, so it refuses anything that is not an emulator.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
@@ -25,7 +25,7 @@ import dayjs from 'dayjs'
 
 const SERIAL = process.argv[2] ?? process.env.ANDROID_SERIAL ?? 'emulator-5554'
 if (!SERIAL.startsWith('emulator-')) {
-  console.error(`Refusing to run against "${SERIAL}": this wipes the app's data, so it only runs on an emulator.`)
+  console.error(`Refusing to run against "${SERIAL}": this reinstalls the app and wipes its data, so it only runs on an emulator.`)
   process.exit(2)
 }
 const ADB = process.env.ADB ?? `${process.env.ANDROID_HOME ?? `${process.env.HOME}/Library/Android/sdk`}/platform-tools/adb`
@@ -37,6 +37,7 @@ const VAULT_FROM_HOST = process.env.VAULT_URL ?? 'http://localhost:8791'
 const TOKEN = process.env.VAULT_TOKEN ?? 'local-test-token-thingglance-0001'
 const ACCOUNT = `acct-android-${Date.now()}`
 const PASS = 'correct horse battery staple'
+const APK = process.env.APK ?? 'android/app/build/outputs/apk/debug/app-debug.apk'
 const PORT = 9333
 const out = 'e2e/out'
 mkdirSync(out, { recursive: true })
@@ -92,11 +93,28 @@ async function launch() {
 }
 const openLink = async (link) => { adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', link, APP_ID); await sleep(1200) }
 const back = async () => { adb('shell', 'input', 'keyevent', '4'); await sleep(700) }
+// Everything on screen that has text, with where it is: the launcher and its
+// widgets included, which DevTools cannot see.
+function screen() {
+  adb('shell', 'uiautomator', 'dump', '/sdcard/tg-ui.xml')
+  const xml = adb('shell', 'cat', '/sdcard/tg-ui.xml')
+  const nodes = []
+  for (const m of xml.matchAll(/<node [^>]*?text="([^"]*)"[^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g)) {
+    const text = (m[1] || m[2]).replace(/&amp;/g, '&').replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c)))
+    if (text) nodes.push({ text, x: (Number(m[3]) + Number(m[5])) / 2, y: (Number(m[4]) + Number(m[6])) / 2 })
+  }
+  return nodes
+}
+const onScreen = (nodes, match) => nodes.find((n) => (match instanceof RegExp ? match.test(n.text) : n.text === match))
+const tap = async (node) => { adb('shell', 'input', 'tap', String(Math.round(node.x)), String(Math.round(node.y))); await sleep(1200) }
+const home = async () => { adb('shell', 'input', 'keyevent', 'KEYCODE_HOME'); await sleep(1500) }
 const foreground = () => adb('shell', 'dumpsys', 'activity', 'activities').match(/topResumedActivity=.*?\s(\S+)\/\S+/)?.[1] ?? ''
 
 // ── A clean start ────────────────────────────────────────────────────────────
-adb('shell', 'am', 'force-stop', APP_ID)
-adb('shell', 'pm', 'clear', APP_ID)
+// Reinstalled, not just cleared: that also takes any widget a previous run
+// placed off the home screen.
+adbQuiet('uninstall', APP_ID)
+adb('install', '-r', APK)
 let P = await launch()
 shot('welcome')
 
@@ -230,6 +248,50 @@ await sleep(800)
 check('Settings shows it connected', await P.getByRole('button', { name: /Sync now/ }).isVisible().catch(() => false))
 shot('connected')
 await back()
+
+// ── Widgets ──────────────────────────────────────────────────────────────────
+// The thing added above was bought a year less twenty days ago, so its
+// one-year warranty is twenty days out: one date waiting for a decision.
+const payload = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_shared.xml')
+check('the app has handed the widgets a snapshot', payload.includes('Manufacturer warranty ends') && payload.includes('thingglance://event/'))
+
+async function place(kind) {
+  const asked = await P.evaluate((k) => window.Capacitor.Plugins.WidgetBridge.pinWidget({ kind: k }), kind)
+  await sleep(1500)
+  // The launcher asks; the wording of its button differs between launchers.
+  const add = onScreen(screen(), /^Add( to home screen| automatically)?$/i)
+  if (add) await tap(add)
+  await sleep(1500)
+  return asked.supported && !!add
+}
+check('the launcher is asked to place the "Needs a decision" widget', await place('decide'))
+adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
+check('and the "Next up" widget', await place('next'))
+await home()
+shot('widgets')
+let ui = screen()
+check('the "Needs a decision" widget shows the date and its countdown', !!onScreen(ui, 'Needs a decision') && !!onScreen(ui, 'Manufacturer warranty ends') && !!onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up/i.test(t)).join(' | '))
+check('the "Next up" widget shows it too', !!onScreen(ui, 'Next up') && ui.filter((n) => n.text === 'Manufacturer warranty ends').length >= 2)
+check('each row says what it is about and when', ui.some((n) => /^Android Check Phone · /.test(n.text)))
+
+// A tap on a row opens that date in the app.
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+await tap(onScreen(ui, 'Manufacturer warranty ends'))
+await sleep(1500)
+P = await attach()
+check('a tap on a widget row opens that thing in the app', foreground() === APP_ID && await P.getByRole('heading', { name: 'Android Check Phone' }).first().isVisible().catch(() => false))
+
+// Clearing it in the app empties the widget, with nobody opening it.
+await openLink('thingglance://queue')
+await P.getByRole('button', { name: 'Done with this' }).first().click()
+await sleep(2000)
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+await home()
+ui = screen()
+check('clearing the date in the app empties the widgets', !!onScreen(ui, 'Nothing needs a decision') && !onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up|Nothing|coming/i.test(t)).join(' | '))
+shot('widgets-cleared')
+adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
+P = await attach()
 
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')

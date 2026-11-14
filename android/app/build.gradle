@@ -1,4 +1,6 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 // The version comes from package.json, so the native build always matches the
 // web app. versionCode = major*1000000 + minor*10000 + patch*100 (0.1.0 ->
@@ -26,6 +28,13 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.thingglance.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    // The home-screen widgets are Jetpack Glance: Kotlin and Compose.
+    buildFeatures {
+        compose true
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
     defaultConfig {
         applicationId "com.thingglance.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -74,6 +83,11 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Home-screen widgets.
+    implementation "androidx.glance:glance-appwidget:$glanceVersion"
+    implementation "androidx.glance:glance-material3:$glanceVersion"
+    // The real org.json for unit tests on the JVM: android.jar's copy is a stub.
+    testImplementation "org.json:json:20240303"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

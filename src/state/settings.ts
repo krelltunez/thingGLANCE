@@ -37,6 +37,12 @@ export function updateSettings(patch: Partial<Settings>): void {
   listeners.forEach((fn) => fn())
 }
 
+// For code outside React that mirrors a setting somewhere else.
+export function subscribeSettings(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
 export function useSettings(): Settings {
   return useSyncExternalStore((fn) => { listeners.add(fn); return () => listeners.delete(fn) }, read)
 }

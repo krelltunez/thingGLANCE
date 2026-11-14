@@ -36,6 +36,7 @@ To open the project in Android Studio: `npx cap open android`.
 - `thingglance://` links open the right place, warm and with a filled-in form;
 - the back button closes the keyboard, then the sheet, then returns to the first screen, then leaves the app without closing it;
 - a thing added on the phone reaches a web device through a real vault, and the other way;
+- both widgets can be placed, show the right date and countdown, open the app on a tap, and empty when the date is cleared;
 - after being killed, the app is still connected and asks for no passphrase.
 
 ```bash
@@ -66,6 +67,27 @@ Everything goes through the seams in [shells.md](shells.md). The Android side of
 | Status bar | Transparent, with icons that follow the app's theme. The layout keeps clear of it with the safe-area insets. |
 | Service worker | Never registered in the WebView. |
 
+## Widgets
+
+Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/glance`):
+
+| Widget | Shows |
+| --- | --- |
+| **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the title opens the queue. |
+| **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. |
+
+How they get their content:
+
+- **The app writes it down.** `src/native/widgetBridge.ts` hands `WidgetBridgePlugin` a payload whenever the data, the household, the currency or the language changes, and once more as the app goes to the background. The payload is the snapshot from [snapshot.md](snapshot.md), the same object every other surface reads, plus the widgets' own few words, already in the app's language. The native side has no string catalog for them.
+- **Countdowns are worked out when the widget draws**, from each date, not baked in. A widget is drawn hours after the app last ran; "T-12d" has to be right then. The system redraws them every six hours even if the app is never opened.
+- **A widget reads the payload inside its composition** (`rememberWidgetData`). Reading it once before composing is the obvious thing and is wrong: Glance keeps a drawn widget's composition alive for a while, and an update only recomposes it with what it read at the start.
+- **A missing or unreadable payload draws as "open the app"**, never as the system's error tile. Rows without a key or a real date are left out.
+- **A tap is a `thingglance://` link** (the snapshot carries one for every date), so widgets cannot change anything; they only open the app somewhere.
+
+Settings has an "add to home screen" button for each (Android 8 and later, where the launcher supports it).
+
+`WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation and feeds the parser broken payloads. The device check places both widgets on the emulator's home screen, reads what they show, taps a row, and clears a date in the app to see them empty.
+
 Other choices worth knowing:
 
 - **Cleartext HTTP is allowed**, so a self-hosted vault on a home network (`http://192.168.x.x:8080`) works. Android cannot scope that to the local network. Everything sent to a vault is encrypted before it leaves; what plain HTTP exposes is the device token, so use HTTPS for a vault reachable from outside.
@@ -76,5 +98,7 @@ Other choices worth knowing:
 ## Not there yet
 
 - **Live updates.** The web app holds the vault's event stream open; the phone does not yet. A change made elsewhere arrives when the app is opened, every five minutes while it is open, or after a local edit. A native stream reader is in the roadmap's hardening step.
-- **Widgets, notifications, shortcuts, the share target, Tasker.** The snapshot and the reminder plan they will read are already in place (`docs/snapshot.md`).
+- **More widgets** (a single thing, plans this month, an add tile) and **action buttons on widgets** (clearing a date from the home screen).
+- **Notifications, shortcuts, the share target, Tasker.** The reminder plan they will read is already in the snapshot (`docs/snapshot.md`).
+- **A background refresh.** If the app is not opened for days, the widgets keep counting down correctly but do not learn of dates that have since entered their window.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

@@ -17,7 +17,7 @@ import { setMultiUserEnabled } from '@/multiuser/settings'
 import { syncRosterSoon } from '@/multiuser/rosterDirtyTracker'
 import { describeDevice, promptInstall } from '@/native/platform'
 import { getSyncPassphrase } from '@glance-apps/sync'
-import { syncErrorText, syncNow } from '@/sync/manager'
+import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, testVaultConnection } from '@/sync/vaultConnect'
 import { APP_ID, getVaultConfig } from '@/sync/vaultConfig'
 import { useData } from '@/state/data'
@@ -36,6 +36,9 @@ const SECTIONS: { id: SettingsSection; label: string; icon: typeof Cloud }[] = [
   { id: 'data', label: 'Data', icon: Database },
   { id: 'about', label: 'About', icon: Info },
 ]
+
+// One wording for a vault that leaves the roster's app out, wherever it shows.
+const ROSTER_REFUSED = 'Your vault is refusing the shared household roster: "glance-users" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault\'s container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.'
 
 function Block({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -115,7 +118,11 @@ function Vault() {
       setNote({ tone: 'warn', text: `Connected, but this server does not list "${APP_ID}" in its allowed apps yet. Add it to GLANCEVAULT_ALLOWED_APPS (keep the apps already listed), then recreate the vault's container: a plain restart keeps the old settings. The server's /healthz page shows the list in effect.` })
       return false
     }
-    setNote({ tone: 'ok', text: r.fresh ? 'Reachable. This account is new: your passphrase will set its encryption key.' : 'Reachable, and the account already has data. Use the same passphrase as your other GLANCE apps.' })
+    const reach = r.fresh ? 'Reachable. This account is new: your passphrase will set its encryption key.' : 'Reachable, and the account already has data. Use the same passphrase as your other GLANCE apps.'
+    // Things still sync without the roster, so this warns and lets you connect.
+    setNote(r.rosterAllowed === false
+      ? { tone: 'warn', text: `${reach} One thing to fix on the server: it does not list "glance-users" in GLANCEVAULT_ALLOWED_APPS, so the household roster will not sync, here or in your other GLANCE apps.` }
+      : { tone: 'ok', text: reach })
     return true
   }
 
@@ -155,7 +162,7 @@ function Vault() {
           </p>
           {sync.phase === 'error' && <p className="mt-3 rounded-lg border border-bad/25 bg-bad/10 px-3 py-2 text-xs leading-relaxed text-bad">{syncErrorText(sync.errorCode, sync.errorMessage)}</p>}
           {sync.skipped > 0 && <p className="mt-3 text-xs text-warn">{sync.skipped} rows could not be decrypted and were skipped.</p>}
-          {sync.rosterUnsupported && <p className="mt-3 text-xs text-dim">This server does not offer the shared household roster (glance-users) yet, so members stay on this device.</p>}
+          {sync.rosterUnsupported && <p className="mt-3 rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">{ROSTER_REFUSED}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             {sync.phase === 'locked'
               ? <button type="button" className="btn-primary" onClick={() => ui.open({ type: 'passphrase' })}><Lock size={15} /> Enter passphrase</button>
@@ -244,7 +251,7 @@ function Household() {
       </Block>
       {d.multiUser && (
         <>
-          <Block title="Members" hint={`A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'This vault does not offer the shared roster yet, so members stay on this device.' : 'Shared with your other GLANCE apps through the vault.'}`}>
+          <Block title="Members" hint={`A name is all it takes: a member does not need the app or a device. ${sync.phase === 'off' ? 'Not connected to GLANCEvault, so members stay on this device for now.' : sync.rosterUnsupported ? 'Members added here stay on this device for now.' : 'Shared with your other GLANCE apps through the vault.'}`}>
             <ul className="divide-y divide-line/[0.07]">
               {d.members.map((m) => {
                 const links = d.devices.filter((l) => l.memberId === m.id)
@@ -303,10 +310,12 @@ function Household() {
 // list is explained rather than left to look broken.
 function RosterStatus({ empty }: { empty: boolean }) {
   const sync = useSync()
-  if (sync.phase === 'off' || sync.rosterUnsupported) return null
-  const again = <button type="button" className="font-medium text-accent hover:underline" onClick={() => syncRosterSoon(0)}>Check again</button>
+  if (sync.phase === 'off') return null
+  const again = <button type="button" className="font-medium text-accent hover:underline" onClick={() => void recheckRoster()}>Check again</button>
   const line = 'mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed'
+  if (sync.rosterUnsupported) return <p className={cx(line, TONES.warn.soft)}>{ROSTER_REFUSED} {again}</p>
   if (sync.phase === 'locked') return <p className={cx(line, TONES.warn.soft)}>{sync.keyConflict ? 'This device was using a passphrase that does not match your other GLANCE apps, so it could not read the roster. Enter the right one and the members appear.' : 'The roster is read once you enter your sync passphrase.'}</p>
+  if (sync.rosterPaused) return <p className={cx(line, TONES.warn.soft)}>The roster could not be checked just now: sync with the vault is pausing after a failed request and will retry on its own. {again}</p>
   if (!sync.rosterCheckedAt) return <p className={cx(line, 'border-line/10 text-dim')}>Reading the roster from your vault…</p>
   const at = dayjs(sync.rosterCheckedAt).format('h:mm A')
   if (sync.rosterError) return <p className={cx(line, TONES.bad.soft)}>Could not read the roster from your vault at {at}: {sync.rosterError} {again}</p>

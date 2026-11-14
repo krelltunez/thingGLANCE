@@ -87,6 +87,8 @@ docker compose up -d --force-recreate
 - `docker compose config | grep ALLOWED` shows what Compose resolved. No `GLANCEVAULT_ALLOWED_APPS` line means the compose file does not pass it through: add `GLANCEVAULT_ALLOWED_APPS: ${GLANCEVAULT_ALLOWED_APPS:-}` under the service's `environment:`. An empty value means `.env` is not beside the compose file, or the line is misspelled or still commented out.
 - A vault run from Portainer, Unraid or another stack UI takes its variables from that tool's settings, not from `.env`.
 
+**If household members do not sync**, check that `glance-users` is in the list. A vault that leaves it out still syncs things, but refuses the shared roster for every GLANCE app, and each app quietly keeps only its own copy. thingGLANCE says so under Settings → Household; dayGLANCE and lastGLANCE need a restart after the list is fixed, since they stop trying for the rest of the session.
+
 The allowed origins travel the same road, so the same checks apply to `GLANCEVAULT_ALLOWED_ORIGINS`.
 
 ### End-to-end test

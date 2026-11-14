@@ -75,8 +75,14 @@ export interface RosterCallbacks {
   // A cycle finished, well or badly. Lets the UI say "checked, and the vault's
   // roster is empty" instead of leaving an empty list unexplained.
   // `skipped` rows would not decrypt; `rejected` rows decrypted but were not a
-  // member.
-  onChecked?: (outcome: { error: string | null; skipped: number; rejected: number }) => void
+  // member. `ran` is false when the engine did not actually read the vault
+  // this time (it is pausing after a failure): a cycle like that reports no
+  // error and no rows, and must not be read as "the roster is empty".
+  onChecked?: (outcome: { error: string | null; skipped: number; rejected: number; ran: boolean }) => void
+  // What the server's own list says about glance-users: false when it leaves
+  // the app out, true when it lists it, null when unknown. Asked before every
+  // cycle, so a server that is fixed is picked up without a reload.
+  allowed?: () => boolean | null
 }
 
 const EMPTY = { applied: 0, skipped: 0, skippedEntityIds: [] } as DbSyncResult
@@ -106,7 +112,10 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
     getEntityLastModified: (e) => (e as { updatedAt?: string } | null)?.updatedAt,
     pullCursorCommit: 'per-page',
     onError: (message, code) => {
-      if (isUnknownAppError(message)) {
+      // A server that does not list glance-users refuses every request for
+      // it with a 400. On a pull that reads as "unknown app"; on the key
+      // check that runs first it surfaces as VERIFIER_UNSUPPORTED instead.
+      if (isUnknownAppError(message) || code === 'VERIFIER_UNSUPPORTED') {
         if (!unsupported) { unsupported = true; callbacks.onUnsupported?.() }
         return
       }
@@ -117,7 +126,15 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
 
   const runCycle = engine.dbSyncCycle.bind(engine)
   const dbSyncCycle = async (): Promise<DbSyncResult> => {
-    if (unsupported || !getMultiUserEnabled()) return EMPTY
+    if (!getMultiUserEnabled()) return EMPTY
+    const allowed = callbacks.allowed?.() ?? null
+    if (allowed === false) {
+      if (!unsupported) { unsupported = true; callbacks.onUnsupported?.() }
+      return EMPTY
+    }
+    // The server lists the app now: whatever latched earlier no longer holds.
+    if (allowed === true) unsupported = false
+    if (unsupported) return EMPTY
     if (localStorage.getItem(SEEDED_FLAG) !== '1') {
       if (engine.getHighWaterMark() > 0) {
         localStorage.setItem(SEEDED_FLAG, '1')
@@ -134,10 +151,14 @@ export function createRosterDbEngine(callbacks: RosterCallbacks = {}): DbSyncEng
     rejected = 0
     try {
       const result = await runCycle()
-      if (!unsupported) callbacks.onChecked?.({ error: failed, skipped: result?.skipped ?? 0, rejected })
+      // No result is an overlapping cycle; the flags are the engine saying a
+      // half of the cycle was held back or failed.
+      const flags = result as (DbSyncResult & { pullSkipped?: boolean; pullFailed?: boolean; halted?: boolean; superseded?: boolean }) | undefined
+      const ran = !!flags && !flags.pullSkipped && !flags.pullFailed && !flags.halted && !flags.superseded
+      if (!unsupported) callbacks.onChecked?.({ error: failed, skipped: result?.skipped ?? 0, rejected, ran })
       return result
     } catch (err) {
-      callbacks.onChecked?.({ error: failed ?? (err instanceof Error ? err.message : 'The roster could not be read.'), skipped: 0, rejected })
+      callbacks.onChecked?.({ error: failed ?? (err instanceof Error ? err.message : 'The roster could not be read.'), skipped: 0, rejected, ran: false })
       throw err
     }
   }

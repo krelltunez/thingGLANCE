@@ -4,7 +4,14 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
+import androidx.glance.Image
+import androidx.glance.ImageProvider
+import androidx.glance.action.actionParametersOf
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.layout.size
+import com.thingglance.app.R
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.action.clickable
@@ -30,6 +37,12 @@ import androidx.glance.text.TextStyle
 // "Next up": one line. The date that matters most right now (what needs a
 // decision first, else the nearest one ahead) with its countdown. A tap opens
 // it in the app.
+//
+// When the date is one that needs a decision it carries the same tick as a
+// row of the queue widget (ClearDateAction), and clearing it brings the next
+// one up. A date that is merely the nearest ahead has no tick, as in the app:
+// "Done with this" is offered for what is waiting on you, not for a renewal
+// eight months off that one stray tap would silence for good.
 class NextUpWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
@@ -70,6 +83,17 @@ class NextUpWidget : GlanceAppWidget() {
                             "${event.detail} · ${shortDate(event.date, data.locale)}",
                             maxLines = 1,
                             style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+                        )
+                    }
+                    if (data.needsDecision(event)) {
+                        Image(
+                            provider = ImageProvider(R.drawable.ic_widget_check),
+                            contentDescription = data.labels.done,
+                            colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+                            modifier = GlanceModifier
+                                .size(36.dp)
+                                .padding(8.dp)
+                                .clickable(actionRunCallback<ClearDateAction>(actionParametersOf(ClearDateAction.EVENT_KEY to event.key))),
                         )
                     }
                 }

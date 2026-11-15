@@ -65,6 +65,10 @@ internal data class WidgetData(
     fun without(cleared: Set<String>): WidgetData =
         if (cleared.isEmpty()) this else copy(attention = attention.filter { it.key !in cleared }, upcoming = upcoming.filter { it.key !in cleared })
 
+    // In the queue, so "Done with this" applies. A date that is only the
+    // nearest one ahead is not waiting on anyone yet.
+    fun needsDecision(event: WidgetEvent): Boolean = attention.any { it.key == event.key }
+
     // One that was cleared or done is no longer "next".
     val next: WidgetEvent? get() = attention.firstOrNull()
         ?: upcoming.firstOrNull { daysUntil(it.date) >= 0 && it.state != "done" && it.state != "dismissed" }

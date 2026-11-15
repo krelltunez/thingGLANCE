@@ -100,7 +100,7 @@ Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/
 | Widget | Shows |
 | --- | --- |
 | **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the tick at its end clears it without opening the app; the title opens the queue. |
-| **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. |
+| **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. When it is showing a date that needs a decision it has the same tick, and clearing it brings the next one up. A date that is merely the nearest ahead has no tick, as in the app. |
 
 How they get their content:
 

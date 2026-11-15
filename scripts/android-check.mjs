@@ -324,12 +324,18 @@ const gone = await waitFor(() => adbQuiet('shell', 'pidof', APP_ID).trim() === '
 check('the app has been killed, as Android does to reclaim memory', gone.ok)
 await sleep(1000)
 ui = screen()
-const tick = onScreen(ui, 'Done with this')
-check('each row on the widget has a "Done with this" tick', !!tick)
+// One on the queue widget's row and one on "Next up", which is showing the
+// same date. The lower one on screen is "Next up": that is the one tapped.
+const ticks = ui.filter((n) => n.text === 'Done with this').sort((a, b) => a.y - b.y)
+check('the queue row and "Next up" each have a "Done with this" tick', ticks.length === 2, `${ticks.length} found`)
+const tick = ticks[ticks.length - 1]
 if (tick) await tap(tick)
 await sleep(1500)
 ui = screen()
-check('a tick clears the row at once, with the app not running', !!onScreen(ui, 'Nothing needs a decision') && !onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up|Nothing|coming/i.test(t)).join(' | '))
+check('a tick clears the date from both widgets at once, with the app not running', !!onScreen(ui, 'Nothing needs a decision') && !onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up|Nothing|coming/i.test(t)).join(' | '))
+// "Next up" moves on to the nearest date ahead, which is not waiting on
+// anyone yet: it is shown without a tick, as in the app.
+check('"Next up" moves on to the next date, which has no tick', !!onScreen(ui, 'Planned replacement') && !onScreen(ui, 'Done with this'))
 // Android starts the app's process to handle the tap, but not its screen:
 // there is no activity in front and no WebView to have applied anything.
 const tickPid = adbQuiet('shell', 'pidof', APP_ID).trim()

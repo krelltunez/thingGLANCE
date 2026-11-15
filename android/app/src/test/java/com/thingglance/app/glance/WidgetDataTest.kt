@@ -103,6 +103,17 @@ class WidgetDataTest {
     }
 
     @Test
+    fun onlyADateWaitingOnYouCanBeTickedOff() {
+        val data = WidgetSnapshot.parse(payload)
+        // The first in the queue is "next", and carries the tick.
+        assertTrue(data.needsDecision(data.next!!))
+        // With it cleared, the next one is merely the nearest ahead: no tick.
+        val after = data.without(setOf(data.next!!.key))
+        assertEquals("iCloud+ renews", after.next?.title)
+        assertFalse(after.needsDecision(after.next!!))
+    }
+
+    @Test
     fun aDateClearedOnTheHomeScreenLeavesAtOnce() {
         val data = WidgetSnapshot.parse(payload)
         val cleared = data.without(setOf("coverage-end:c1:2027-01-15"))

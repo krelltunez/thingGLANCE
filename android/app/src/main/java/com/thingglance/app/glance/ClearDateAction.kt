@@ -6,6 +6,8 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import com.thingglance.app.SharedDataStore
 import com.thingglance.app.WidgetBridgePlugin
+import com.thingglance.app.refresh.RefreshWorker
+import com.thingglance.app.reminders.ReminderScheduler
 
 // "Done with this" on a widget row, without opening the app.
 //
@@ -15,14 +17,19 @@ import com.thingglance.app.WidgetBridgePlugin
 // runs (src/native/widgetBridge.ts: collectWidgetWrites). The row leaves the
 // widget at once, because the widget hides dates with a write waiting.
 //
-// Until the app has run, the rest of the system does not know: the date's
-// reminder is still scheduled, and other devices still show it.
+// The date's reminders on this phone are cancelled at once. Other devices
+// learn of it when the app next syncs.
 class ClearDateAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val key = parameters[EVENT_KEY] ?: return
         SharedDataStore.queueDecide(context, key)
+        // The date is dealt with: it should not remind while the app catches up.
+        ReminderScheduler.cancelForEvent(context, key)
         WidgetBridgePlugin.refreshAll(context)
         WidgetBridgePlugin.announcePendingWrites()
+        // With the app closed there is nobody to announce it to: a background
+        // refresh carries it to the vault.
+        RefreshWorker.requestSoon(context)
     }
 
     companion object {

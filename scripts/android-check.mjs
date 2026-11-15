@@ -324,38 +324,78 @@ const gone = await waitFor(() => adbQuiet('shell', 'pidof', APP_ID).trim() === '
 check('the app has been killed, as Android does to reclaim memory', gone.ok)
 await sleep(1000)
 ui = screen()
+// Android is holding a reminder for this date (its last call, a week before).
+const heldBefore = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_reminders.xml')
+check('Android holds a reminder for the date before it is ticked', heldBefore.includes('Android Check Phone'))
 // One on the queue widget's row and one on "Next up", which is showing the
 // same date. The lower one on screen is "Next up": that is the one tapped.
 const ticks = ui.filter((n) => n.text === 'Done with this').sort((a, b) => a.y - b.y)
 check('the queue row and "Next up" each have a "Done with this" tick', ticks.length === 2, `${ticks.length} found`)
 const tick = ticks[ticks.length - 1]
 if (tick) await tap(tick)
-await sleep(1500)
+// Read at once: a background refresh will come and collect it within seconds.
+const justAfter = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_shared.xml').replace(/&quot;/g, '"')
+check('the write is queued with an id of its own (or a refresh has already collected it)', /widget:[0-9a-f-]{36}/.test(justAfter) || /"trigger":"home-screen"/.test(justAfter))
+await sleep(300)
 ui = screen()
 check('a tick clears the date from both widgets at once, with the app not running', !!onScreen(ui, 'Nothing needs a decision') && !onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up|Nothing|coming/i.test(t)).join(' | '))
 // "Next up" moves on to the nearest date ahead, which is not waiting on
 // anyone yet: it is shown without a tick, as in the app.
 check('"Next up" moves on to the next date, which has no tick', !!onScreen(ui, 'Planned replacement') && !onScreen(ui, 'Done with this'))
-// Android starts the app's process to handle the tap, but not its screen:
-// there is no activity in front and no WebView to have applied anything.
-const tickPid = adbQuiet('shell', 'pidof', APP_ID).trim()
-check('and the app itself has not been opened', foreground() !== APP_ID && !adb('shell', 'cat', '/proc/net/unix').includes(`webview_devtools_remote_${tickPid || 'none'}`))
-const queued = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_shared.xml')
-check('the write waits in a queue, with an id of its own', /pending_writes/.test(queued) && /widget:[0-9a-f-]{36}/.test(queued))
+check('the tick also cancels that date\'s reminder, with the app still not running', !adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_reminders.xml').includes('Android Check Phone'))
+// Android starts the app's process to handle the tap, but not its screen.
+check('and the app itself has not been opened', foreground() !== APP_ID)
 shot('widgets-cleared')
 
-// Opening the app applies it, once, and empties the queue.
+// ── The background refresh ───────────────────────────────────────────────────
+// With the app still not running, the tick is carried to the vault by a
+// refresh that has no screen: the web device sees the date cleared, and the
+// phone app is never opened.
+const shared = () => adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_shared.xml').replace(/&quot;/g, '"')
+const lastRefresh = (trigger) => {
+  const log = JSON.parse(shared().match(/name="refresh_log">(\[.*?\])<\/string>/s)?.[1] ?? '[]')
+  return log.filter((e) => e.trigger === trigger).pop() ?? null
+}
+const onDemand = await waitFor(() => lastRefresh('home-screen') !== null, 60_000)
+check('a refresh runs by itself soon after the tick', onDemand.ok && lastRefresh('home-screen')?.outcome === 'ran', JSON.stringify(lastRefresh('home-screen')))
+check('it synced with the vault and applied the tick', (lastRefresh('home-screen')?.synced ?? []).includes('vault') && lastRefresh('home-screen')?.applied === 1)
+check('the queue of writes is empty afterwards', !/widget:[0-9a-f-]{36}/.test(shared()))
+await W.getByRole('tab', { name: /^Glance/ }).first().click()
+const reached = await waitFor(() => W.evaluate(() => document.querySelectorAll('button[title="Done with this"]').length === 0), 20_000)
+check('the tick reaches the web device, with the phone app never opened', reached.ok && foreground() !== APP_ID)
+
+// The routine refresh brings in what changed elsewhere: a thing added on the
+// web, with a warranty ten days out, reaches the phone's widgets and gets a
+// reminder, still with the app closed.
+await W.keyboard.press('n')
+await W.getByLabel('Name', { exact: true }).fill('Web Warranty Camera')
+await W.getByLabel('Bought on').fill(dayjs().subtract(1, 'year').add(10, 'day').format('YYYY-MM-DD'))
+await W.getByRole('button', { name: 'Add thing' }).click()
+await W.waitForTimeout(600)
+await W.keyboard.press('Escape')
+await W.keyboard.press('Meta+k')
+await W.getByPlaceholder(/Search things and plans/).fill('sync now')
+await W.keyboard.press('Enter')
+await W.waitForTimeout(4000)
+// Android runs the routine refresh a few times a day and will not run it
+// early however it is asked, so the debug build has a hook that runs the same
+// work once, now.
+adb('shell', 'am', 'broadcast', '-n', `${APP_ID}/.refresh.DebugRefreshReceiver`)
+const routine = await waitFor(() => lastRefresh('routine') !== null, 60_000)
+check('the routine refresh runs with the app closed', routine.ok && lastRefresh('routine')?.outcome === 'ran', JSON.stringify(lastRefresh('routine')))
+await sleep(1500)
+ui = screen()
+check('a date added on another device reaches the widgets', ui.some((n) => /^Web Warranty Camera · /.test(n.text)) && !!onScreen(ui, 'T-10d'), ui.map((n) => n.text).filter((t) => /Camera|T-|Nothing/i.test(t)).join(' | '))
+check('and Android is holding a reminder for it', adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_reminders.xml').includes('Web Warranty Camera'))
+check('all of it with the phone app never opened', foreground() !== APP_ID)
+shot('widgets-refreshed')
+
+// Opening the app afterwards finds it all done.
 P = await launch()
-await openLink('thingglance://queue')
-const applied = await waitFor(() => P.evaluate(() => document.querySelectorAll('button[title="Done with this"]').length === 0), 15_000)
-check('the app applies it the next time it runs', applied.ok)
-await sleep(2500)
-const after2 = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_shared.xml')
-check('and the queue is empty afterwards', !/widget:[0-9a-f-]{36}/.test(after2))
+await openLink('thingglance://view/things')
+check('the app, once opened, has what the refresh brought', await P.getByText('Web Warranty Camera').first().isVisible().catch(() => false))
 if (cdp) { await cdp.close().catch(() => {}); cdp = null }
 await home()
-ui = screen()
-check('the widgets stay cleared once the app has caught up', !!onScreen(ui, 'Nothing needs a decision') && !onScreen(ui, 'T-20d'))
 adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
 P = await attach()
 
@@ -379,9 +419,9 @@ if (!QUICK) {
   await P.getByLabel('Bought on').fill(dayjs(deviceNow).subtract(1, 'year').add(7, 'day').format('YYYY-MM-DD'))
   await P.getByRole('button', { name: 'Add thing' }).click()
   await sleep(2500)
-  const pending = await P.evaluate(async () => (await window.Capacitor.Plugins.LocalNotifications.getPending()).notifications.map((n) => ({ title: n.title, body: n.body, at: new Date(n.schedule?.at).getTime(), link: n.extra?.link, sig: !!n.extra?.sig })))
+  const pending = await P.evaluate(async () => JSON.parse((await window.Capacitor.Plugins.Reminders.pending()).reminders))
   const mine = pending.find((n) => /Android Check Tablet/.test(n.body ?? ''))
-  check('Android holds a pending notification for the date, at the chosen time', !!mine && mine.title === 'Manufacturer warranty ends' && mine.at === fireAt.valueOf() && String(mine.link).startsWith('thingglance://event/'), JSON.stringify(pending))
+  check('Android holds a reminder for the date, at the chosen time', !!mine && mine.title === 'Manufacturer warranty ends' && mine.at === fireAt.valueOf() && String(mine.link).startsWith('thingglance://event/'), JSON.stringify(pending))
   check('and nothing for the date that was cleared earlier', !pending.some((n) => /Android Check Phone/.test(n.body ?? '') && n.title === 'Manufacturer warranty ends'))
 
   // Leave the app, and wait for Android to deliver it.
@@ -396,18 +436,22 @@ if (!QUICK) {
   ui = screen()
   const done = onScreen(ui, 'Done with this')
   check('the notification says what and when, and offers "Done with this"', !!onScreen(ui, 'Manufacturer warranty ends') && ui.some((n) => /^Android Check Tablet · in 7 days/.test(n.text)) && !!done, ui.map((n) => n.text).filter((t) => /warranty|Tablet|Done/i.test(t)).join(' | '))
-  if (done) await tap(done); else adb('shell', 'cmd', 'statusbar', 'collapse')
-  await sleep(3000)
+  if (done) await tap(done)
+  await sleep(2000)
+  // "Done with this" does not open the app: the notification goes, and the
+  // write waits for the app like a widget tick.
+  check('"Done with this" dismisses the notification without opening the app', !shade().includes('Android Check Tablet') && foreground() !== APP_ID)
+  adb('shell', 'cmd', 'statusbar', 'collapse')
+  await sleep(800)
   adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500)
   P = await attach()
   await openLink('thingglance://queue')
-  // The write is applied as the app comes forward: give it a moment.
-  await waitFor(() => P.evaluate(() => document.querySelectorAll('button[title="Done with this"]').length === 0), 15_000)
-  // The thing and its date are still on the page (the fleet, the year strip);
-  // what must be gone is the row in the queue, which is the only place a date
-  // carries a "Done with this" button.
-  const cleared = await P.evaluate(async () => ({ queue: document.querySelectorAll('button[title="Done with this"]').length > 0, pending: (await window.Capacitor.Plugins.LocalNotifications.getPending()).notifications.length }))
-  check('"Done with this" on the notification clears the date in the app', !!done && !cleared.queue, JSON.stringify(cleared))
+  // The queue now also holds the camera's warranty, which arrived from the
+  // web; what must be gone is the tablet's row.
+  const tabletRow = () => P.evaluate(() => [...document.querySelectorAll('button[title="Done with this"]')].some((b) => (b.closest('.group')?.textContent ?? '').includes('Android Check Tablet')))
+  await waitFor(async () => !(await tabletRow()), 15_000)
+  const cleared = { queue: await tabletRow(), pending: await P.evaluate(async () => JSON.parse((await window.Capacitor.Plugins.Reminders.pending()).reminders).filter((r) => /Android Check Tablet/.test(r.body)).length) }
+  check('and the date is cleared in the app, with no reminder left for it', !!done && !cleared.queue && cleared.pending === 0, JSON.stringify(cleared))
 }
 
 // ── Back, all the way out ────────────────────────────────────────────────────

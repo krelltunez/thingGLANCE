@@ -86,6 +86,10 @@ dependencies {
     // Home-screen widgets.
     implementation "androidx.glance:glance-appwidget:$glanceVersion"
     implementation "androidx.glance:glance-material3:$glanceVersion"
+    // The background refresh (refresh/RefreshWorker.kt): scheduled by
+    // WorkManager, and serving the web files to a WebView with no Activity.
+    implementation "androidx.work:work-runtime-ktx:$workManagerVersion"
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     // The native reader for the vault's event stream (sse/VaultSseClient.kt).
     // Already present through Glance; named here so that cannot change it.
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"

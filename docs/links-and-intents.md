@@ -61,7 +61,7 @@ A failure answers `success: false` with a `code` (`invalid`, `not_found`, `unava
 
 There is no delete, on purpose.
 
-The first real caller is the Android home-screen widget: its tick queues `decide` natively and the app applies it on its next run ([android.md](android.md#widgets)). A notification's "Done with this" is the second.
+The first real caller is the Android home-screen widget: its tick queues `decide` natively and the app applies it on its next run ([android.md](android.md#widgets)). A notification's "Done with this" is the second, through the same queue. A background refresh applies either with the app closed.
 
 ### Rules every caller gets
 

@@ -19,6 +19,7 @@ import type { ExternalWrite } from '@/intents/handleIntent'
 import { currentSnapshot, dispatchExternalWrite } from '@/intents/inbound'
 import { subscribeHousehold } from '@/multiuser/settings'
 import { subscribeSettings } from '@/state/settings'
+import { syncNow } from '@/sync/manager'
 
 export interface WidgetLabels {
   decideTitle: string
@@ -26,8 +27,12 @@ export interface WidgetLabels {
   nextTitle: string
   nextEmpty: string
   today: string
-  // What the tick on a row is called, for screen readers.
+  // What the tick on a row is called, for screen readers, and the button on
+  // a reminder.
   done: string
+  // The name Android shows for the reminders' notification channel.
+  channel: string
+  channelDescription: string
   // "{{n}}d", "{{n}}mo", "{{n}}y": the units of the T-minus countdown.
   days: string
   months: string
@@ -47,10 +52,32 @@ interface WidgetBridgePlugin {
   // { action, payload, clientId }. They stay queued until acknowledged.
   pendingWrites(): Promise<{ writes: string }>
   acknowledgeWrites(options: { clientIds: string[] }): Promise<void>
-  addListener(eventName: 'pendingWrites', listener: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: 'pendingWrites' | 'refreshRequested', listener: () => void): Promise<PluginListenerHandle>
+  // The last few background refreshes, newest last: a JSON array.
+  refreshLog(): Promise<{ log: string }>
 }
 
 export const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge')
+
+// The native side as this module needs it. The app reaches it through the
+// plugin above; a background refresh, which has no Capacitor, reaches the
+// same native code through its own bridge (headless/headlessRefresh.ts).
+export interface NativeSurface {
+  updateSnapshot(json: string): Promise<void>
+  pendingWrites(): Promise<string>
+  acknowledgeWrites(clientIds: string[]): Promise<void>
+}
+
+const pluginSurface: NativeSurface = {
+  updateSnapshot: (json) => WidgetBridge.updateSnapshot({ json }),
+  pendingWrites: async () => (await WidgetBridge.pendingWrites()).writes,
+  acknowledgeWrites: (clientIds) => WidgetBridge.acknowledgeWrites({ clientIds }),
+}
+
+// Builds the payload and hands it over, once, now.
+export async function pushPayloadNow(surface: NativeSurface = pluginSurface): Promise<void> {
+  await surface.updateSnapshot(JSON.stringify(await widgetPayload()))
+}
 
 // More dates than the app's own lists show: a tall widget scrolls.
 const WIDGET_EVENTS = 12
@@ -68,6 +95,8 @@ export function widgetLabels(): WidgetLabels {
     nextEmpty: tr('widget.next.empty'),
     today: tr('widget.today'),
     done: tr('notify.done'),
+    channel: tr('notify.channel'),
+    channelDescription: tr('notify.channelDescription'),
     days: template('time.days'),
     months: template('time.months'),
     years: template('time.years'),
@@ -79,8 +108,9 @@ export async function widgetPayload(): Promise<WidgetPayload> {
 }
 
 // Everything in the payload except the moment it was made, so an unchanged
-// one is not written (and every widget redrawn) again.
-const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '', reminders: [] } })
+// one is not written again. The reminder plan counts: the native side
+// schedules from it, and it moves when the reminder time or a date does.
+const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '' } })
 
 // ── Writes made on the home screen ───────────────────────────────────────────
 
@@ -91,37 +121,39 @@ const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapsho
 // The order matters. A write is acknowledged (and so removed from the queue)
 // only after the widgets have been handed a snapshot that already reflects it.
 // Acknowledge first, and the row would flash back until the next snapshot.
-let collecting: Promise<void> = Promise.resolve()
+let collecting: Promise<number> = Promise.resolve(0)
 
-export function collectWidgetWrites(afterApplying: () => Promise<void>): Promise<void> {
+// Resolves with how many of the writes changed something.
+export function collectWidgetWrites(afterApplying: () => Promise<void>, surface: NativeSurface = pluginSurface): Promise<number> {
   collecting = collecting.then(async () => {
     let writes: ExternalWrite[] = []
     try {
-      const parsed: unknown = JSON.parse((await WidgetBridge.pendingWrites()).writes)
+      const parsed: unknown = JSON.parse(await surface.pendingWrites())
       if (Array.isArray(parsed)) writes = parsed.filter((w): w is ExternalWrite => !!w && typeof w === 'object' && typeof (w as ExternalWrite).clientId === 'string')
     } catch {
-      return
+      return 0
     }
-    if (!writes.length) return
+    if (!writes.length) return 0
     const settled: string[] = []
+    let changed = 0
     for (const write of writes) {
       try {
         // Applied, already applied, or refused for good (the date is gone):
         // all three are finished with. Only an exception is worth another try.
-        await dispatchExternalWrite(write)
+        const result = await dispatchExternalWrite(write)
+        if (result.success && !result.deduped) changed += 1
         settled.push(write.clientId!)
       } catch { /* left queued for the next collection */ }
     }
-    if (!settled.length) return
+    if (!settled.length) return 0
     await afterApplying().catch(() => {})
-    await WidgetBridge.acknowledgeWrites({ clientIds: settled }).catch(() => {})
-  }).catch(() => {})
+    await surface.acknowledgeWrites(settled).catch(() => {})
+    return changed
+  }).catch(() => 0)
   return collecting
 }
 
-// `onSnapshot` is handed every snapshot as it is made, changed or not: the
-// reminder plan inside it moves with the clock, which the widgets' own
-// fingerprint deliberately ignores.
+// `onSnapshot` is handed every snapshot as it is made, changed or not.
 export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => void): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let last = ''
@@ -132,7 +164,7 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
       try { onSnapshot?.(payload.snapshot) } catch { /* a listener must not stop the widgets */ }
       const print = fingerprint(payload)
       if (print === last) return
-      await WidgetBridge.updateSnapshot({ json: JSON.stringify(payload) })
+      await pluginSurface.updateSnapshot(JSON.stringify(payload))
       last = print
     } catch {
       // Not written this time; the next change tries again.
@@ -156,6 +188,10 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
   // side says there is one (the app is running), and on coming to the front.
   collect()
   void WidgetBridge.addListener('pendingWrites', collect)
+  // The routine background refresh came due while the app is alive but not
+  // on screen. A second page must never work on the same storage, so the
+  // native side asks this one to do the same work: sync, collect, hand over.
+  void WidgetBridge.addListener('refreshRequested', () => { void syncNow().finally(() => { collect(); soon() }) })
   // Coming back after midnight, the same data makes a different snapshot.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { collect(); soon() }

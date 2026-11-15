@@ -12,6 +12,8 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.thingglance.app.glance.DecideWidgetReceiver
 import com.thingglance.app.glance.NextUpWidgetReceiver
+import com.thingglance.app.reminders.ReminderPlan
+import com.thingglance.app.reminders.ReminderScheduler
 
 // Takes the widget payload from the web app, keeps it, and redraws the
 // widgets. Registered in MainActivity; the web side is
@@ -28,6 +30,7 @@ class WidgetBridgePlugin : Plugin() {
         }
         SharedDataStore.writeWidgetPayload(context, json)
         refreshAll(context)
+        applyReminders(context, json)
         call.resolve()
     }
 
@@ -54,6 +57,12 @@ class WidgetBridgePlugin : Plugin() {
         live = java.lang.ref.WeakReference(this)
     }
 
+    // The last few background refreshes, newest last, as JSON.
+    @PluginMethod
+    fun refreshLog(call: PluginCall) {
+        call.resolve(JSObject().put("log", SharedDataStore.refreshLog(context)))
+    }
+
     // Asks the launcher to offer a widget for the home screen (Android 8+; a
     // launcher may not support it). The user still confirms in the launcher.
     @PluginMethod
@@ -68,6 +77,15 @@ class WidgetBridgePlugin : Plugin() {
     companion object {
         private var live: java.lang.ref.WeakReference<WidgetBridgePlugin>? = null
 
+        // The routine refresh came due while the app is alive but not on
+        // screen: the app does the work itself, in its own page. Answers false
+        // when there is no page to ask.
+        fun askLiveAppToRefresh(): Boolean {
+            val plugin = live?.get() ?: return false
+            plugin.notifyListeners("refreshRequested", JSObject())
+            return true
+        }
+
         // Tells a running app there is something to collect. With no app
         // running there is nobody to tell; it collects on its next start.
         fun announcePendingWrites() {
@@ -78,6 +96,26 @@ class WidgetBridgePlugin : Plugin() {
             "decide" to DecideWidgetReceiver::class.java,
             "next" to NextUpWidgetReceiver::class.java,
         )
+
+        // The snapshot carries the reminder plan as well as what widgets
+        // show: Android's alarms are made to match it (ReminderScheduler).
+        // The same call serves the app on screen and a background refresh.
+        fun applyReminders(context: Context, payloadJson: String) {
+            try {
+                val root = org.json.JSONObject(payloadJson)
+                val labels = root.optJSONObject("labels")
+                ReminderScheduler.apply(
+                    context,
+                    ReminderPlan.parse(root.getJSONObject("snapshot").optJSONArray("reminders")),
+                    labels?.let {
+                        ReminderScheduler.Labels(it.optString("channel", ""), it.optString("channelDescription", ""), it.optString("done", ""))
+                            .takeIf { l -> l.channel.isNotBlank() && l.done.isNotBlank() }
+                    },
+                )
+            } catch (e: Exception) {
+                // An unreadable payload leaves what is scheduled as it was.
+            }
+        }
 
         // Redraws every placed widget from what is stored.
         fun refreshAll(context: Context) {

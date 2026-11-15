@@ -107,6 +107,10 @@ export function drainIntents(): void {
   void poll()
 }
 
+// The same drain, for a caller that has to know when it is finished (a
+// background refresh, which ends when its work does).
+export const drainIntentsNow = (): Promise<void> => poll()
+
 let pollerStarted = false
 
 // Once on start, on focus, and on an interval: the sibling apps' cadence.

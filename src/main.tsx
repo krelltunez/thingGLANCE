@@ -7,7 +7,9 @@ import './index.css'
 import { i18nReady } from './i18n'
 import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
+import { headlessBridge, headlessShell } from './headless/headlessMode'
 import { startCapacitorShell } from './native/capacitor'
+import { registerShell } from './native/shell'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
 import { settleKeyStorage } from './sync/keyHooks'
 import { hydrateSecrets } from './sync/secrets'
@@ -23,6 +25,12 @@ if (typeof crypto.randomUUID !== 'function') {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}` as `${string}-${string}-${string}-${string}-${string}`
   }
 }
+
+// A background refresh: this same bundle, loaded by the Android shell with no
+// screen (src/headless/). It is a shell like any other, with its own transport
+// and keystore, and it runs its own short list instead of the app.
+const headless = headlessBridge()
+if (headless) registerShell(headlessShell(headless))
 
 // A native shell hands over its keystore and its network stack before
 // anything else looks for them. Does nothing in a browser.
@@ -44,7 +52,9 @@ settleServiceWorker()
 // keeps in its keystore: the sync engines read the connection as they mount.
 // And the starting language, so nothing paints in English first. On the web,
 // in English, both resolve at once.
-void Promise.allSettled([hydrateSecrets().then(settleKeyStorage), i18nReady]).then(() => {
+if (headless) {
+  void import('./headless/headlessRefresh').then(({ runHeadlessRefresh }) => runHeadlessRefresh({ bridge: headless }))
+} else void Promise.allSettled([hydrateSecrets().then(settleKeyStorage), i18nReady]).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

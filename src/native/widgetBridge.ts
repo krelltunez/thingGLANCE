@@ -11,6 +11,7 @@
 
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { liveQuery } from 'dexie'
+import { verdictLabel, type Verdict } from '@/core/health'
 import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import { db } from '@/db/client'
@@ -38,11 +39,27 @@ export interface WidgetLabels {
   // The name Android shows for the reminders' notification channel.
   channel: string
   channelDescription: string
+  // The newer widgets: the add tile, plan charges, and a single thing (its
+  // picker included, which is drawn natively and so needs its words too).
+  addThing: string
+  chargesTitle: string
+  chargesEmpty: string
+  thingTitle: string
+  thingPick: string
+  thingAuto: string
+  thingNone: string
+  thingGone: string
+  // A verdict's name by its code (`things[].verdict` in the snapshot).
+  verdicts: Record<string, string>
   // "{{n}}d", "{{n}}mo", "{{n}}y": the units of the T-minus countdown.
   days: string
   months: string
   years: string
 }
+
+export type WidgetKind = 'decide' | 'next' | 'charges' | 'thing' | 'add'
+
+const VERDICT_CODES: Verdict[] = ['prime', 'solid', 'watch', 'replace', 'overdue', 'retired', 'unknown']
 
 export interface WidgetPayload {
   snapshot: GlanceSnapshot
@@ -56,7 +73,7 @@ export interface WidgetPayload {
 interface WidgetBridgePlugin {
   updateSnapshot(options: { json: string }): Promise<void>
   // Asks the launcher to offer one of the widgets for the home screen.
-  pinWidget(options: { kind: 'decide' | 'next' }): Promise<{ supported: boolean }>
+  pinWidget(options: { kind: WidgetKind }): Promise<{ supported: boolean }>
   // Writes made on the home screen and not yet applied: a JSON array of
   // { action, payload, clientId }. They stay queued until acknowledged.
   pendingWrites(): Promise<{ writes: string }>
@@ -108,6 +125,15 @@ export function widgetLabels(): WidgetLabels {
     sent: tr('parts.inDayglance'),
     channel: tr('notify.channel'),
     channelDescription: tr('notify.channelDescription'),
+    addThing: tr('widget.add'),
+    chargesTitle: tr('widget.charges.title'),
+    chargesEmpty: tr('widget.charges.empty'),
+    thingTitle: tr('widget.thing.title'),
+    thingPick: tr('widget.thing.pick'),
+    thingAuto: tr('widget.thing.auto'),
+    thingNone: tr('widget.thing.none'),
+    thingGone: tr('widget.thing.gone'),
+    verdicts: Object.fromEntries(VERDICT_CODES.map((v) => [v, verdictLabel(v)])),
     days: template('time.days'),
     months: template('time.months'),
     years: template('time.years'),

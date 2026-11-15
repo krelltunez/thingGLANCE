@@ -52,6 +52,24 @@ export function nextRenewal(s: Pick<Subscription, 'anchorDate' | 'cycle'>, from:
   return renewalsBetween(s, from, far)[0] ?? null
 }
 
+export interface Charge { subscriptionId: string; name: string; date: Day; amount: number }
+
+// Every charge that will actually be made from `from` through `days` days
+// later, soonest first. A cancelled plan and one that does not renew charge
+// nothing; a trial charges nothing before it converts.
+export function chargesWithin(subs: Subscription[], from: Day, days: number): Charge[] {
+  const to = dayjs(from).add(days, 'day').format(DAY)
+  const out: Charge[] = []
+  for (const s of subs) {
+    if (s.status === 'cancelled' || !s.autoRenew) continue
+    for (const date of renewalsBetween(s, from, to)) {
+      if (s.status === 'trial' && s.trialEnd && date < s.trialEnd) continue
+      out.push({ subscriptionId: s.id, name: s.name, date, amount: s.amount })
+    }
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.amount - a.amount))
+}
+
 export interface ForecastMonth { month: Day; total: number; items: { id: string; name: string; amount: number; date: Day }[] }
 
 // What will actually be charged in each of the next `months` calendar months.

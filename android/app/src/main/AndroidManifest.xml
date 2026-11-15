@@ -76,6 +76,53 @@
                 android:resource="@xml/next_up_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".glance.ThingWidgetReceiver"
+            android:label="@string/widget_thing_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/thing_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.ChargesWidgetReceiver"
+            android:label="@string/widget_charges_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/charges_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.AddThingWidgetReceiver"
+            android:label="@string/widget_add_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/add_widget_info" />
+        </receiver>
+
+        <!-- The picker for a single-thing widget, opened by the launcher when
+             one is placed. -->
+        <activity
+            android:name=".glance.ThingConfigActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.Dialog">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- Reminders: an alarm firing, "Done with this" on a notification,
              and setting the alarms again after a restart or an update. -->
         <receiver

@@ -991,7 +991,19 @@
       "title": "Next up",
       "empty": "Nothing coming up"
     },
-    "today": "today"
+    "today": "today",
+    "add": "Add a thing",
+    "charges": {
+      "title": "Plans, next 30 days",
+      "empty": "Nothing due in the next 30 days"
+    },
+    "thing": {
+      "pick": "Which thing?",
+      "auto": "Closest to the end of its window",
+      "none": "No things yet",
+      "gone": "No longer tracked",
+      "title": "A single thing"
+    }
   },
   "notify": {
     "channel": "Dates",

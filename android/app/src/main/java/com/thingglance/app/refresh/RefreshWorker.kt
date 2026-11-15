@@ -102,7 +102,13 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
                 if (WidgetBridgePlugin.askLiveAppToRefresh()) delay(LIVE_REFRESH_HOLD_MS)
                 return Result.success()
             }
-            is RefreshPolicy.Decision.Throttled -> return Result.success()
+            // Too soon after the last run. What was asked for is not dropped:
+            // one more run is set for when the floor has passed, and it will
+            // carry everything queued by then.
+            is RefreshPolicy.Decision.Throttled -> {
+                requestLater(appContext, RefreshPolicy.ON_DEMAND_FLOOR_MS - decision.sinceLastMs)
+                return Result.success()
+            }
             is RefreshPolicy.Decision.Run -> run(trigger, now)
         }
         return Result.success()
@@ -245,6 +251,17 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(ON_DEMAND_WORK, ExistingWorkPolicy.KEEP, request)
+        }
+
+        // The run that follows a throttled one. Its own name, because the work
+        // asking for it is still running under the other.
+        private fun requestLater(context: Context, delayMs: Long) {
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setInputData(Data.Builder().putString(KEY_TRIGGER, TRIGGER_ON_DEMAND).build())
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInitialDelay(maxOf(1_000L, delayMs), TimeUnit.MILLISECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("$ON_DEMAND_WORK-later", ExistingWorkPolicy.KEEP, request)
         }
 
         // The app's web files (assets/public, where `cap sync` puts them) at

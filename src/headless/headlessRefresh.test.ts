@@ -151,3 +151,20 @@ describe('http for a headless run', () => {
     }
   })
 })
+
+describe('a send that could not go out', async () => {
+  const { isUnsentSend } = await import('@/native/widgetBridge')
+  it('stays queued when the vault could not be reached, so the task is not lost', () => {
+    expect(isUnsentSend({ action: 'send', clientId: 'w' }, { success: false, code: 'failed', error: 'Could not reach GLANCEvault' })).toBe(true)
+  })
+  it('is finished with in every other case', () => {
+    // Sent, or sent before.
+    expect(isUnsentSend({ action: 'send', clientId: 'w' }, { success: true })).toBe(false)
+    expect(isUnsentSend({ action: 'send', clientId: 'w' }, { success: true, deduped: true })).toBe(false)
+    // dayGLANCE was switched off, or the date is gone: trying again cannot help.
+    expect(isUnsentSend({ action: 'send', clientId: 'w' }, { success: false, code: 'unavailable' })).toBe(false)
+    expect(isUnsentSend({ action: 'send', clientId: 'w' }, { success: false, code: 'not_found' })).toBe(false)
+    // A "done" never waits on the network.
+    expect(isUnsentSend({ action: 'decide', clientId: 'w' }, { success: false, code: 'failed' })).toBe(false)
+  })
+})

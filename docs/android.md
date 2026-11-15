@@ -39,7 +39,8 @@ To open the project in Android Studio: `npx cap open android`.
 - a thing added on the phone reaches a web device through a real vault, and the other way;
 - the native reader holds the live stream, and a change made on the web reaches the open phone by itself;
 - both widgets can be placed, show the right date and countdown, and open the app on a tap;
-- the tick on a widget row clears the date with the app not running, the write waits in a queue, and the app applies it once when it next runs;
+- the tick on a widget row clears the date with the app not running, the write waits in a queue, and is applied once;
+- "Send to dayGLANCE" on a widget row, with the app closed, marks the row at once and reaches a web device as a date handed to dayGLANCE;
 - a reminder is held at the chosen time and delivered by Android with the app in the background; "Done with this" on it dismisses it without opening the app, and a widget tick cancels a date's reminder;
 - a background refresh carries a tick to a web device, and brings a thing added on the web to the phone's widgets and reminders, with the phone app never opened;
 - after being killed, the app is still connected and asks for no passphrase.
@@ -100,8 +101,8 @@ Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/
 
 | Widget | Shows |
 | --- | --- |
-| **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the tick at its end clears it without opening the app; the title opens the queue. |
-| **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. When it is showing a date that needs a decision it has the same tick, and clearing it brings the next one up. A date that is merely the nearest ahead has no tick, as in the app. |
+| **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the buttons at its end send it to dayGLANCE or clear it, without opening the app; the title opens the queue. |
+| **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. When it is showing a date that needs a decision it has the same buttons, and clearing it brings the next one up. A date that is merely the nearest ahead has none, as in the app. |
 
 How they get their content:
 
@@ -110,7 +111,8 @@ How they get their content:
 - **A widget reads the payload inside its composition** (`rememberWidgetData`). Reading it once before composing is the obvious thing and is wrong: Glance keeps a drawn widget's composition alive for a while, and an update only recomposes it with what it read at the start.
 - **A missing or unreadable payload draws as "open the app"**, never as the system's error tile. Rows without a key or a real date are left out.
 - **A tap on a row is a `thingglance://` link** (the snapshot carries one for every date): it opens the app somewhere and changes nothing.
-- **The tick is the one thing a widget can change, and it does not change it itself.** A widget cannot run the app, so `ClearDateAction` queues a write in `SharedDataStore`, in the shape the app's one door for outside writes takes (`{ action, payload, clientId }`), with an id it mints. The row leaves the widget at once, because a widget hides any date with a write waiting. The app collects the queue when it starts, when it comes to the front, and straight away if it happens to be running (`collectWidgetWrites` in `src/native/widgetBridge.ts`), and applies each through `dispatchExternalWrite`, so a write collected twice is applied once. A write is taken off the queue only after the widgets have been handed a snapshot that reflects it; the other way round, the row would flash back.
+- **"Send to dayGLANCE" is offered only when the app is connected to dayGLANCE** (the payload says so). A button that can only fail is worse than no button. A date sent this way reads as sent at once and keeps its tick; the app does the sending, since it holds the key and the connection. If the vault cannot be reached the send stays queued and is tried again, so the task is not silently lost; if dayGLANCE has been switched off meanwhile it is dropped and the row goes back to open.
+- **The buttons are the only things a widget can change, and it does not change them itself.** A widget cannot run the app, so `ClearDateAction` queues a write in `SharedDataStore`, in the shape the app's one door for outside writes takes (`{ action, payload, clientId }`), with an id it mints. The row leaves the widget at once, because a widget hides any date with a write waiting. The app collects the queue when it starts, when it comes to the front, and straight away if it happens to be running (`collectWidgetWrites` in `src/native/widgetBridge.ts`), and applies each through `dispatchExternalWrite`, so a write collected twice is applied once. A write is taken off the queue only after the widgets have been handed a snapshot that reflects it; the other way round, the row would flash back.
 - **The rest follows without the app being opened.** The date's reminders on this phone are cancelled at once, and a background refresh is asked for, which carries the write to the vault and so to the household's other devices.
 
 Settings has an "add to home screen" button for each (Android 8 and later, where the launcher supports it).
@@ -124,7 +126,7 @@ Android notifications for the dates that are worth one. Which dates, when, and o
 - **The snapshot is the hand-over.** The payload the widgets draw from carries the reminder plan too. Whenever it arrives (`WidgetBridgePlugin.updateSnapshot`, or the same call from a background refresh), `ReminderScheduler` makes Android's alarms match it: what is new or changed is scheduled, what is gone is cancelled, and an unchanged plan touches nothing. `ReminderPlan.diff` is the Kotlin mirror of `diffReminders()` in core, and `ReminderPlanTest` holds the two together, down to the id hash.
 - **Inexact alarms, on purpose.** "Your warranty ends in a week" does not need to arrive to the second, and exact alarms are a permission Play restricts to alarm clocks and calendars. Expect a reminder a minute or two after its time.
 - **Permission is asked once**, by Android's own prompt, at the first moment there is something to remind about (Android 13 and later; older versions need none). Settings → General has the switch and the time of day. Alarms are set either way; without permission Android shows nothing.
-- **A tap opens the date** (a `thingglance://` link). **"Done with this" does not open the app:** it dismisses the notification, cancels the date's other reminders, takes it off the widgets, and queues the write for the app, exactly as a widget tick does.
+- **A tap opens the date** (a `thingglance://` link). **The buttons do not open the app.** "Done with this" dismisses the notification, cancels the date's other reminders, takes it off the widgets, and queues the write for the app, exactly as a widget tick does. "Send to dayGLANCE" (shown when the app is connected to dayGLANCE) does the same with a send: the date is dayGLANCE's to remind about from then on.
 - **A tick on a widget cancels that date's reminders at once**, on this phone, without waiting for the app.
 - **Words come from the app.** The title and body are the snapshot's. The channel name and the button label travel with the payload and are kept, so a reminder that fires while the app is closed still has them.
 - **After a restart of the phone, or an update of the app,** the alarms are set again from what was held. One that came due in the meantime is dropped, not sent late.
@@ -142,7 +144,7 @@ What a run does, in order: sync with the vault; apply what was ticked on widgets
 - **An allowlist on both sides.** The run starts only what its list needs; nothing renders. `HeadlessBridge` has nine methods and no others, and a test holds the web side to exactly those.
 - **Two pages never work on the same storage.** If the app is opened during a run, `MainActivity` destroys the run's WebView before its own page loads, and the run also checks between steps. Nothing is lost: a write leaves the native queue only after it has been applied and the home screen updated, and whatever was applied but not yet pushed goes up with the app's own first sync.
 - **If the app is alive but not on screen** when the routine run comes due, no second page is started. The app's own page is asked to do the same work.
-- **Two triggers.** The routine run is periodic work, about every six hours (Android decides exactly when). The other is asked for by a widget tick or a notification's "Done with this" when the app is closed, waits for a network, and is not repeated within a minute, so several ticks are one run.
+- **Two triggers.** The routine run is periodic work, about every six hours (Android decides exactly when). The other is asked for by a widget tick or a notification's "Done with this" when the app is closed, waits for a network, and is not repeated within a minute: a request that comes too soon is not dropped but answered by one more run when the minute is up, so several taps are one run.
 - **It leaves a record.** The last twenty runs are kept (what triggered each, when, how it went). Settings → General shows when the last one finished.
 
 On the emulator a run takes well under a second of work.
@@ -159,5 +161,5 @@ Other choices worth knowing:
 ## Not there yet
 
 - **More widgets** (a single thing, plans this month, an add tile).
-- **"Send to dayGLANCE" on a notification**, Quick Settings tiles, Tasker.
+- Quick Settings tiles, Tasker.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

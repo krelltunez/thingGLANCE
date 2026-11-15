@@ -19,7 +19,8 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ReminderScheduler.ACTION_FIRE -> show(context, intent.getStringExtra(ReminderScheduler.EXTRA_ID) ?: return)
-            ACTION_DONE -> done(context, intent)
+            ACTION_DONE -> act(context, intent, send = false)
+            ACTION_SEND -> act(context, intent, send = true)
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> ReminderScheduler.rearm(context)
         }
     }
@@ -31,13 +32,15 @@ class ReminderReceiver : BroadcastReceiver() {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         // A tap opens the date: a thingglance:// link, like every other way in.
         val open = PendingIntent.getActivity(context, r.numericId, openLinkIntent(context, r.link), flags)
-        val done = PendingIntent.getBroadcast(
-            context, r.numericId,
-            Intent(context, ReminderReceiver::class.java).setAction(ACTION_DONE)
-                .putExtra(EXTRA_EVENT_KEY, r.eventKey).putExtra(ReminderScheduler.EXTRA_ID, r.id).putExtra(EXTRA_NOTIFICATION, r.numericId),
-            flags,
-        )
-        val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL)
+        val button = { action: String ->
+            PendingIntent.getBroadcast(
+                context, r.numericId,
+                Intent(context, ReminderReceiver::class.java).setAction(action)
+                    .putExtra(EXTRA_EVENT_KEY, r.eventKey).putExtra(ReminderScheduler.EXTRA_ID, r.id).putExtra(EXTRA_NOTIFICATION, r.numericId),
+                flags,
+            )
+        }
+        val builder = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setColor(0xFF0284C7.toInt())
             .setContentTitle(r.title)
@@ -47,25 +50,28 @@ class ReminderReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setWhen(r.at)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .addAction(0, labels.done, done)
-            .build()
+            .addAction(0, labels.done, button(ACTION_DONE))
+        // Offered only when the app is connected to dayGLANCE.
+        if (labels.send.isNotBlank()) builder.addAction(0, labels.send, button(ACTION_SEND))
         try {
-            NotificationManagerCompat.from(context).notify(r.numericId, notification)
+            NotificationManagerCompat.from(context).notify(r.numericId, builder.build())
         } catch (e: SecurityException) {
             // Notifications are not allowed for the app. Nothing to show.
         }
     }
 
-    // "Done with this" on the notification. It does not open the app: the
-    // write is queued for it (as a widget tick is), with the reminder's own id
-    // so that it is applied once, and everything else for the date is taken
-    // down straight away.
-    private fun done(context: Context, intent: Intent) {
+    // A button on the notification: "Done with this", or "Send to dayGLANCE".
+    // Neither opens the app. The write is queued for it (as a widget's is),
+    // with the reminder's own id so that it is applied once, and everything
+    // else for the date is taken down straight away: it is dealt with, or it
+    // is dayGLANCE's to remind about now.
+    private fun act(context: Context, intent: Intent, send: Boolean) {
         val key = intent.getStringExtra(EXTRA_EVENT_KEY).orEmpty()
         val id = intent.getStringExtra(ReminderScheduler.EXTRA_ID).orEmpty()
         NotificationManagerCompat.from(context).cancel(intent.getIntExtra(EXTRA_NOTIFICATION, 0))
         if (key.isEmpty()) return
-        SharedDataStore.queueDecide(context, key, "notification:$id:done")
+        if (send) SharedDataStore.queueSend(context, key, "notification:$id:send")
+        else SharedDataStore.queueDecide(context, key, "notification:$id:done")
         ReminderScheduler.cancelForEvent(context, key)
         WidgetBridgePlugin.refreshAll(context)
         WidgetBridgePlugin.announcePendingWrites()
@@ -74,6 +80,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_DONE = "com.thingglance.app.reminders.DONE"
+        const val ACTION_SEND = "com.thingglance.app.reminders.SEND"
         const val EXTRA_EVENT_KEY = "event_key"
         const val EXTRA_NOTIFICATION = "notification_id"
     }

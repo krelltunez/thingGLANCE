@@ -11,7 +11,7 @@ import java.util.GregorianCalendar
 // These pin that against the web app's own rules (src/core/dates.ts) and
 // against payloads that are missing, old or broken.
 class WidgetDataTest {
-    private val labels = WidgetLabels("Needs a decision", "Nothing", "Next up", "Nothing", "today", "Done with this", "{{n}}d", "{{n}}mo", "{{n}}y")
+    private val labels = WidgetLabels("Needs a decision", "Nothing", "Next up", "Nothing", "today", "Done with this", "Send to dayGLANCE", "In dayGLANCE", "{{n}}d", "{{n}}mo", "{{n}}y")
 
     @Test
     fun aDayIsARealCalendarDate() {
@@ -111,6 +111,47 @@ class WidgetDataTest {
         val after = data.without(setOf(data.next!!.key))
         assertEquals("iCloud+ renews", after.next?.title)
         assertFalse(after.needsDecision(after.next!!))
+    }
+
+    private val sendable = """
+        {"canSend":true,"snapshot":{"attention":[
+            {"key":"a","date":"2190-01-15","title":"Warranty ends","state":"open"},
+            {"key":"b","date":"2190-01-16","title":"Plan renews","state":"sent"}
+          ],"upcoming":[{"key":"c","date":"2190-02-01","title":"Far off","state":"open"}]}}
+    """.trimIndent()
+
+    @Test
+    fun sendingIsOfferedOnlyWhereItMakesSense() {
+        val data = WidgetSnapshot.parse(sendable)
+        val (open, sent) = data.attention
+        assertTrue(data.canSend(open))
+        // Already handed over: nothing to send again.
+        assertFalse(data.canSend(sent))
+        // Not waiting on anyone yet.
+        assertFalse(data.canSend(data.upcoming[0]))
+        // The app is not connected to dayGLANCE: no button at all.
+        val offline = WidgetSnapshot.parse(sendable.replace("\"canSend\":true", "\"canSend\":false"))
+        assertFalse(offline.canSend(offline.attention[0]))
+        assertFalse(WidgetSnapshot.parse(payload).canSend)
+    }
+
+    @Test
+    fun aDateSentFromTheHomeScreenReadsAsSentAtOnce() {
+        val data = WidgetSnapshot.parse(sendable).sending(setOf("a", "not-there"))
+        assertEquals("sent", data.attention[0].state)
+        assertFalse(data.canSend(data.attention[0]))
+        // It stays in view, as it does in the app, and can still be ticked off.
+        assertEquals(2, data.attention.size)
+        assertTrue(data.needsDecision(data.attention[0]))
+    }
+
+    @Test
+    fun theQueueKeepsEachKindOfWriteApart() {
+        val queue = org.json.JSONArray()
+            .put(org.json.JSONObject().put("action", "decide").put("payload", org.json.JSONObject().put("event_key", "done-one")))
+            .put(org.json.JSONObject().put("action", "send").put("payload", org.json.JSONObject().put("event_key", "sent-one")))
+        assertEquals(setOf("done-one"), com.thingglance.app.SharedDataStore.pendingKeys(queue, "decide"))
+        assertEquals(setOf("sent-one"), com.thingglance.app.SharedDataStore.pendingKeys(queue, "send"))
     }
 
     @Test

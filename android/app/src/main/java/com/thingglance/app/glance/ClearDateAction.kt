@@ -9,30 +9,41 @@ import com.thingglance.app.WidgetBridgePlugin
 import com.thingglance.app.refresh.RefreshWorker
 import com.thingglance.app.reminders.ReminderScheduler
 
-// "Done with this" on a widget row, without opening the app.
+// The buttons on a widget row, which act without opening the app.
 //
-// A widget cannot run the app, so it does not clear anything itself: it
-// queues the write (SharedDataStore) with an id of its own, and the app
-// applies it through its one door for writes from outside the next time it
-// runs (src/native/widgetBridge.ts: collectWidgetWrites). The row leaves the
-// widget at once, because the widget hides dates with a write waiting.
+// A widget cannot run the app, so it changes nothing itself: it queues the
+// write (SharedDataStore) with an id of its own, and the app applies it
+// through its one door for writes from outside, when it next runs or in a
+// background refresh (src/native/widgetBridge.ts: collectWidgetWrites).
 //
-// The date's reminders on this phone are cancelled at once. Other devices
-// learn of it when the app next syncs.
+// The widget shows the result at once all the same: a date with a "done"
+// waiting is left out, and one with a "send" waiting reads as sent. Either
+// way the date's reminders on this phone are cancelled: it has been dealt
+// with, or handed to dayGLANCE, which reminds in its own way.
+private fun act(context: Context, queue: () -> Unit, eventKey: String) {
+    queue()
+    ReminderScheduler.cancelForEvent(context, eventKey)
+    WidgetBridgePlugin.refreshAll(context)
+    WidgetBridgePlugin.announcePendingWrites()
+    // With the app closed there is nobody to announce it to: a background
+    // refresh carries it to the vault.
+    RefreshWorker.requestSoon(context)
+}
+
+internal val EVENT_KEY = ActionParameters.Key<String>("event_key")
+
+// "Done with this".
 class ClearDateAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val key = parameters[EVENT_KEY] ?: return
-        SharedDataStore.queueDecide(context, key)
-        // The date is dealt with: it should not remind while the app catches up.
-        ReminderScheduler.cancelForEvent(context, key)
-        WidgetBridgePlugin.refreshAll(context)
-        WidgetBridgePlugin.announcePendingWrites()
-        // With the app closed there is nobody to announce it to: a background
-        // refresh carries it to the vault.
-        RefreshWorker.requestSoon(context)
+        act(context, { SharedDataStore.queueDecide(context, key) }, key)
     }
+}
 
-    companion object {
-        val EVENT_KEY = ActionParameters.Key<String>("event_key")
+// "Send to dayGLANCE".
+class SendDateAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val key = parameters[EVENT_KEY] ?: return
+        act(context, { SharedDataStore.queueSend(context, key) }, key)
     }
 }

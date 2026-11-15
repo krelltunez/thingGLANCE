@@ -35,8 +35,10 @@ object ReminderScheduler {
     // What Android shows that is not the reminder's own text. From the app's
     // catalog, so in the app's language; kept so a reminder fired while the app
     // is closed still has them.
-    data class Labels(val channel: String, val channelDescription: String, val done: String) {
-        fun toJson(): JSONObject = JSONObject().put("channel", channel).put("channelDescription", channelDescription).put("done", done)
+    // `send` is empty when the app is not connected to dayGLANCE: then there is
+    // nothing to offer, and a reminder carries only "Done with this".
+    data class Labels(val channel: String, val channelDescription: String, val done: String, val send: String = "") {
+        fun toJson(): JSONObject = JSONObject().put("channel", channel).put("channelDescription", channelDescription).put("done", done).put("send", send)
     }
 
     private val FALLBACK = Labels("Dates", "Warranties ending, plans renewing, support running out.", "Done with this")
@@ -103,6 +105,7 @@ object ReminderScheduler {
             l.optString("channel", "").ifBlank { FALLBACK.channel },
             l.optString("channelDescription", "").ifBlank { FALLBACK.channelDescription },
             l.optString("done", "").ifBlank { FALLBACK.done },
+            l.optString("send", ""),
         )
     } catch (e: Exception) {
         FALLBACK

@@ -22,6 +22,8 @@ object SharedDataStore {
     private const val PREFS = "thingglance_shared"
     private const val KEY_WIDGETS = "widget_payload"
     private const val KEY_WRITES = "pending_writes"
+    const val ACTION_DECIDE = "decide"
+    const val ACTION_SEND = "send"
     // A write nobody collects is not kept for ever.
     private const val MAX_PENDING = 50
 
@@ -41,20 +43,28 @@ object SharedDataStore {
 
     // ── Pending writes ───────────────────────────────────────────────────────
 
-    // "Done with this" on a widget row. Queued in the shape the app's one door
-    // for outside writes takes: { action, payload, clientId }.
+    // "Done with this" on a widget row or a notification. Queued in the shape
+    // the app's one door for outside writes takes: { action, payload, clientId }.
     @Synchronized
     fun queueDecide(context: Context, eventKey: String, id: String = "widget:" + UUID.randomUUID()) {
+        queue(context, ACTION_DECIDE, eventKey, id, JSONObject().put("event_key", eventKey).put("state", "done"))
+    }
+
+    // "Send to dayGLANCE": the date becomes a task there. The app does the
+    // sending (it holds the key and the connection); this only asks.
+    @Synchronized
+    fun queueSend(context: Context, eventKey: String, id: String = "widget:" + UUID.randomUUID()) {
+        // Once it is done with, there is nothing left to send.
+        if (pendingKeys(pending(context), ACTION_DECIDE).contains(eventKey)) return
+        queue(context, ACTION_SEND, eventKey, id, JSONObject().put("event_key", eventKey))
+    }
+
+    private fun queue(context: Context, action: String, eventKey: String, id: String, payload: JSONObject) {
         val queue = pending(context)
         // One tap, one write: a second tap on a row that is already queued
         // (the widget had not redrawn yet) adds nothing.
-        if (pendingDecideKeys(queue).contains(eventKey)) return
-        queue.put(
-            JSONObject()
-                .put("action", "decide")
-                .put("clientId", id)
-                .put("payload", JSONObject().put("event_key", eventKey).put("state", "done")),
-        )
+        if (pendingKeys(queue, action).contains(eventKey)) return
+        queue.put(JSONObject().put("action", action).put("clientId", id).put("payload", payload))
         store(context, trimmed(queue))
     }
 
@@ -77,13 +87,18 @@ object SharedDataStore {
 
     // The dates with a "done" waiting to be applied: a widget leaves them out
     // straight away, without waiting for the app.
-    fun pendingDecideKeys(context: Context): Set<String> = pendingDecideKeys(pending(context))
+    fun pendingDecideKeys(context: Context): Set<String> = pendingKeys(pending(context), ACTION_DECIDE)
 
-    internal fun pendingDecideKeys(queue: JSONArray): Set<String> {
+    // The dates with a "send" waiting: a widget shows them as on their way.
+    fun pendingSendKeys(context: Context): Set<String> = pendingKeys(pending(context), ACTION_SEND)
+
+    internal fun pendingDecideKeys(queue: JSONArray): Set<String> = pendingKeys(queue, ACTION_DECIDE)
+
+    internal fun pendingKeys(queue: JSONArray, action: String): Set<String> {
         val keys = HashSet<String>()
         for (i in 0 until queue.length()) {
             val w = queue.optJSONObject(i) ?: continue
-            if (w.optString("action") != "decide") continue
+            if (w.optString("action") != action) continue
             val key = w.optJSONObject("payload")?.optString("event_key").orEmpty()
             if (key.isNotEmpty()) keys.add(key)
         }

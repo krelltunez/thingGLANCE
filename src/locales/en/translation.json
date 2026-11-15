@@ -796,6 +796,10 @@
       "widgets": "Home screen widgets",
       "widgetsHint": "Your dates on the home screen, without opening the app. Your launcher will ask where to put it.",
       "widgetsByHand": "Long-press your home screen and choose Widgets to add one.",
+      "tiles": "Quick Settings tiles",
+      "tilesHint": "For the panel you pull down from the top of the screen: how many dates are waiting on you, and a shortcut to add a thing.",
+      "tilesByHand": "Pull down Quick Settings, tap the pencil, and drag a thingGLANCE tile into place.",
+      "tilesAlready": "That tile is already in Quick Settings.",
       "reminders": "Reminders",
       "remindersHint": "A notification as a date comes into view, and a last call before it. Only for dates that fall to you, or to nobody.",
       "remindersOn": "Remind me on this device",
@@ -1003,6 +1007,11 @@
       "none": "No things yet",
       "gone": "No longer tracked",
       "title": "A single thing"
+    },
+    "tile": {
+      "none": "Nothing waiting",
+      "waiting_one": "{{count}} waiting",
+      "waiting_other": "{{count}} waiting"
     }
   },
   "notify": {

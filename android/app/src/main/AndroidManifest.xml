@@ -123,6 +123,31 @@
             </intent-filter>
         </activity>
 
+        <!-- Quick Settings tiles. Each opens the app at a thingglance:// link;
+             the first also says how many dates are waiting. Exported because
+             only the system may bind them (the permission). -->
+        <service
+            android:name=".tiles.DecideTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_notify"
+            android:label="@string/tile_decide"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".tiles.AddThingTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_widget_add"
+            android:label="@string/tile_add"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Reminders: an alarm firing, "Done with this" on a notification,
              and setting the alarms again after a restart or an update. -->
         <receiver

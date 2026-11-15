@@ -16,6 +16,10 @@
     <string name="widget_charges_description">What your plans are about to charge, and the total.</string>
     <string name="widget_add_label">Add a thing</string>
     <string name="widget_add_description">One tap to the add form.</string>
+    <!-- Quick Settings tiles, as Android lists them. Once the app has run a
+         tile takes its name from the app, in the app's language. -->
+    <string name="tile_decide">Needs a decision</string>
+    <string name="tile_add">Add a thing</string>
     <!-- Long-press shortcuts on the app icon. -->
     <string name="shortcut_add_thing">Add a thing</string>
     <string name="shortcut_add_plan">Add a plan</string>

@@ -100,7 +100,15 @@ const back = async () => { adb('shell', 'input', 'keyevent', '4'); await sleep(7
 // Everything on screen that has text, with where it is: the launcher and its
 // widgets included, which DevTools cannot see.
 function screen() {
-  adb('shell', 'uiautomator', 'dump', '/sdcard/tg-ui.xml')
+  // The dump tool is sometimes killed as it exits, or refuses while something
+  // on screen is still moving. Neither says anything about the app: try again.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try { adb('shell', 'uiautomator', 'dump', '/sdcard/tg-ui.xml'); break } catch (e) {
+      if (String(e.stdout ?? '').includes('dumped to')) break
+      if (attempt === 3) throw e
+      execFileSync('sleep', ['0.7'])
+    }
+  }
   const xml = adb('shell', 'cat', '/sdcard/tg-ui.xml')
   const nodes = []
   for (const m of xml.matchAll(/<node [^>]*?text="([^"]*)"[^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g)) {
@@ -565,6 +573,72 @@ await sleep(1500)
 P = await attach()
 check('a tap on it opens the add form, empty', foreground() === APP_ID && await sheets() === 1 && (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => 'missing')) === '')
 await closeForm()
+
+// ── Quick Settings tiles ─────────────────────────────────────────────────────
+// Android asks the user itself before adding a tile (13 and later).
+if (Number(adb('shell', 'getprop', 'ro.build.version.sdk').trim()) >= 33) {
+  // A tile outlives a reinstall: take off any that an earlier run left.
+  for (const service of ['DecideTileService', 'AddThingTileService']) adbQuiet('shell', 'cmd', 'statusbar', 'remove-tile', `${APP_ID}/.tiles.${service}`)
+  await openLink('thingglance://settings/general')
+  check('Settings offers the Quick Settings tiles', await P.getByText('Quick Settings tiles').isVisible().catch(() => false))
+  await back()
+  // The answer only comes once the user has chosen in Android's dialog, so
+  // the question is asked without waiting for it.
+  async function addTile(kind) {
+    await P.evaluate((k) => { window.__tile = null; void window.Capacitor.Plugins.WidgetBridge.addTile({ kind: k }).then((r) => { window.__tile = r }) }, kind)
+    await waitFor(async () => !!onScreen(screen(), 'Add tile') || (await P.evaluate(() => window.__tile)) !== null, 8000)
+    const dialog = screen()
+    if (onScreen(dialog, 'Add tile')) await tap(onScreen(dialog, 'Add tile'))
+    await waitFor(async () => (await P.evaluate(() => window.__tile)) !== null, 8000)
+    return { dialog, answer: await P.evaluate(() => window.__tile) }
+  }
+  const first = await addTile('decide')
+  check('Android asks before adding the "Needs a decision" tile, naming it in the app\'s words', !!onScreen(first.dialog, 'Needs a decision') && first.answer?.result === 'added', JSON.stringify(first.answer))
+  check('and the "Add a thing" tile', (await addTile('add')).answer?.result === 'added')
+  check('asked again, it says the tile is already there', (await addTile('decide')).answer?.result === 'already')
+  if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+
+  // New tiles go to the end of the panel, which is its last page; from
+  // Android 16 they are small, with their name only for a screen reader.
+  async function findTile(name) {
+    await home()
+    adb('shell', 'cmd', 'statusbar', 'expand-settings'); await sleep(1200)
+    adb('shell', 'cmd', 'statusbar', 'expand-settings'); await sleep(1500)
+    for (let page = 0; page < 4; page++) {
+      const node = onScreen(screen(), name)
+      if (node) return node
+      adb('shell', 'input', 'swipe', String(Math.round(screenW * 0.85)), String(Math.round(screenH * 0.38)), String(Math.round(screenW * 0.15)), String(Math.round(screenH * 0.38)), '250')
+      await sleep(1200)
+    }
+    return null
+  }
+  // What the panel holds for a tile, from the system's own account of it.
+  const tileState = (service) => {
+    const line = adbQuiet('shell', `dumpsys activity service com.android.systemui/.SystemUIService | grep 'QSTile.State\\[spec=custom(${APP_ID}/.tiles.${service})'`)
+    return { label: line.match(/,label=([^,]*),/)?.[1] ?? null, second: line.match(/,secondaryLabel=([^,]*),/)?.[1] ?? null, state: Number(line.match(/,state=(\d)/)?.[1] ?? -1) }
+  }
+  const waitingNow = Number(shared().match(/"counts":\{[^}]*"attention":(\d+)/)?.[1] ?? -1)
+
+  let tile = await findTile('Needs a decision')
+  shot('tiles')
+  const decideTile = tileState('DecideTileService')
+  check('the "Needs a decision" tile is in the panel, lit, and says how many are waiting', !!tile && waitingNow > 0 && decideTile.label === 'Needs a decision' && decideTile.second === `${waitingNow} waiting` && decideTile.state === 2, JSON.stringify({ waitingNow, ...decideTile }))
+  const addTileState = tileState('AddThingTileService')
+  check('the "Add a thing" tile is there too, and is not a switch', addTileState.label === 'Add a thing' && addTileState.state === 1, JSON.stringify(addTileState))
+  if (tile) await tap(tile)
+  await sleep(1500)
+  P = await attach()
+  const onTab = await P.evaluate(() => [...document.querySelectorAll('[role=tab]')].filter((t) => t.getAttribute('aria-selected') === 'true').map((t) => t.textContent.trim()).join(','))
+  check('a tap on it opens the app at what needs a decision', foreground() === APP_ID && onTab.startsWith('Glance') && await sheets() === 0, onTab)
+  if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+
+  tile = await findTile('Add a thing')
+  if (tile) await tap(tile)
+  await sleep(1500)
+  P = await attach()
+  check('a tap on the "Add a thing" tile opens the add form, empty', !!tile && foreground() === APP_ID && (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => 'missing')) === '')
+  await closeForm()
+}
 
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')

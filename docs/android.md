@@ -40,7 +40,8 @@ To open the project in Android Studio: `npx cap open android`.
 - the native reader holds the live stream, and a change made on the web reaches the open phone by itself;
 - both widgets can be placed, show the right date and countdown, and open the app on a tap;
 - the tick on a widget row clears the date with the app not running, the write waits in a queue, and the app applies it once when it next runs;
-- a reminder is scheduled at the chosen time, delivered by Android with the app in the background, and "Done with this" on it clears the date;
+- a reminder is held at the chosen time and delivered by Android with the app in the background; "Done with this" on it dismisses it without opening the app, and a widget tick cancels a date's reminder;
+- a background refresh carries a tick to a web device, and brings a thing added on the web to the phone's widgets and reminders, with the phone app never opened;
 - after being killed, the app is still connected and asks for no passphrase.
 
 ```bash
@@ -105,12 +106,12 @@ Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/
 How they get their content:
 
 - **The app writes it down.** `src/native/widgetBridge.ts` hands `WidgetBridgePlugin` a payload whenever the data, the household, the currency or the language changes, and once more as the app goes to the background. The payload is the snapshot from [snapshot.md](snapshot.md), the same object every other surface reads, plus the widgets' own few words, already in the app's language. The native side has no string catalog for them.
-- **Countdowns are worked out when the widget draws**, from each date, not baked in. A widget is drawn hours after the app last ran; "T-12d" has to be right then. The system redraws them every six hours even if the app is never opened.
+- **Countdowns are worked out when the widget draws**, from each date, not baked in. A widget is drawn hours after the app last ran; "T-12d" has to be right then. The system redraws them every six hours, and the background refresh hands them a new snapshot about as often.
 - **A widget reads the payload inside its composition** (`rememberWidgetData`). Reading it once before composing is the obvious thing and is wrong: Glance keeps a drawn widget's composition alive for a while, and an update only recomposes it with what it read at the start.
 - **A missing or unreadable payload draws as "open the app"**, never as the system's error tile. Rows without a key or a real date are left out.
 - **A tap on a row is a `thingglance://` link** (the snapshot carries one for every date): it opens the app somewhere and changes nothing.
 - **The tick is the one thing a widget can change, and it does not change it itself.** A widget cannot run the app, so `ClearDateAction` queues a write in `SharedDataStore`, in the shape the app's one door for outside writes takes (`{ action, payload, clientId }`), with an id it mints. The row leaves the widget at once, because a widget hides any date with a write waiting. The app collects the queue when it starts, when it comes to the front, and straight away if it happens to be running (`collectWidgetWrites` in `src/native/widgetBridge.ts`), and applies each through `dispatchExternalWrite`, so a write collected twice is applied once. A write is taken off the queue only after the widgets have been handed a snapshot that reflects it; the other way round, the row would flash back.
-- **Until the app has run, only the widget knows.** The date's reminder is still scheduled and other devices still show it. A background refresh would close that gap; it is not built yet.
+- **The rest follows without the app being opened.** The date's reminders on this phone are cancelled at once, and a background refresh is asked for, which carries the write to the vault and so to the household's other devices.
 
 Settings has an "add to home screen" button for each (Android 8 and later, where the launcher supports it).
 
@@ -118,16 +119,35 @@ Settings has an "add to home screen" button for each (Android 8 and later, where
 
 ## Reminders
 
-Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot; `src/native/notifications.ts` only makes what Android has pending match that plan.
+Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot. The scheduling is native (`reminders/`), so it works whoever brings the plan: the app on screen, a background refresh with no screen, or a tick on a widget.
 
-- **A diff, not a reschedule.** `diffReminders()` (in core, so every shell does it the same way) says what to schedule and what to cancel. Each notification carries a signature of what it shows, so one whose time or wording changed is replaced and one that is unchanged is left alone. It runs whenever the snapshot is rebuilt.
-- **Inexact alarms, on purpose.** "Your warranty ends in a week" does not need to arrive to the second. Exact alarms are a special permission on Android 12 and later that Play restricts to alarm clocks and calendars, so the app does not ask for it, and the manifest removes the one the notifications plugin declares. Expect a reminder a minute or two after its time.
-- **Permission is asked once**, by Android's own prompt, at the first moment there is something to remind about (Android 13 and later; older versions need none). Settings → General has the switch and the time of day. Without permission nothing is scheduled.
-- **A tap opens the date.** "Done with this" on the notification clears it, through the same door every write from outside uses (`dispatchExternalWrite`), with the reminder's own id, so a tap delivered twice clears once.
-- **Words come from the app.** The title and body are the snapshot's; the channel name and the action label come from the catalog and are registered again when the language changes.
-- **After a restart of the phone** the notifications plugin puts the pending ones back.
+- **The snapshot is the hand-over.** The payload the widgets draw from carries the reminder plan too. Whenever it arrives (`WidgetBridgePlugin.updateSnapshot`, or the same call from a background refresh), `ReminderScheduler` makes Android's alarms match it: what is new or changed is scheduled, what is gone is cancelled, and an unchanged plan touches nothing. `ReminderPlan.diff` is the Kotlin mirror of `diffReminders()` in core, and `ReminderPlanTest` holds the two together, down to the id hash.
+- **Inexact alarms, on purpose.** "Your warranty ends in a week" does not need to arrive to the second, and exact alarms are a permission Play restricts to alarm clocks and calendars. Expect a reminder a minute or two after its time.
+- **Permission is asked once**, by Android's own prompt, at the first moment there is something to remind about (Android 13 and later; older versions need none). Settings → General has the switch and the time of day. Alarms are set either way; without permission Android shows nothing.
+- **A tap opens the date** (a `thingglance://` link). **"Done with this" does not open the app:** it dismisses the notification, cancels the date's other reminders, takes it off the widgets, and queues the write for the app, exactly as a widget tick does.
+- **A tick on a widget cancels that date's reminders at once**, on this phone, without waiting for the app.
+- **Words come from the app.** The title and body are the snapshot's. The channel name and the button label travel with the payload and are kept, so a reminder that fires while the app is closed still has them.
+- **After a restart of the phone, or an update of the app,** the alarms are set again from what was held. One that came due in the meantime is dropped, not sent late.
 
-The device check sets the reminder time two minutes ahead, adds a thing whose warranty ends in exactly seven days, waits for Android to deliver the notification with the app in the background, and taps "Done with this".
+There is no notifications plugin: an earlier version scheduled from the web side through `@capacitor/local-notifications`, which could only happen with the app open.
+
+## Background refresh
+
+A few times a day, and soon after something is done on the home screen while the app is closed, the app catches up without being opened (`refresh/`, `src/headless/`).
+
+What a run does, in order: sync with the vault; apply what was ticked on widgets and notifications; sync again to push those; hand over a fresh snapshot, from which the widgets are redrawn and the reminders re-planned. A device with no vault still gets the last two, because dates move into their windows whether or not anything syncs.
+
+- **It is the web app, with no screen.** `RefreshWorker` boots the same bundle in a WebView that has no Activity, at `https://localhost/index.html?headless=refresh`, the app's own origin, so it works on the app's own storage. `main.tsx` runs `runHeadlessRefresh()` there instead of the app.
+- **It is a shell like any other.** There is no Capacitor without an Activity, so `HeadlessBridge` offers the run a keystore and HTTP, and `src/headless/headlessMode.ts` registers them through the same seams the app uses ([shells.md](shells.md)). From there on it is ordinary app code: the same engines, the same door for outside writes, the same snapshot.
+- **An allowlist on both sides.** The run starts only what its list needs; nothing renders. `HeadlessBridge` has nine methods and no others, and a test holds the web side to exactly those.
+- **Two pages never work on the same storage.** If the app is opened during a run, `MainActivity` destroys the run's WebView before its own page loads, and the run also checks between steps. Nothing is lost: a write leaves the native queue only after it has been applied and the home screen updated, and whatever was applied but not yet pushed goes up with the app's own first sync.
+- **If the app is alive but not on screen** when the routine run comes due, no second page is started. The app's own page is asked to do the same work.
+- **Two triggers.** The routine run is periodic work, about every six hours (Android decides exactly when). The other is asked for by a widget tick or a notification's "Done with this" when the app is closed, waits for a network, and is not repeated within a minute, so several ticks are one run.
+- **It leaves a record.** The last twenty runs are kept (what triggered each, when, how it went). Settings → General shows when the last one finished.
+
+On the emulator a run takes well under a second of work.
+
+`RefreshPolicyTest` covers the decisions; `src/headless/headlessRefresh.test.ts` covers the run's order, its failures and the allowlist. The device check ticks a date with the app killed and watches it reach a web device, then adds a thing on the web and watches it reach the phone's widgets and get a reminder, all with the phone app never opened. Android will not run periodic work ahead of its schedule however it is asked, so debug builds have a hook for the check (`DebugRefreshReceiver`, under `src/debug`, not in a release build).
 
 Other choices worth knowing:
 
@@ -140,5 +160,4 @@ Other choices worth knowing:
 
 - **More widgets** (a single thing, plans this month, an add tile).
 - **"Send to dayGLANCE" on a notification**, Quick Settings tiles, Tasker.
-- **A background refresh.** If the app is not opened for days, the widgets keep counting down correctly but do not learn of dates that have since entered their window.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

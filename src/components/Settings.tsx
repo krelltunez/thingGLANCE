@@ -52,6 +52,22 @@ function Block({ title, hint, children }: { title: string; hint?: ReactNode; chi
   )
 }
 
+// Android only: when the app last caught up without being opened, so that
+// widgets and reminders can be trusted (or the reason they cannot be).
+function BackgroundRefreshNote() {
+  const { t } = useTranslation()
+  const [last, setLast] = useState<{ outcome?: string; finishedAt?: number } | null>(null)
+  useEffect(() => {
+    void WidgetBridge.refreshLog().then(({ log }) => {
+      const entries: unknown = JSON.parse(log)
+      if (Array.isArray(entries) && entries.length) setLast(entries[entries.length - 1] as { outcome?: string; finishedAt?: number })
+    }).catch(() => {})
+  }, [])
+  if (!last?.finishedAt) return <p className="mt-3 text-xs text-faint">{t('settings.general.refreshNever')}</p>
+  const when = fmtMoment(last.finishedAt, 'day-time')
+  return <p className="mt-3 text-xs text-faint">{last.outcome === 'ran' ? t('settings.general.refreshRan', { when }) : t('settings.general.refreshFailed', { when })}</p>
+}
+
 // Android only: whether this device is reminded, and at what time of day.
 // The plan itself (which dates, whose device) is core's; this only holds the
 // two preferences and Android's own permission.
@@ -120,6 +136,7 @@ function General() {
             <button type="button" className="btn" onClick={() => void addWidget('decide')}><LayoutGrid size={15} /> {t('widget.decide.title')}</button>
             <button type="button" className="btn" onClick={() => void addWidget('next')}><LayoutGrid size={15} /> {t('widget.next.title')}</button>
           </div>
+          <BackgroundRefreshNote />
         </Block>
       )}
       <Block title={t('settings.general.webLookup')}>

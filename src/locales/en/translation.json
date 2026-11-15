@@ -800,7 +800,10 @@
       "remindersHint": "A notification as a date comes into view, and a last call before it. Only for dates that fall to you, or to nobody.",
       "remindersOn": "Remind me on this device",
       "remindersTime": "At",
-      "remindersBlocked": "Notifications are turned off for thingGLANCE in Android's settings."
+      "remindersBlocked": "Notifications are turned off for thingGLANCE in Android's settings.",
+      "refreshNever": "Widgets and reminders are also kept up to date a few times a day while the app is closed.",
+      "refreshRan": "Kept up to date while the app is closed. Last done {{when}}.",
+      "refreshFailed": "The last update made while the app was closed did not finish ({{when}}). Opening the app catches up."
     },
     "vault": {
       "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",

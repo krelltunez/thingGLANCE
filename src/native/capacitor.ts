@@ -12,8 +12,8 @@
 //   links      thingglance:// URLs the system hands the app go to openLink()
 //   back       the hardware back button closes what is on top, then leaves
 //   status bar follows the app's theme
-//   reminders  Android's pending notifications are kept equal to the reminder
-//              plan in the snapshot (native/notifications.ts)
+//   reminders  scheduled natively from the reminder plan in the snapshot
+//              (android: reminders/); only the permission prompt is here
 //   widgets    the snapshot is written to the native side whenever it changes
 //              (native/widgetBridge.ts)
 
@@ -22,7 +22,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { goBack } from './backStack'
 import { openLink } from './links'
-import { startNotifications, syncReminders } from './notifications'
+import { askOnceIfNeeded } from './notifications'
 import { registerShell, type SecureStore } from './shell'
 import { nativeEventStream } from './vaultSse'
 import { startWidgetBridge } from './widgetBridge'
@@ -97,9 +97,9 @@ export function startCapacitorShell(): void {
   handleBackButton()
   followTheme()
   if (Capacitor.getPlatform() === 'android') {
-    startNotifications()
-    // One snapshot feeds both: what the widgets show, and what Android should
-    // have pending as notifications.
-    startWidgetBridge((snapshot) => void syncReminders(snapshot.reminders))
+    // One snapshot feeds both: what the widgets show, and the reminder plan
+    // the native side schedules from. All that is left to do here is ask for
+    // permission the first time there is something to remind about.
+    startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
   }
 }

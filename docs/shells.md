@@ -31,7 +31,7 @@ or, from an Electron preload script, `window.thingglanceShell = { fetch, secureS
 
 It has to be in place before `src/main.tsx` runs, because boot reads the credentials from it before anything renders.
 
-The first real shell is Android: `src/native/capacitor.ts` registers the bridge, and [android.md](android.md) describes the native side of each seam.
+The first real shell is Android: `src/native/capacitor.ts` registers the bridge, and [android.md](android.md) describes the native side of each seam. Android's background refresh is a second, smaller one: a page with no screen and no Capacitor, which registers a transport and a keystore from its own bridge (`src/headless/headlessMode.ts`) and then runs ordinary app code.
 
 ## The network
 

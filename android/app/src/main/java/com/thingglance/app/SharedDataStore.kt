@@ -97,6 +97,31 @@ object SharedDataStore {
         return kept
     }
 
+    // ── The background refresh's own record ──────────────────────────────────
+
+    private const val KEY_REFRESH_AT = "refresh_last_at"
+    private const val KEY_REFRESH_LOG = "refresh_log"
+    private const val MAX_LOG = 20
+
+    fun lastRefreshAt(context: Context): Long = prefs(context).getLong(KEY_REFRESH_AT, 0L)
+
+    fun setLastRefreshAt(context: Context, at: Long) {
+        prefs(context).edit().putLong(KEY_REFRESH_AT, at).apply()
+    }
+
+    // The last few runs, newest last: what triggered each, when, and how it
+    // went. Settings shows the latest; the rest is for diagnosing a phone.
+    @Synchronized
+    fun appendRefreshLog(context: Context, entry: JSONObject) {
+        val log = try { JSONArray(prefs(context).getString(KEY_REFRESH_LOG, "[]")) } catch (e: Exception) { JSONArray() }
+        log.put(entry)
+        val kept = JSONArray()
+        for (i in maxOf(0, log.length() - MAX_LOG) until log.length()) kept.put(log.get(i))
+        prefs(context).edit().putString(KEY_REFRESH_LOG, kept.toString()).apply()
+    }
+
+    fun refreshLog(context: Context): String = prefs(context).getString(KEY_REFRESH_LOG, "[]") ?: "[]"
+
     private fun pending(context: Context): JSONArray = try {
         JSONArray(prefs(context).getString(KEY_WRITES, "[]"))
     } catch (e: Exception) {

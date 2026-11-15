@@ -14,6 +14,7 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.thingglance.app.automation.Automation
 import com.thingglance.app.glance.DecideWidgetReceiver
 import com.thingglance.app.glance.NextUpWidgetReceiver
 import com.thingglance.app.glance.ThingConfigActivity
@@ -56,7 +57,9 @@ class WidgetBridgePlugin : Plugin() {
         val ids = HashSet<String>()
         val given = call.getArray("clientIds")
         if (given != null) for (i in 0 until given.length()) ids.add(given.optString(i))
-        SharedDataStore.acknowledge(context, ids)
+        // `results` says how each went, as JSON by id: whoever asked for a
+        // write from outside is told (automation/).
+        Automation.acknowledged(context, SharedDataStore.acknowledge(context, ids), call.getString("results"))
         refreshAll(context)
         call.resolve()
     }

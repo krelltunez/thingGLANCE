@@ -640,6 +640,100 @@ if (Number(adb('shell', 'getprop', 'ro.build.version.sdk').trim()) >= 33) {
   await closeForm()
 }
 
+// ── Automation apps (Tasker) ─────────────────────────────────────────────────
+// There is no Tasker on the emulator, so `am broadcast` plays its part, and
+// the answers are addressed back to this app, where a receiver that exists
+// only in debug builds writes them to the log.
+{
+  // Addressed to the app's package, as an automation app must: Android does
+  // not deliver a broadcast with no package to an app that is not running.
+  const broadcast = (action, payload, addressed = true) => adbQuiet('shell', 'am', 'broadcast', '-a', `app.thingglance.${action}`, ...(addressed ? ['-p', APP_ID] : []), '--es', 'payload', `'${JSON.stringify(payload)}'`)
+  const answers = () => adbQuiet('logcat', '-d', '-v', 'raw', '-s', 'TgAutomationResult:I').split('\n').flatMap((line) => {
+    const cut = line.indexOf(' ')
+    try { return [{ action: line.slice(0, cut), result: JSON.parse(line.slice(cut + 1)) }] } catch { return [] }
+  })
+  const answersTo = (id) => answers().filter((a) => a.result.client_id === id)
+  const answered = async (id, count = 1, timeoutMs = 15_000) => { await waitFor(() => answersTo(id).length >= count, timeoutMs); return answersTo(id).pop()?.result ?? null }
+  const run = `${Date.now()}`
+  const uuid = (n) => `00000000-0000-4000-8000-${(run + n).slice(-12).padStart(12, '0')}`
+  const queries = () => answers().filter((a) => a.action === 'app.thingglance.QUERY')
+  const query = async () => { const before = queries().length; broadcast('QUERY', { reply_to: APP_ID }); await waitFor(() => queries().length > before, 8000); return queries().length > before ? queries().pop().result : null }
+
+  // Off until the user turns it on: nothing is stored, nothing is answered.
+  broadcast('CREATE', { name: 'Tasker Off Kettle', client_id: uuid(0), reply_to: APP_ID })
+  await sleep(3000)
+  check('with the switch off, a broadcast does nothing and is not answered', answersTo(uuid(0)).length === 0 && !shared().includes('Tasker Off Kettle') && (await query()) === null)
+
+  await openLink('thingglance://settings/integrations')
+  const allow = P.getByRole('switch', { name: /Accept actions from other apps/ })
+  await allow.click()
+  await sleep(800)
+  check('the switch is in Settings, and is kept where the receiver can read it', (await allow.getAttribute('aria-checked')) === 'true' && /name="automation_enabled" value="true"/.test(shared()))
+  await back()
+
+  const before = await query()
+  check('QUERY is answered at once with the snapshot', before?.success === true && before.snapshot?.version === 1 && before.snapshot.counts.things > 0, JSON.stringify(before))
+
+  broadcast('CREATE', { name: 'Tasker Kettle', price: '39.99', client_id: uuid(1), reply_to: APP_ID })
+  const made = await answered(uuid(1))
+  check('CREATE adds a thing and answers with its id, under the action as it was sent', made?.success === true && made.thing_id === uuid(1) && answersTo(uuid(1))[0]?.action === 'app.thingglance.CREATE', JSON.stringify(made))
+  await openLink('thingglance://view/things')
+  check('the thing is in the app', await P.getByText('Tasker Kettle').first().isVisible().catch(() => false))
+  broadcast('CREATE', { name: 'Tasker Kettle', price: '39.99', client_id: uuid(1), reply_to: APP_ID })
+  const again = await answered(uuid(1), 2)
+  const after = await query()
+  check('sent again with the same id, it is applied once', again?.deduped === true && after?.snapshot.counts.things === before.snapshot.counts.things + 1, JSON.stringify({ again, things: after?.snapshot.counts.things }))
+
+  broadcast('ADD_COVERAGE', { thing_id: uuid(1), name: 'Extended warranty', end_date: dayjs().add(2, 'year').format('YYYY-MM-DD'), client_id: uuid(2), reply_to: APP_ID })
+  const covered = await answered(uuid(2))
+  check('ADD_COVERAGE covers the thing it was just told about', covered?.success === true && typeof covered.coverage_id === 'string', JSON.stringify(covered))
+  broadcast('CREATE', { client_id: uuid(3), reply_to: APP_ID })
+  const refused = await answered(uuid(3))
+  check('a write that cannot be applied is answered with why', refused?.success === false && refused.code === 'invalid' && typeof refused.error === 'string', JSON.stringify(refused))
+
+  // An answer with no address goes to whoever is listening. Nothing on the
+  // emulator is, so Android's own record of it is what there is to see.
+  const open = () => adbQuiet('shell', `dumpsys activity broadcasts history | grep 'Intent { act=app.thingglance.RESULT' | grep -vc 'pkg='`).trim()
+  const openBefore = Number(open())
+  broadcast('DECIDE', { event_key: 'no-such-date', client_id: uuid(4) })
+  const sentOpen = await waitFor(() => Number(open()) > openBefore, 10_000)
+  check('with no reply_to, the answer is broadcast to any listener', sentOpen.ok)
+
+  // Not running at all: a background refresh applies it, and the app is
+  // never opened.
+  if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+  await home()
+  const running = adbQuiet('shell', 'pidof', APP_ID).trim()
+  if (running) adbQuiet('shell', 'run-as', APP_ID, 'kill', '-9', ...running.split(/\s+/))
+  await waitFor(() => adbQuiet('shell', 'pidof', APP_ID).trim() === '', 10_000)
+  broadcast('CREATE_PLAN', { name: 'Tasker Plan', amount: '4.99', client_id: uuid(5), reply_to: APP_ID })
+  const plan = await answered(uuid(5), 1, 120_000)
+  check('with the app not running, CREATE_PLAN is applied by a background refresh and answered', plan?.success === true && plan.plan_id === uuid(5) && foreground() !== APP_ID, JSON.stringify(plan))
+  const closed = await query()
+  check('and QUERY is answered with the app still closed, the plan counted', closed?.snapshot.counts.subscriptions === after.snapshot.counts.subscriptions + 1 && foreground() !== APP_ID, JSON.stringify(closed?.snapshot.counts))
+
+  // OPEN is the one that brings the app forward: it carries a link.
+  adb('shell', `am start -a app.thingglance.OPEN --es payload '${JSON.stringify({ link: 'view/plans' })}' ${APP_ID}`)
+  await sleep(2500)
+  P = await attach()
+  await P.waitForLoadState('load')
+  const opened = await waitFor(async () => (await P.evaluate(() => [...document.querySelectorAll('[role=tab]')].filter((t) => t.getAttribute('aria-selected') === 'true').map((t) => t.textContent.trim()).join(','))).startsWith('Plans'), 15_000)
+  // The page has only just started: its data arrives a moment after its tabs.
+  // (Asked of the page's own text: the first element holding the name is a
+  // hidden label on the charges chart.)
+  const planShown = await waitFor(() => P.evaluate(() => document.body.innerText.includes('Tasker Plan')).catch(() => false), 15_000)
+  check('OPEN starts the app at the link it carries, and the plan is there', opened.ok && planShown.ok && foreground() === APP_ID, JSON.stringify({ tab: opened.ok, plan: planShown.ok, front: foreground() }))
+
+  // Switched off again, it is deaf again.
+  await openLink('thingglance://settings/integrations')
+  await P.getByRole('switch', { name: /Accept actions from other apps/ }).click()
+  await sleep(800)
+  await back()
+  broadcast('CREATE', { name: 'Tasker Late Kettle', client_id: uuid(6), reply_to: APP_ID })
+  await sleep(3000)
+  check('switched off again, it stops listening', answersTo(uuid(6)).length === 0 && !shared().includes('Tasker Late Kettle') && /name="automation_enabled" value="false"/.test(shared()))
+}
+
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')
 await back()

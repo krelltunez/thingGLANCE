@@ -89,7 +89,9 @@ interface WidgetBridgePlugin {
   // Writes made on the home screen and not yet applied: a JSON array of
   // { action, payload, clientId }. They stay queued until acknowledged.
   pendingWrites(): Promise<{ writes: string }>
-  acknowledgeWrites(options: { clientIds: string[] }): Promise<void>
+  // `results`: how each went, a JSON object of results by id. The native
+  // side passes one on to whoever asked for the write (an automation app).
+  acknowledgeWrites(options: { clientIds: string[]; results: string }): Promise<void>
   addListener(eventName: 'pendingWrites' | 'refreshRequested', listener: () => void): Promise<PluginListenerHandle>
   // The last few background refreshes, newest last: a JSON array.
   refreshLog(): Promise<{ log: string }>
@@ -103,13 +105,13 @@ export const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge')
 export interface NativeSurface {
   updateSnapshot(json: string): Promise<void>
   pendingWrites(): Promise<string>
-  acknowledgeWrites(clientIds: string[]): Promise<void>
+  acknowledgeWrites(clientIds: string[], results: Record<string, IntentResult>): Promise<void>
 }
 
 const pluginSurface: NativeSurface = {
   updateSnapshot: (json) => WidgetBridge.updateSnapshot({ json }),
   pendingWrites: async () => (await WidgetBridge.pendingWrites()).writes,
-  acknowledgeWrites: (clientIds) => WidgetBridge.acknowledgeWrites({ clientIds }),
+  acknowledgeWrites: (clientIds, results) => WidgetBridge.acknowledgeWrites({ clientIds, results: JSON.stringify(results) }),
 }
 
 // Builds the payload and hands it over, once, now.
@@ -194,6 +196,9 @@ export function collectWidgetWrites(afterApplying: () => Promise<void>, surface:
     }
     if (!writes.length) return 0
     const settled: string[] = []
+    // How each one went. Most callers never look (a widget's tick shows for
+    // itself); an automation app is told.
+    const results: Record<string, IntentResult> = {}
     let changed = 0
     for (const write of writes) {
       try {
@@ -205,11 +210,12 @@ export function collectWidgetWrites(afterApplying: () => Promise<void>, surface:
         if (result.success && !result.deduped) changed += 1
         if (isUnsentSend(write, result)) continue
         settled.push(write.clientId!)
+        results[write.clientId!] = result
       } catch { /* left queued for the next collection */ }
     }
     if (!settled.length) return 0
     await afterApplying().catch(() => {})
-    await surface.acknowledgeWrites(settled).catch(() => {})
+    await surface.acknowledgeWrites(settled, results).catch(() => {})
     return changed
   }).catch(() => 0)
   return collecting

@@ -43,6 +43,7 @@ To open the project in Android Studio: `npx cap open android`.
 - the tick on a widget row clears the date with the app not running, the write waits in a queue, and is applied once;
 - "Send to dayGLANCE" on a widget row, with the app closed, marks the row at once and reaches a web device as a date handed to dayGLANCE;
 - Android asks before adding each Quick Settings tile and names it in the app's words; the "Needs a decision" tile is lit and says how many are waiting; a tap on each opens the right place;
+- an automation app's broadcasts do nothing with the switch off; switched on, they add a thing and a plan, are applied once when repeated, are answered (also when refused, and with the app not running), and `OPEN` starts the app at its link;
 - a reminder is held at the chosen time and delivered by Android with the app in the background; "Done with this" on it dismisses it without opening the app, and a widget tick cancels a date's reminder;
 - a background refresh carries a tick to a web device, and brings a thing added on the web to the phone's widgets and reminders, with the phone app never opened;
 - after being killed, the app is still connected and asks for no passphrase.
@@ -148,6 +149,10 @@ Two, for the panel pulled down from the top of the screen (`android/app/src/main
 
 `WidgetDataTest` covers the count and its phrase; `src/native/widgetBridge.test.ts` covers the phrases the app writes. The device check adds both tiles through Android's own dialog, reads what the panel holds for them, and taps each.
 
+## Automation apps
+
+Tasker and its kind can add things and plans, clear dates and read the snapshot by sending intents, once the user turns it on in Settings. [tasker.md](tasker.md) has the actions and how it is built. In short: a broadcast becomes one more entry in the queue the widgets' ticks use, so it is applied through the same door, on screen or by a background refresh, and the answer is broadcast back.
+
 ## Reminders
 
 Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot. The scheduling is native (`reminders/`), so it works whoever brings the plan: the app on screen, a background refresh with no screen, or a tick on a widget.
@@ -189,5 +194,4 @@ Other choices worth knowing:
 
 ## Not there yet
 
-- Tasker.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

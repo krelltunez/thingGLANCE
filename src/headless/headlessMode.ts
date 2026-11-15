@@ -38,7 +38,8 @@ export interface HeadlessBridge {
   httpRequestAsync(callId: string, method: string, url: string, headersJson: string, body: string | null): void
   updateSnapshot(json: string): void
   pendingWrites(): string
-  acknowledgeWrites(idsJson: string): void
+  // The ids, and how each went (a JSON object of results by id).
+  acknowledgeWrites(idsJson: string, resultsJson: string): void
   shouldAbort(): boolean
   done(json: string): void
 }

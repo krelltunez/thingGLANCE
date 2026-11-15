@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WidgetBridgePlugin.class);
         registerPlugin(com.thingglance.app.reminders.RemindersPlugin.class);
         registerPlugin(com.thingglance.app.sse.VaultSsePlugin.class);
+        registerPlugin(com.thingglance.app.automation.AutomationPlugin.class);
         // Whatever started the app is turned into a thingglance:// link (or
         // into nothing, if Android is only replaying an old start) before the
         // bridge reads it. A non-null saved state means the system is

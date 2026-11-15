@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  Cloud, Copy, Database, Download, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, PanelTop, Pencil,
+  Cloud, Copy, Database, Download, ExternalLink, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, PanelTop, Pencil,
   RefreshCw, Send, Sun, Trash2, Unplug, Upload, Users, Zap,
 } from 'lucide-react'
 import { DAY, fmtDay, fmtMoment } from '@/core/dates'
@@ -621,6 +621,23 @@ function Data() {
   )
 }
 
+// Where to ask for help, and the two documents a store expects an app to
+// link from inside itself. The same four links lastGLANCE's Help has. The
+// policy is the app's own page on the family's site (glance-apps-dotcom:
+// src/pages/thingglance/privacy.astro); the terms cover every GLANCE app.
+const SUPPORT_EMAIL = 'support@glance-apps.com'
+const ISSUES_URL = 'https://github.com/krelltunez/thingGLANCE/issues'
+const PRIVACY_URL = 'https://www.glance-apps.com/thingglance/privacy'
+const TERMS_URL = 'https://www.glance-apps.com/eula'
+
+function LinkRow({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="flex items-center gap-2 py-1 text-sm font-medium text-accent hover:underline">
+      <ExternalLink size={14} className="shrink-0" /> {children}
+    </a>
+  )
+}
+
 function About() {
   const { t } = useTranslation()
   // The record that the app was bought, when a store build has made one. Not
@@ -636,6 +653,14 @@ function About() {
         {/* A store this build has not heard of is shown by its code. */}
         {first && <p className="mt-1 text-xs text-faint">{t('settings.about.owned', { store: first.store === 'play' ? t('settings.about.store.play') : first.store, when: fmtDay(dayjs(first.since).format(DAY)) })}</p>}
       </div>
+      <Block title={t('settings.about.contact')}>
+        <LinkRow href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</LinkRow>
+        <LinkRow href={ISSUES_URL}>{t('settings.about.reportIssue')}</LinkRow>
+      </Block>
+      <Block title={t('settings.about.legal')}>
+        <LinkRow href={PRIVACY_URL}>{t('settings.about.privacy')}</LinkRow>
+        <LinkRow href={TERMS_URL}>{t('settings.about.terms')}</LinkRow>
+      </Block>
       <Block title={t('settings.about.family')} hint={t('settings.about.familyHint')}>
         <div className="flex flex-wrap gap-1.5">
           <Chip tone="dim" icon={Send}>{t('settings.about.intents')}</Chip><Chip tone="dim" icon={Users}>{t('settings.about.sharedRoster')}</Chip><Chip tone="dim" icon={Cloud}>GLANCEvault</Chip>

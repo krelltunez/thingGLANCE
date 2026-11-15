@@ -89,7 +89,7 @@ For the Data safety form and the privacy policy. This is what the code does; how
 
 ## Owned since
 
-Built 2026-11-16, before the first production release, so that every buyer has one from the start.
+Built 2026-11-15, before the first production release, so that every buyer has one from the start.
 
 A paid app on Play can become free once, and Play does not tell an app whether its user once bought it. If thingGLANCE ever moved to free with a paywall, the people who had paid would need telling apart from the people who had not. So a copy that was bought keeps a record of it. **Nothing reads the record to allow or refuse anything.** There is no paywall and no check.
 
@@ -115,7 +115,7 @@ In the order the console asks.
 - [ ] **App signing**: accept Play App Signing, and upload the first bundle signed with the upload key.
 - [ ] **Store listing**: name (30 characters), short description (80), full description (4000).
 - [ ] **Graphics**: the 512 by 512 icon is `public/icons/icon-512.png`. The feature graphic (1024 by 500) and a set of placeholder phone screenshots are in `store-assets/play/` ([store-assets/README.md](../store-assets/README.md)). Still to be made: the real phone screenshots (2 to 8). The siblings make theirs with the family's screenshot kit, which is not in this repository.
-- [ ] **Privacy policy**: a public address. Play asks for one on every app.
+- [ ] **Privacy policy**: `https://www.glance-apps.com/thingglance/privacy`. Play asks for a public address on every app, and for the policy to be reachable inside the app, which it is from Settings, About, beside the terms of use, the support address and the link for reporting an issue. The page lives in the `glance-apps-dotcom` repository (`src/pages/thingglance/privacy.astro`); when what the app does with data changes, change it there too, and the "Where data goes" section above.
 - [ ] **App content**: ads (none), app access (everything works without signing in; a vault is optional), content rating questionnaire, target audience, Data safety (the section above), and the declarations for news, health, finance and government apps (none apply).
 - [ ] **Testing track**, then production. From an organization account there is no 12-testers-for-14-days wait.
 

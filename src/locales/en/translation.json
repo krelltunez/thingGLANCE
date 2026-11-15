@@ -969,6 +969,11 @@
       "tagline": "Know what is next for your things.",
       "version": "v{{version}} · built {{when}}",
       "owned": "Bought on {{store}} · {{when}}",
+      "contact": "Contact and issues",
+      "reportIssue": "Report an issue on GitHub",
+      "legal": "Legal",
+      "privacy": "Privacy policy",
+      "terms": "Terms of use",
       "store": {
         "play": "Google Play"
       },

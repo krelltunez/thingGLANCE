@@ -5,6 +5,7 @@
 
 import { db } from './client'
 import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
+import { ownershipId, ownershipRow, type OwnershipFact } from '@/core/ownership'
 import { nowIso, today } from '@/core/dates'
 import { handDown, isTied, memberTies, privateHeld, reassignPlan, reassignThing, userIds, type MemberTies } from '@/core/household'
 import { markDirty } from '@/sync/dirtyTracker'
@@ -269,6 +270,17 @@ export async function attachThisDevice(memberId: string, label?: string): Promis
   await db.devices.put(row)
   await db.tombstones.delete(id)
   markDirty(id)
+}
+
+// A store build reports that it was bought (src/native/ownership.ts). Kept as
+// this device's own row, so it reaches the vault with everything else. Called
+// on every start; an unchanged fact writes nothing.
+export async function recordOwnership(fact: OwnershipFact): Promise<void> {
+  const deviceId = getDeviceId()
+  const row = ownershipRow(await db.owned.get(ownershipId(deviceId)), deviceId, fact, nowIso())
+  if (!row) return
+  await db.owned.put(row)
+  markDirty(row.id)
 }
 
 // Any device may detach any other: that is how a lost phone stops counting as

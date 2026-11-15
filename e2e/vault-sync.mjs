@@ -264,6 +264,27 @@ check('B: a link opens the thing it names', (await B.getByText('E2E Outside Writ
 await B.keyboard.press('Escape')
 await B.waitForTimeout(300)
 
+// ── Owned since: the record of a purchase travels with everything else ──────
+// Only a store build writes one (the Android shell, when the Play Store
+// installed it). The dev server lets the run stand in for that shell.
+const about = async (page) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'About', exact: true }).click()
+  await page.waitForTimeout(400)
+  const line = await page.getByText(/^Bought on /).first().textContent({ timeout: 2000 }).catch(() => null)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  return line
+}
+check('A: the free web app claims no purchase', (await about(A)) === null)
+await A.evaluate(() => window.__thingglance.owned({ since: '2026-11-15T18:00:00.000Z', store: 'play', version: '1.0.0' }))
+const boughtOnA = await about(A)
+check('A: a purchase the shell reports shows in About', /^Bought on Google Play · /.test(boughtOnA ?? ''), boughtOnA ?? '')
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+const boughtOnB = await about(B)
+check('B: and it reaches the household\'s other device through the vault', boughtOnB === boughtOnA, boughtOnB ?? '')
+
 // ── Intents: send to dayGLANCE, then play dayGLANCE's reply ──────────────────
 await A.getByRole('button', { name: 'Settings', exact: true }).click()
 await A.getByRole('button', { name: 'Integrations', exact: true }).click()

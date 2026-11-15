@@ -192,6 +192,7 @@ On the emulator a run takes well under a second of work.
 Other choices worth knowing:
 
 - **Cleartext HTTP is allowed**, so a self-hosted vault on a home network (`http://192.168.x.x:8080`) works. Android cannot scope that to the local network. Everything sent to a vault is encrypted before it leaves; what plain HTTP exposes is the device token, so use HTTPS for a vault reachable from outside.
+- **A copy installed by the Play Store records that it was bought** (`ownership/`, [release.md](release.md#owned-since)). Nothing checks it. It is the one file Android's cloud backup keeps, and the web app copies it into the vault.
 - **Cloud backup leaves out the WebView's storage, the Keystore entries, what the widgets show and the reminders' record.** That last one is left out of a phone-to-phone transfer too: it is the list of alarms this phone holds, and on another phone it would claim reminders that are not set. The vault, or the in-app backup file, is how data moves to a new phone. A direct phone-to-phone transfer is allowed; credentials do not survive it (the Keystore key stays behind), so the new phone asks to connect again.
 - **`minifyEnabled` stays off.** Plugin bridges are found by reflection.
 - **Icons and splash images** are rendered from the web app's artwork by `node scripts/gen-android-icons.mjs`.

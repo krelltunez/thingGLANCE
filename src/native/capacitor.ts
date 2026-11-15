@@ -25,6 +25,7 @@ import { openLink } from './links'
 import { askOnceIfNeeded } from './notifications'
 import { registerShell, type SecureStore } from './shell'
 import { nativeEventStream } from './vaultSse'
+import { recordOwnershipFromShell } from './ownership'
 import { startWidgetBridge } from './widgetBridge'
 
 interface SecureStorePlugin {
@@ -101,5 +102,7 @@ export function startCapacitorShell(): void {
     // the native side schedules from. All that is left to do here is ask for
     // permission the first time there is something to remind about.
     startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
+    // A copy installed by the Play Store says so, once, for the record.
+    void recordOwnershipFromShell()
   }
 }

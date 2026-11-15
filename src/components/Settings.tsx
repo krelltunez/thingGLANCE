@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   Cloud, Copy, Database, Download, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, PanelTop, Pencil,
@@ -10,8 +11,10 @@ import { CURRENCIES } from '@/core/money'
 import { listText } from '@/core/text'
 import { languages } from '@/locales'
 import { LanguagePicker } from './LanguagePicker'
+import { ownedSince } from '@/core/ownership'
 import { buildSnapshot } from '@/core/snapshot'
 import { downloadBackup, importBackup, wipeLocalData } from '@/db/backup'
+import { db } from '@/db/client'
 import { loadSamples } from '@/db/demo'
 import { addMember, attachThisDevice, detachDevice, reassignAndRemove, removeMember, removeSamples, renameMember, tiesFor } from '@/db/queries'
 import { describeTies, isTied, type MemberTies } from '@/core/household'
@@ -620,12 +623,18 @@ function Data() {
 
 function About() {
   const { t } = useTranslation()
+  // The record that the app was bought, when a store build has made one. Not
+  // household data: it says nothing about anyone, so it is read as it is.
+  const owned = useLiveQuery(() => db.owned.toArray(), [])
+  const first = ownedSince(owned ?? [])
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-line/10 bg-bg/40 p-5">
         <Wordmark className="text-2xl" />
         <p className="mt-1 text-sm text-dim">{t('settings.about.tagline')}</p>
         <p className="num mt-4 text-xs text-faint">{t('settings.about.version', { version: __APP_VERSION__, when: fmtMoment(__BUILD_TIME__, 'date-time') })}</p>
+        {/* A store this build has not heard of is shown by its code. */}
+        {first && <p className="mt-1 text-xs text-faint">{t('settings.about.owned', { store: first.store === 'play' ? t('settings.about.store.play') : first.store, when: fmtDay(dayjs(first.since).format(DAY)) })}</p>}
       </div>
       <Block title={t('settings.about.family')} hint={t('settings.about.familyHint')}>
         <div className="flex flex-wrap gap-1.5">

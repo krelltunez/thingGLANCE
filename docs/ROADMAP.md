@@ -354,6 +354,8 @@ If you later move to free with a paywall, earlier buyers must not hit the wall.
 
 A cheap precaution covers both: from the first paid release, record an "owned since" marker on the device and in the vault. It costs almost nothing now and makes a later switch safe.
 
+> Built 2026-11-16, on Android: [release.md](release.md#owned-since). An iOS or Mac shell would report its own store the same way.
+
 ### What would change my mind
 
 - If you want the four apps to feel like one product line with one pricing shape, consistency may be worth more than simplicity.

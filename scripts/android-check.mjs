@@ -738,6 +738,17 @@ if (Number(adb('shell', 'getprop', 'ro.build.version.sdk').trim()) >= 33) {
   check('switched off again, it stops listening', answersTo(uuid(6)).length === 0 && !shared().includes('Tasker Late Kettle') && /name="automation_enabled" value="false"/.test(shared()))
 }
 
+// ── Owned since ──────────────────────────────────────────────────────────────
+// A purchase is an install made by the Play Store. This build was put here by
+// adb, so there is none to record: the shell says so, nothing is written, and
+// About claims nothing. (A real record can only be seen on a Play install.)
+{
+  const fact = await P.evaluate(() => window.Capacitor.Plugins.Ownership.get())
+  check('a build that the Play Store did not install reports no purchase', fact && fact.since === undefined && fact.store === undefined, JSON.stringify(fact))
+  const kept = adb('shell', 'run-as', APP_ID, 'ls', 'shared_prefs').includes('thingglance_owned')
+  check('and no record of one is kept on the phone', !kept)
+}
+
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')
 await back()

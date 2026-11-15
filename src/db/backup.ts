@@ -1,8 +1,8 @@
 // JSON backup: the escape hatch for an app whose only sync road is the vault.
 
 import { db } from './client'
-import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
-import { normalizeSubscription, normalizeThing } from '@/core/shape'
+import type { Coverage, Decision, DeviceLink, Member, Ownership, Subscription, Thing } from '@/core/types'
+import { normalizeSubscription, normalizeThing, readOwnership } from '@/core/shape'
 import { tr } from '@/core/text'
 import { markDirty } from '@/sync/dirtyTracker'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
@@ -23,6 +23,8 @@ export interface Backup {
   decisions: Decision[]
   members: Member[]
   devices: DeviceLink[]
+  // Added without a new version: a file from before it simply has none.
+  owned?: Ownership[]
 }
 
 export async function buildBackup(): Promise<Backup> {
@@ -38,6 +40,7 @@ export async function buildBackup(): Promise<Backup> {
     decisions: await db.decisions.toArray(),
     members: await db.members.toArray(),
     devices: await db.devices.toArray(),
+    owned: await db.owned.toArray(),
   }
 }
 
@@ -82,12 +85,15 @@ export async function importBackup(text: string): Promise<{ added: number; updat
   await merge(db.subscriptions, data.subscriptions, markDirty, normalizeSubscription)
   await merge(db.decisions, data.decisions, markDirty)
   await merge(db.devices, data.devices, markDirty)
+  await merge(db.owned, (data.owned ?? []).map(readOwnership).filter((row): row is Ownership => row !== null), markDirty)
   await merge(db.members, data.members ?? data.users, markRosterDirty)
   return { added, updated }
 }
 
 export async function wipeLocalData(): Promise<void> {
-  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.members, db.devices, db.tombstones], async () => {
-    await Promise.all([db.things.clear(), db.coverages.clear(), db.subscriptions.clear(), db.decisions.clear(), db.members.clear(), db.devices.clear(), db.tombstones.clear()])
+  // The record of a purchase goes too; a store build writes it again on its
+  // next start, from what the phone itself holds.
+  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.members, db.devices, db.owned, db.tombstones], async () => {
+    await Promise.all([db.things.clear(), db.coverages.clear(), db.subscriptions.clear(), db.decisions.clear(), db.members.clear(), db.devices.clear(), db.owned.clear(), db.tombstones.clear()])
   })
 }

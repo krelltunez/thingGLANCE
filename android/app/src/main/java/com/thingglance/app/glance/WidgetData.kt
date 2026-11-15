@@ -71,6 +71,10 @@ internal data class WidgetLabels(
     val thingGone: String = "No longer tracked",
     // A verdict's name by its code.
     val verdicts: Map<String, String> = emptyMap(),
+    // The Quick Settings tile's second line by how many dates are waiting:
+    // [0] "Nothing waiting", [2] "2 waiting". Written out by the app, which
+    // knows the language's plural forms.
+    val waiting: List<String> = emptyList(),
 )
 
 internal data class WidgetData(
@@ -89,7 +93,14 @@ internal data class WidgetData(
     val chargesCount: Int = 0,
     val charges: List<WidgetCharge> = emptyList(),
     val things: List<WidgetThing> = emptyList(),
+    // How many dates need a decision. `attention` holds only the first few.
+    val attentionCount: Int = attention.size,
 ) {
+    // The tile's second line for that number. A queue longer than the app
+    // wrote phrases for reads as the longest it did; null with none at all.
+    val waitingText: String? get() = labels.waiting.getOrNull(attentionCount.coerceAtMost(labels.waiting.size - 1))
+
+
     // The thing a single-thing widget shows: the one chosen for it, or, left
     // on automatic, the one closest to the end of its window. Null when the
     // chosen one is gone, or there are none.
@@ -100,7 +111,11 @@ internal data class WidgetData(
     // The date that matters most right now: what needs a decision first, else
     // the nearest one ahead.
     fun without(cleared: Set<String>): WidgetData =
-        if (cleared.isEmpty()) this else copy(attention = attention.filter { it.key !in cleared }, upcoming = upcoming.filter { it.key !in cleared })
+        if (cleared.isEmpty()) this else copy(
+            attention = attention.filter { it.key !in cleared },
+            upcoming = upcoming.filter { it.key !in cleared },
+            attentionCount = (attentionCount - attention.count { it.key in cleared }).coerceAtLeast(0),
+        )
 
     // A date the user has just sent from the home screen reads as sent at
     // once, before the app has done the sending.
@@ -166,6 +181,7 @@ internal object WidgetSnapshot {
             val snapshot = root.getJSONObject("snapshot")
             val l = root.optJSONObject("labels") ?: JSONObject()
             val text = { key: String, fallback: String -> l.optString(key, "").ifBlank { fallback } }
+            val attention = events(snapshot.optJSONArray("attention"))
             WidgetData(
                 loaded = true,
                 locale = Locale.forLanguageTag(snapshot.optString("locale", "en")),
@@ -191,8 +207,11 @@ internal object WidgetSnapshot {
                     thingNone = text("thingNone", FALLBACK_LABELS.thingNone),
                     thingGone = text("thingGone", FALLBACK_LABELS.thingGone),
                     verdicts = l.optJSONObject("verdicts")?.let { v -> v.keys().asSequence().associateWith { k -> v.optString(k, k) } } ?: emptyMap(),
+                    waiting = l.optJSONArray("waiting")?.let { w -> (0 until w.length()).map { i -> w.optString(i, "") } } ?: emptyList(),
                 ),
-                attention = events(snapshot.optJSONArray("attention")),
+                attention = attention,
+                // Never fewer than the rows in hand, whatever the count says.
+                attentionCount = (snapshot.optJSONObject("counts")?.optInt("attention", 0) ?: 0).coerceAtLeast(attention.size),
                 upcoming = events(snapshot.optJSONArray("upcoming")),
                 currency = snapshot.optString("currency", "USD").ifBlank { "USD" },
                 chargesTotal = finite(snapshot.optJSONObject("charges")?.optDouble("total", 0.0)),

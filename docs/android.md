@@ -42,6 +42,7 @@ To open the project in Android Studio: `npx cap open android`.
 - a single-thing widget asks which thing as it is placed and shows that thing; the plans widget lists a charge with its amount and the total; the add tile opens the empty add form;
 - the tick on a widget row clears the date with the app not running, the write waits in a queue, and is applied once;
 - "Send to dayGLANCE" on a widget row, with the app closed, marks the row at once and reaches a web device as a date handed to dayGLANCE;
+- Android asks before adding each Quick Settings tile and names it in the app's words; the "Needs a decision" tile is lit and says how many are waiting; a tap on each opens the right place;
 - a reminder is held at the chosen time and delivered by Android with the app in the background; "Done with this" on it dismisses it without opening the app, and a widget tick cancels a date's reminder;
 - a background refresh carries a tick to a web device, and brings a thing added on the web to the phone's widgets and reminders, with the phone app never opened;
 - after being killed, the app is still connected and asks for no passphrase.
@@ -128,6 +129,25 @@ Settings has an "add to home screen" button for each (Android 8 and later, where
 
 `WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation, feeds the parser broken payloads, and checks the write queue. It also covers the charges and things the newer widgets read, which thing "automatic" picks, and the amounts. The device check places all five on the emulator's home screen, reads what they show, taps a row, then kills the app and taps a tick; for the newer three it picks a thing in the picker, adds a plan, and taps each widget through to the app.
 
+## Quick Settings tiles
+
+Two, for the panel pulled down from the top of the screen (`android/app/src/main/java/com/thingglance/app/tiles`):
+
+| Tile | Does |
+| --- | --- |
+| **Needs a decision** | Lit when any date is waiting, with how many as its second line ("2 waiting"). A tap opens the queue. |
+| **Add a thing** | A tap opens the add form. Never lit: it is a shortcut, not a switch. |
+
+- **A tile only opens the app**, at a `thingglance://` link, like a widget row. It changes nothing.
+- **Its words come from the widgets' payload**, so they are in the app's language. The names in the manifest are what Android shows before the app has ever run.
+- **The count's phrase is written out by the app, one for each number** (`labels.waiting` in the payload: "Nothing waiting", "1 waiting", "2 waiting", up to the number waiting now). A count picks a plural form, and that is the catalog's to know. The tile only picks the entry, which is how a tick on a widget lowers the number at once, with the app not running.
+- **A tile reads the payload when the panel opens.** It is not told when the payload changes and does not need to be.
+- **On a locked phone the app opens after unlocking**, not over the lock screen.
+- **Settings has an "add to Quick Settings" button for each** (Android 13 and later, where Android asks the user itself; the answer says added, already there, or declined). Before that a tile is dragged in by hand from the panel's editor, and Settings says so.
+- New tiles go to the end of the panel. From Android 16 they start small, as an icon with the name only for a screen reader, until the user resizes them.
+
+`WidgetDataTest` covers the count and its phrase; `src/native/widgetBridge.test.ts` covers the phrases the app writes. The device check adds both tiles through Android's own dialog, reads what the panel holds for them, and taps each.
+
 ## Reminders
 
 Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot. The scheduling is native (`reminders/`), so it works whoever brings the plan: the app on screen, a background refresh with no screen, or a tick on a widget.
@@ -169,5 +189,5 @@ Other choices worth knowing:
 
 ## Not there yet
 
-- Quick Settings tiles, Tasker.
+- Tasker.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

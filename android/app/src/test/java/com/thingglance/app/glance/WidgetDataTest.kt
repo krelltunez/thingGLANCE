@@ -260,6 +260,51 @@ class WidgetDataTest {
         assertEquals("XX 3.50", formatMoney(3.5, "XX", us))
     }
 
+    private val queued = """
+        {"snapshot":{"counts":{"attention":5},"attention":[
+            {"key":"a","date":"2190-01-15","title":"A"},
+            {"key":"b","date":"2190-01-16","title":"B"},
+            {"key":"c","date":"2190-01-17","title":"C"}
+          ]},
+         "labels":{"waiting":["Nothing waiting","1 waiting","2 waiting","3 waiting","4 waiting","5 waiting"]}}
+    """.trimIndent()
+
+    @Test
+    fun theTileSaysHowManyAreWaiting() {
+        val data = WidgetSnapshot.parse(queued)
+        // The count is the snapshot's: the list holds only the first few.
+        assertEquals(5, data.attentionCount)
+        assertEquals("5 waiting", data.waitingText)
+        // Ticked on a widget, with the app not yet run: fewer at once. A key
+        // that is not in the queue takes nothing off.
+        val after = data.without(setOf("a", "b", "elsewhere"))
+        assertEquals(3, after.attentionCount)
+        assertEquals("3 waiting", after.waitingText)
+        // A date sent to dayGLANCE is still waiting on a decision.
+        assertEquals(5, data.sending(setOf("a")).attentionCount)
+    }
+
+    @Test
+    fun theTileCopesWithWhatItWasNotTold() {
+        // More waiting than the app wrote phrases for: the longest it wrote.
+        val more = WidgetSnapshot.parse(queued.replace("\"attention\":5", "\"attention\":40"))
+        assertEquals("5 waiting", more.waitingText)
+        // A count below the rows in hand is not believed.
+        assertEquals(3, WidgetSnapshot.parse(queued.replace("\"attention\":5", "\"attention\":1")).attentionCount)
+        // A payload from before tiles: the rows counted, and nothing to say.
+        val old = WidgetSnapshot.parse(payload)
+        assertEquals(1, old.attentionCount)
+        assertNull(old.waitingText)
+        // Nothing waiting.
+        val none = WidgetSnapshot.parse("""{"snapshot":{"attention":[]},"labels":{"waiting":["Nothing waiting"]}}""")
+        assertEquals(0, none.attentionCount)
+        assertEquals("Nothing waiting", none.waitingText)
+        // And every tile has a name, in the app's words once it has them.
+        assertEquals("Zu entscheiden", com.thingglance.app.tiles.tileLabel("decide", old.labels))
+        assertEquals("Add a thing", com.thingglance.app.tiles.tileLabel("add", old.labels))
+        assertEquals(setOf("decide", "add"), com.thingglance.app.tiles.TILES.keys)
+    }
+
     @Test
     fun aPayloadThatIsMissingOrBrokenDrawsAsNotLoaded() {
         for (bad in listOf(null, "", "   ", "{", "[]", "{\"labels\":{}}", "null")) {

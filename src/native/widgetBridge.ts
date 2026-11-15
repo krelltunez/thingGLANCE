@@ -51,6 +51,12 @@ export interface WidgetLabels {
   thingGone: string
   // A verdict's name by its code (`things[].verdict` in the snapshot).
   verdicts: Record<string, string>
+  // The Quick Settings tile's second line, for each number of dates that can
+  // be waiting: [0] is "Nothing waiting", [2] is "2 waiting". Written out
+  // here because a count picks a plural form, which is the catalog's to know;
+  // the native side only picks the entry (a tick on a widget lowers the
+  // number before the app next runs).
+  waiting: string[]
   // "{{n}}d", "{{n}}mo", "{{n}}y": the units of the T-minus countdown.
   days: string
   months: string
@@ -58,6 +64,10 @@ export interface WidgetLabels {
 }
 
 export type WidgetKind = 'decide' | 'next' | 'charges' | 'thing' | 'add'
+export type TileKind = 'decide' | 'add'
+// What became of asking Android to add a tile: the user said yes, it was
+// there already, or the user said no.
+export type TileResult = 'added' | 'already' | 'dismissed'
 
 const VERDICT_CODES: Verdict[] = ['prime', 'solid', 'watch', 'replace', 'overdue', 'retired', 'unknown']
 
@@ -74,6 +84,8 @@ interface WidgetBridgePlugin {
   updateSnapshot(options: { json: string }): Promise<void>
   // Asks the launcher to offer one of the widgets for the home screen.
   pinWidget(options: { kind: WidgetKind }): Promise<{ supported: boolean }>
+  // Asks Android to offer one of the Quick Settings tiles (Android 13+).
+  addTile(options: { kind: TileKind }): Promise<{ supported: boolean; result?: TileResult }>
   // Writes made on the home screen and not yet applied: a JSON array of
   // { action, payload, clientId }. They stay queued until acknowledged.
   pendingWrites(): Promise<{ writes: string }>
@@ -113,7 +125,11 @@ const SETTLE_MS = 600
 // in the number.
 const template = (key: 'time.days' | 'time.months' | 'time.years'): string => tr(key, { n: '{{n}}' })
 
-export function widgetLabels(): WidgetLabels {
+// No tile needs a phrase for more than this; a longer queue reads as the last.
+const MAX_WAITING_PHRASES = 60
+
+export function widgetLabels(waiting = 0): WidgetLabels {
+  const phrases = Math.min(Math.max(0, Math.floor(waiting)), MAX_WAITING_PHRASES)
   return {
     decideTitle: tr('widget.decide.title'),
     decideEmpty: tr('widget.decide.empty'),
@@ -134,6 +150,7 @@ export function widgetLabels(): WidgetLabels {
     thingNone: tr('widget.thing.none'),
     thingGone: tr('widget.thing.gone'),
     verdicts: Object.fromEntries(VERDICT_CODES.map((v) => [v, verdictLabel(v)])),
+    waiting: Array.from({ length: phrases + 1 }, (_, count) => (count === 0 ? tr('widget.tile.none') : tr('widget.tile.waiting', { count }))),
     days: template('time.days'),
     months: template('time.months'),
     years: template('time.years'),
@@ -141,7 +158,8 @@ export function widgetLabels(): WidgetLabels {
 }
 
 export async function widgetPayload(): Promise<WidgetPayload> {
-  return { snapshot: await currentSnapshot({ limit: WIDGET_EVENTS }), labels: widgetLabels(), canSend: isIntentsEnabled() }
+  const snapshot = await currentSnapshot({ limit: WIDGET_EVENTS })
+  return { snapshot, labels: widgetLabels(snapshot.counts.attention), canSend: isIntentsEnabled() }
 }
 
 // Everything in the payload except the moment it was made, so an unchanged

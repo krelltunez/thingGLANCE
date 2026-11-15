@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  Cloud, Copy, Database, Download, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, Pencil,
+  Cloud, Copy, Database, Download, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, PanelTop, Pencil,
   RefreshCw, Send, Sun, Trash2, Unplug, Upload, Users, Zap,
 } from 'lucide-react'
 import { DAY, fmtDay, fmtMoment } from '@/core/dates'
@@ -19,7 +19,7 @@ import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
-import { WidgetBridge, type WidgetKind } from '@/native/widgetBridge'
+import { WidgetBridge, type TileKind, type WidgetKind } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
@@ -108,6 +108,13 @@ function General() {
     const { supported } = await WidgetBridge.pinWidget({ kind }).catch(() => ({ supported: false }))
     if (!supported) toast({ title: t('settings.general.widgetsByHand') })
   }
+  // Android asks the user itself (13 and later). Before that a tile can only
+  // be dragged in by hand from the panel's own editor.
+  const addTile = async (kind: TileKind) => {
+    const { supported, result } = await WidgetBridge.addTile({ kind }).catch(() => ({ supported: false, result: undefined }))
+    if (!supported) toast({ title: t('settings.general.tilesByHand') })
+    else if (result === 'already') toast({ title: t('settings.general.tilesAlready') })
+  }
   const s = useSettings()
   const installable = useCanInstall()
   return (
@@ -140,6 +147,14 @@ function General() {
             <button type="button" className="btn" onClick={() => void addWidget('add')}><LayoutGrid size={15} /> {t('widget.add')}</button>
           </div>
           <BackgroundRefreshNote />
+        </Block>
+      )}
+      {shell() === 'native' && (
+        <Block title={t('settings.general.tiles')} hint={t('settings.general.tilesHint')}>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn" onClick={() => void addTile('decide')}><PanelTop size={15} /> {t('widget.decide.title')}</button>
+            <button type="button" className="btn" onClick={() => void addTile('add')}><PanelTop size={15} /> {t('widget.add')}</button>
+          </div>
         </Block>
       )}
       <Block title={t('settings.general.webLookup')}>

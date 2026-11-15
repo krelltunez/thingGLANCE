@@ -2,10 +2,12 @@ package com.thingglance.app
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.app.StatusBarManager
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -15,6 +17,9 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.thingglance.app.glance.DecideWidgetReceiver
 import com.thingglance.app.glance.NextUpWidgetReceiver
 import com.thingglance.app.glance.ThingConfigActivity
+import com.thingglance.app.glance.WidgetSnapshot
+import com.thingglance.app.tiles.TILES
+import com.thingglance.app.tiles.tileLabel
 import com.thingglance.app.reminders.ReminderPlan
 import com.thingglance.app.reminders.ReminderScheduler
 
@@ -79,6 +84,34 @@ class WidgetBridgePlugin : Plugin() {
         val then = if (call.getString("kind") == "thing") thingPicker() else null
         if (supported) manager.requestPinAppWidget(ComponentName(context, receiver!!), null, then)
         call.resolve(JSObject().put("supported", supported))
+    }
+
+    // Asks Android to offer one of the Quick Settings tiles (Android 13+).
+    // Android shows its own dialog; the answer is what the user chose, or
+    // that the tile was there already. Before 13 there is no asking: a tile
+    // is dragged in by hand from the panel's editor.
+    @PluginMethod
+    fun addTile(call: PluginCall) {
+        val kind = call.getString("kind") ?: ""
+        val spec = TILES[kind]
+        if (spec == null || Build.VERSION.SDK_INT < 33) {
+            call.resolve(JSObject().put("supported", false))
+            return
+        }
+        val manager = context.getSystemService(StatusBarManager::class.java)
+        if (manager == null) {
+            call.resolve(JSObject().put("supported", false))
+            return
+        }
+        val label = tileLabel(kind, WidgetSnapshot.read(context).labels)
+        manager.requestAddTileService(ComponentName(context, spec.service), label, Icon.createWithResource(context, spec.icon), context.mainExecutor) { result ->
+            val outcome = when (result) {
+                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> "added"
+                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> "already"
+                else -> "dismissed"
+            }
+            call.resolve(JSObject().put("supported", true).put("result", outcome))
+        }
     }
 
     // Sent by Android when the widget has been placed, with the new widget's

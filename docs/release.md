@@ -94,7 +94,7 @@ In the order the console asks.
 - [ ] **Create the app as paid.** A free app can never become paid once it has been published to any track, internal testing included. Price: $9.99. A paid app needs a payments profile on the developer account.
 - [ ] **App signing**: accept Play App Signing, and upload the first bundle signed with the upload key.
 - [ ] **Store listing**: name (30 characters), short description (80), full description (4000).
-- [ ] **Graphics**: the 512 by 512 icon is `public/icons/icon-512.png`. Still to be made: the feature graphic (1024 by 500) and the phone screenshots (2 to 8). The siblings make theirs with the family's screenshot kit, which is not in this repository.
+- [ ] **Graphics**: the 512 by 512 icon is `public/icons/icon-512.png`. The feature graphic (1024 by 500) and a set of placeholder phone screenshots are in `store-assets/play/` ([store-assets/README.md](../store-assets/README.md)). Still to be made: the real phone screenshots (2 to 8). The siblings make theirs with the family's screenshot kit, which is not in this repository.
 - [ ] **Privacy policy**: a public address. Play asks for one on every app.
 - [ ] **App content**: ads (none), app access (everything works without signing in; a vault is optional), content rating questionnaire, target audience, Data safety (the section above), and the declarations for news, health, finance and government apps (none apply).
 - [ ] **Testing track**, then production. From an organization account there is no 12-testers-for-14-days wait.

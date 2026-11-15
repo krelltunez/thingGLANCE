@@ -968,6 +968,10 @@
     "about": {
       "tagline": "Know what is next for your things.",
       "version": "v{{version}} · built {{when}}",
+      "owned": "Bought on {{store}} · {{when}}",
+      "store": {
+        "play": "Google Play"
+      },
       "family": "Part of the GLANCE family",
       "familyHint": "dayGLANCE plans the day, lastGLANCE remembers when you last did something, lifeGLANCE holds the long view. thingGLANCE watches the things you own.",
       "intents": "Intents",

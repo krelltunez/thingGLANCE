@@ -84,8 +84,28 @@ For the Data safety form and the privacy policy. This is what the code does; how
 - **Web lookup, when the user uses it** (on by default; a switch in Settings turns it off). The product name typed into the lookup box is sent to Wikipedia and to endoflife.date, which answer with a photo, specs and dates. Nothing else goes with it.
 - **dayGLANCE**, if the user turns it on: a date sent as a task travels through the same vault, encrypted the same way.
 - **Automation apps**, if the user turns that on: other apps on the phone can add things and read the snapshot ([tasker.md](tasker.md)). It does not leave the phone.
-- **Android's cloud backup** leaves out the app's data, the stored credentials, what the widgets show and the reminders (`res/xml/data_extraction_rules.xml`). Moving to a new phone is done through the vault or the in-app backup file.
+- **Android's cloud backup** leaves out the app's data, the stored credentials, what the widgets show and the reminders (`res/xml/data_extraction_rules.xml`). Moving to a new phone is done through the vault or the in-app backup file. The one thing it keeps is the record that the app was bought ([Owned since](#owned-since)): a date and the store's name, in the user's own Google backup, never sent to the developer.
 - Requests may go over plain HTTP only to a vault address the user typed that way (a server on their home network). Google's Data safety form treats data the developer cannot read because it is end-to-end encrypted differently from data it collects; check its current wording when answering.
+
+## Owned since
+
+Built 2026-11-16, before the first production release, so that every buyer has one from the start.
+
+A paid app on Play can become free once, and Play does not tell an app whether its user once bought it. If thingGLANCE ever moved to free with a paywall, the people who had paid would need telling apart from the people who had not. So a copy that was bought keeps a record of it. **Nothing reads the record to allow or refuse anything.** There is no paywall and no check.
+
+- **What counts as bought:** an install made by the Play Store. A build put on the phone any other way (adb, the APK from `outputs/`, a debug build) records nothing, and neither does the web app or the PWA.
+- **What is recorded:** the store (`play`), when Android first installed the app on that phone, and the app version that noticed. No account, no order number, nothing about the user.
+- **Where it is kept, on the phone:** a preferences file of its own, `thingglance_owned.xml` (`android/.../ownership/`). Unlike the app's other files it is left in Android's cloud backup and in a phone-to-phone transfer, so it follows the buyer to a new phone.
+- **Where it is kept, in the vault:** one row per device, kind `owned`, id `owned:<deviceId>` (`src/core/ownership.ts`). It syncs like everything else, encrypted like everything else, and is in the in-app backup file. A device's date only ever moves earlier.
+- **Where it shows:** Settings, About: "Bought on Google Play" and the date, the earliest among the household's devices.
+
+What it is not:
+
+- **Not proof.** The app is open source and the record is ordinary data. It is there so honest buyers are not locked out, not to keep anyone out.
+- **Not only buyers.** Testers on a Play testing track get a paid app free, and get a record.
+- **Not for ever, by itself.** A buyer with no vault and no Android backup who moves to a new phone gets a new record dated from the new install. That is fine while the app is paid. A release that made the app free would have to stop writing new records, and from then on only records carried by a vault or a backup would show that someone had paid.
+
+Checked: unit tests on both sides; the end-to-end run reports a purchase on one device and sees it on another through a vault; the device check confirms a build that Play did not install records nothing. A real record can only be seen on an install from Play: after installing from a testing track, Settings, About should show the line.
 
 ## The Play Console **(yours)**
 
@@ -102,5 +122,4 @@ In the order the console asks.
 ## Decisions still open
 
 - **The first version number.** `package.json` says 0.1.0. Whether the first public release is 0.1.0 or 1.0.0 only has to be settled before the production upload; test uploads of either are fine.
-- **An "owned since" marker.** [ROADMAP.md](ROADMAP.md#keeping-the-other-door-open) suggests recording one on the device and in the vault from the first paid release, so that a later move to free with a paywall never locks out people who paid. It is not built. It adds a field that syncs, so it is worth deciding before real data goes into vaults.
 - **The APK.** The release build makes one beside the bundle. The app has no paywall, so publishing that APK anywhere is giving the app away.

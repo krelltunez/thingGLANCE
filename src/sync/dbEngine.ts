@@ -10,7 +10,7 @@ import { createDbSyncEngine } from '@glance-apps/sync'
 import type { DbSyncEngine, DbSyncResult, SyncErrorCode, SyncStatus } from '@glance-apps/sync'
 import { db } from '@/db/client'
 import type { Coverage, Decision, DeviceLink, SyncEntity } from '@/core/types'
-import { normalizeSubscription, normalizeThing } from '@/core/shape'
+import { normalizeSubscription, normalizeThing, readOwnership } from '@/core/shape'
 import { APP_ID, getVaultConfig, isVaultEnabled } from './vaultConfig'
 import { getDeviceId } from './deviceId'
 import { dbCryptoConfig } from './keyHooks'
@@ -27,7 +27,7 @@ export const PULL_CURSOR_COMMIT = 'per-page' as const
 const SNAPSHOT_SEEDED_FLAG = `${APP_ID}-db-sync-snapshot-seeded`
 
 type Kind = SyncEntity['kind']
-const KINDS: Kind[] = ['thing', 'coverage', 'subscription', 'decision', 'device']
+const KINDS: Kind[] = ['thing', 'coverage', 'subscription', 'decision', 'device', 'owned']
 
 function kindOf(entity: unknown): Kind | null {
   if (!entity || typeof entity !== 'object') return null
@@ -64,6 +64,8 @@ export async function getLocalEntity(entityId: string): Promise<unknown | null> 
   if (dec) return dec
   const link = await db.devices.get(entityId)
   if (link) return link
+  const owned = await db.owned.get(entityId)
+  if (owned) return owned
   return null
 }
 
@@ -86,13 +88,18 @@ export async function applyRemoteEntity(entityId: string, entity: unknown): Prom
       if (typeof link.memberId === 'string' && link.memberId) await db.devices.put(link)
       break
     }
+    case 'owned': {
+      const owned = readOwnership(entity)
+      if (owned) await db.owned.put(owned)
+      break
+    }
   }
   await db.tombstones.delete(entityId)
   notifyApplied()
 }
 
 export async function applyRemoteDelete(entityId: string): Promise<void> {
-  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.devices, db.tombstones], async () => {
+  await db.transaction('rw', [db.things, db.coverages, db.subscriptions, db.decisions, db.devices, db.owned, db.tombstones], async () => {
     await db.tombstones.put({ id: entityId, deletedAt: new Date().toISOString() })
     await Promise.all([
       db.things.delete(entityId),
@@ -100,6 +107,7 @@ export async function applyRemoteDelete(entityId: string): Promise<void> {
       db.subscriptions.delete(entityId),
       db.decisions.delete(entityId),
       db.devices.delete(entityId),
+      db.owned.delete(entityId),
     ])
   })
   notifyApplied()
@@ -108,11 +116,11 @@ export async function applyRemoteDelete(entityId: string): Promise<void> {
 // First sync on a device: mark everything real so data that predates the vault
 // connection uploads. Sample rows are left out.
 export async function markAllLocalEntitiesDirty(engine: DbSyncEngine): Promise<void> {
-  const [things, covs, subs, decs, links] = await Promise.all([
-    db.things.toArray(), db.coverages.toArray(), db.subscriptions.toArray(), db.decisions.toArray(), db.devices.toArray(),
+  const [things, covs, subs, decs, links, owned] = await Promise.all([
+    db.things.toArray(), db.coverages.toArray(), db.subscriptions.toArray(), db.decisions.toArray(), db.devices.toArray(), db.owned.toArray(),
   ])
   for (const r of [...things, ...covs, ...subs]) if (!r.sample) engine.markDirty(r.id)
-  for (const d of [...decs, ...links]) engine.markDirty(d.id)
+  for (const d of [...decs, ...links, ...owned]) engine.markDirty(d.id)
 }
 
 export interface DbEngineCallbacks {

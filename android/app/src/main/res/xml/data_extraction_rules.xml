@@ -15,6 +15,11 @@
        alarms do not travel, so on another phone the list would be a claim
        that reminders are set when none are, and an unchanged plan would then
        set nothing. Left out, the first snapshot sets them all.
+     One file is left IN on purpose: thingglance_owned.xml, the record that
+     this copy was bought (ownership/Ownership.kt). It holds a date and the
+     store's name, nothing of the user's, and it should follow the buyer to a
+     new phone.
+
      A direct device-to-device transfer is left unrestricted but for that
      last file, for the same reason: it never lands on a server. Credentials
      still do not survive it (the Keystore key stays behind), so the new

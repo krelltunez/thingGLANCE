@@ -16,7 +16,7 @@ import { dispatchExternalWrite } from '@/intents/inbound'
 import { openLink } from '@/native/links'
 import { setBackHandler } from '@/native/backStack'
 import { describeDevice, setBadge } from '@/native/platform'
-import { attachThisDevice, removeSamples } from '@/db/queries'
+import { attachThisDevice, removeSamples, recordOwnership } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
 import { HorizonView } from '@/views/HorizonView'
 import { ThingsView } from '@/views/ThingsView'
@@ -295,8 +295,9 @@ export default function App() {
   // No shell exists yet to call the link router or the outside-write handler,
   // so the dev server exposes both for trying by hand and for the e2e run:
   // __thingglance.openLink('thingglance://queue'), __thingglance.intent({...}).
+  // `owned` stands in for the Android shell reporting a purchase.
   useEffect(() => {
-    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__thingglance = { openLink, intent: dispatchExternalWrite }
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__thingglance = { openLink, intent: dispatchExternalWrite, owned: recordOwnership }
   }, [])
 
   // v0.1 remembered "this is me" in localStorage. It is a synced row now, so

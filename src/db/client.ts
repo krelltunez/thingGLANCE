@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
+import type { Coverage, Decision, DeviceLink, Member, Ownership, Subscription, Thing } from '@/core/types'
 import { normalizeSubscription, normalizeThing } from '@/core/shape'
 
 export interface Tombstone { id: string; deletedAt: string }
@@ -17,6 +17,8 @@ class ThingDB extends Dexie {
   members!: Table<Member, string>
   // Which member each thingGLANCE device belongs to; keyed by device id.
   devices!: Table<DeviceLink, string>
+  // That the app was bought, one row per device that knows it was.
+  owned!: Table<Ownership, string>
   tombstones!: Table<Tombstone, string>
 
   constructor() {
@@ -46,9 +48,11 @@ class ThingDB extends Dexie {
     // Dropped a version later than it was copied, so the copy above can still
     // read it.
     this.version(3).stores({ users: null })
+    // v4: the record of a purchase (core/types.ts: Ownership).
+    this.version(4).stores({ owned: 'id' })
   }
 }
 
 export const db = new ThingDB()
 
-export const SYNCED_TABLES = ['things', 'coverages', 'subscriptions', 'decisions', 'devices'] as const
+export const SYNCED_TABLES = ['things', 'coverages', 'subscriptions', 'decisions', 'devices', 'owned'] as const

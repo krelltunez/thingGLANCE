@@ -161,7 +161,29 @@ export interface DeviceLink {
   updatedAt: Iso
 }
 
-export type SyncEntity = Thing | Coverage | Subscription | Decision | DeviceLink
+// A record that the app was bought on a device: which store sold it and when
+// that store first installed it there. Written once per device by a store
+// build (src/native/ownership.ts) and never by the free web app.
+//
+// Nothing reads it to allow or refuse anything. It exists so that, if the app
+// ever became free with a paywall, the people who paid for it could be told
+// apart from the people who did not (docs/release.md, "Owned since").
+export interface Ownership {
+  // `owned:<deviceId>`: one row per device, and each device writes only its own.
+  id: string
+  kind: 'owned'
+  deviceId: string
+  since: Iso
+  // 'play' today. A string, so a row written by a later shell (another store)
+  // is kept by a build that has not heard of it.
+  store: string
+  // The app version that recorded it.
+  version: string
+  createdAt: Iso
+  updatedAt: Iso
+}
+
+export type SyncEntity = Thing | Coverage | Subscription | Decision | DeviceLink | Ownership
 
 export interface DataSet {
   things: Thing[]

@@ -32,7 +32,7 @@ import androidx.glance.unit.ColorProvider as UnitColorProvider
 // badge. Everything else takes the system's widget colours.
 private fun tone(day: Long, night: Long) = ColorProvider(day = Color(day), night = Color(night))
 
-private val ACCENT = tone(0xFF0284C7, 0xFF38BDF8)
+internal val ACCENT = tone(0xFF0284C7, 0xFF38BDF8)
 private val WARN = tone(0xFFB45309, 0xFFFBBF24)
 private val BAD = tone(0xFFB91C1C, 0xFFF87171)
 private val ACCENT_SOFT = tone(0x1F0284C7, 0x2638BDF8)

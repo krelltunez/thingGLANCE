@@ -39,6 +39,13 @@ internal data class WidgetEvent(
     val link: String,
 )
 
+// One charge a plan will make (snapshot: charges.items).
+internal data class WidgetCharge(val subscriptionId: String, val name: String, val date: String, val amount: Double, val link: String)
+
+// One thing (snapshot: things). `remaining` is the share of its window left,
+// 0 to 1, and `lifeEnd` the day that window closes; both null with no dates.
+internal data class WidgetThing(val id: String, val name: String, val verdict: String, val remaining: Double?, val lifeEnd: String?)
+
 internal data class WidgetLabels(
     val decideTitle: String,
     val decideEmpty: String,
@@ -53,6 +60,17 @@ internal data class WidgetLabels(
     val days: String,
     val months: String,
     val years: String,
+    // The newer widgets.
+    val addThing: String = "Add a thing",
+    val chargesTitle: String = "Plans, next 30 days",
+    val chargesEmpty: String = "Nothing due in the next 30 days",
+    val thingTitle: String = "A single thing",
+    val thingPick: String = "Which thing?",
+    val thingAuto: String = "Closest to the end of its window",
+    val thingNone: String = "No things yet",
+    val thingGone: String = "No longer tracked",
+    // A verdict's name by its code.
+    val verdicts: Map<String, String> = emptyMap(),
 )
 
 internal data class WidgetData(
@@ -65,7 +83,20 @@ internal data class WidgetData(
     val labels: WidgetLabels,
     val attention: List<WidgetEvent>,
     val upcoming: List<WidgetEvent>,
+    // ISO 4217, for every amount.
+    val currency: String = "USD",
+    val chargesTotal: Double = 0.0,
+    val chargesCount: Int = 0,
+    val charges: List<WidgetCharge> = emptyList(),
+    val things: List<WidgetThing> = emptyList(),
 ) {
+    // The thing a single-thing widget shows: the one chosen for it, or, left
+    // on automatic, the one closest to the end of its window. Null when the
+    // chosen one is gone, or there are none.
+    fun thing(chosenId: String?): WidgetThing? =
+        if (chosenId != null) things.firstOrNull { it.id == chosenId }
+        else things.filter { it.remaining != null }.minByOrNull { it.remaining!! } ?: things.firstOrNull()
+
     // The date that matters most right now: what needs a decision first, else
     // the nearest one ahead.
     fun without(cleared: Set<String>): WidgetData =
@@ -151,13 +182,56 @@ internal object WidgetSnapshot {
                     days = text("days", FALLBACK_LABELS.days),
                     months = text("months", FALLBACK_LABELS.months),
                     years = text("years", FALLBACK_LABELS.years),
+                    addThing = text("addThing", FALLBACK_LABELS.addThing),
+                    chargesTitle = text("chargesTitle", FALLBACK_LABELS.chargesTitle),
+                    chargesEmpty = text("chargesEmpty", FALLBACK_LABELS.chargesEmpty),
+                    thingTitle = text("thingTitle", FALLBACK_LABELS.thingTitle),
+                    thingPick = text("thingPick", FALLBACK_LABELS.thingPick),
+                    thingAuto = text("thingAuto", FALLBACK_LABELS.thingAuto),
+                    thingNone = text("thingNone", FALLBACK_LABELS.thingNone),
+                    thingGone = text("thingGone", FALLBACK_LABELS.thingGone),
+                    verdicts = l.optJSONObject("verdicts")?.let { v -> v.keys().asSequence().associateWith { k -> v.optString(k, k) } } ?: emptyMap(),
                 ),
                 attention = events(snapshot.optJSONArray("attention")),
                 upcoming = events(snapshot.optJSONArray("upcoming")),
+                currency = snapshot.optString("currency", "USD").ifBlank { "USD" },
+                chargesTotal = finite(snapshot.optJSONObject("charges")?.optDouble("total", 0.0)),
+                chargesCount = snapshot.optJSONObject("charges")?.optInt("count", 0) ?: 0,
+                charges = charges(snapshot.optJSONObject("charges")?.optJSONArray("items")),
+                things = things(snapshot.optJSONArray("things")),
             )
         } catch (e: Exception) {
             empty
         }
+    }
+
+    private fun finite(value: Double?): Double = if (value == null || value.isNaN() || value.isInfinite()) 0.0 else value
+
+    private fun charges(array: JSONArray?): List<WidgetCharge> {
+        if (array == null) return emptyList()
+        val out = ArrayList<WidgetCharge>(array.length())
+        for (i in 0 until array.length()) {
+            val c = array.optJSONObject(i) ?: continue
+            val id = c.optString("subscriptionId", "")
+            val date = c.optString("date", "")
+            if (id.isEmpty() || dayNumber(date) == null) continue
+            out.add(WidgetCharge(id, c.optString("name", ""), date, finite(c.optDouble("amount", 0.0)), c.optString("link", "").ifBlank { "thingglance://view/plans" }))
+        }
+        return out
+    }
+
+    private fun things(array: JSONArray?): List<WidgetThing> {
+        if (array == null) return emptyList()
+        val out = ArrayList<WidgetThing>(array.length())
+        for (i in 0 until array.length()) {
+            val t = array.optJSONObject(i) ?: continue
+            val id = t.optString("id", "")
+            if (id.isEmpty()) continue
+            val remaining = if (t.isNull("remaining")) null else finite(t.optDouble("remaining")).coerceIn(0.0, 1.0)
+            val lifeEnd = t.optString("lifeEnd", "").takeIf { dayNumber(it) != null }
+            out.add(WidgetThing(id, t.optString("name", ""), t.optString("verdict", "unknown"), remaining, lifeEnd))
+        }
+        return out
     }
 
     private fun events(array: JSONArray?): List<WidgetEvent> {
@@ -243,6 +317,22 @@ internal fun shortDate(day: String, locale: Locale): String {
         format.format(java.util.Date(number * 86_400_000L))
     } catch (e: Exception) {
         day
+    }
+}
+
+// An amount as the app writes it (src/core/money.ts: money): the currency's own
+// symbol and grouping for the snapshot's language, with cents only for a small
+// amount that has them.
+internal fun formatMoney(amount: Double, currency: String, locale: Locale): String {
+    val cents = Math.abs(amount) < 100 && amount % 1.0 != 0.0
+    return try {
+        java.text.NumberFormat.getCurrencyInstance(locale).apply {
+            this.currency = java.util.Currency.getInstance(currency)
+            minimumFractionDigits = if (cents) 2 else 0
+            maximumFractionDigits = if (cents) 2 else 0
+        }.format(amount)
+    } catch (e: Exception) {
+        "$currency " + String.format(Locale.ROOT, if (cents) "%.2f" else "%.0f", amount)
     }
 }
 

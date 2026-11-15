@@ -19,4 +19,7 @@
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
     </style>
+
+    <!-- The floating picker a single-thing widget shows when it is placed. -->
+    <style name="AppTheme.Dialog" parent="Theme.AppCompat.DayNight.Dialog" />
 </resources>

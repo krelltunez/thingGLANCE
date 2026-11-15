@@ -6,11 +6,11 @@ import dayjs from 'dayjs'
 import { Trans, useTranslation } from 'react-i18next'
 import { ArrowRight, CircleCheck, PiggyBank, Plus, Radar, Sparkles } from 'lucide-react'
 import type { HorizonEvent } from '@/core/types'
-import { DAY, addDays, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
+import { DAY, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
 import { EVENT_META, eventKindLabel } from '@/core/horizon'
 import { replacementFund } from '@/core/health'
 import { fundByOwner } from '@/core/household'
-import { cycleShort, forecast, money, monthlyCost, renewalsBetween } from '@/core/money'
+import { chargesWithin, cycleShort, forecast, money, monthlyCost } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
@@ -133,17 +133,8 @@ export function GlanceView() {
   const fundSplit = useMemo(() => fundByOwner(fund.rows), [fund])
   const unassigned = d.queue.filter(d.needsSomeone).length
   const next30 = useMemo(() => {
-    let total = 0
-    let count = 0
-    for (const s of d.visibleSubs) {
-      if (s.status === 'cancelled' || !s.autoRenew) continue
-      for (const day of renewalsBetween(s, ref, addDays(ref, 30))) {
-        if (s.status === 'trial' && s.trialEnd && day < s.trialEnd) continue
-        total += s.amount
-        count++
-      }
-    }
-    return { total, count }
+    const charges = chargesWithin(d.visibleSubs, ref, 30)
+    return { total: charges.reduce((sum, c) => sum + c.amount, 0), count: charges.length }
   }, [d.visibleSubs, ref])
 
   const covered = d.activeThings.filter((thing) => d.life.get(thing.id)?.covered).length

@@ -77,7 +77,9 @@ async function attach() {
   adb('forward', `tcp:${PORT}`, `localabstract:webview_devtools_remote_${pid}`)
   for (let i = 0; i < 40; i++) {
     try {
-      cdp = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`)
+      // noDefaults: a WebView has one browser context and refuses the commands
+      // Playwright otherwise sends to set its own defaults on it.
+      cdp = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`, { noDefaults: true })
       const page = cdp.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith('https://localhost'))
       if (page) { page.setDefaultTimeout(10_000); return page }
       await cdp.close().catch(() => {})
@@ -495,6 +497,74 @@ if (!QUICK) {
   const cleared = { queue: await tabletRow(), pending: await P.evaluate(async () => JSON.parse((await window.Capacitor.Plugins.Reminders.pending()).reminders).filter((r) => /Android Check Tablet/.test(r.body)).length) }
   check('and the date is cleared in the app, with no reminder left for it', !!done && !cleared.queue && cleared.pending === 0, JSON.stringify(cleared))
 }
+
+// ── More widgets: a single thing, what plans charge, and "Add a thing" ───────
+// A plan that renews in twenty days: one charge in the next thirty.
+await openLink('thingglance://action/add-plan?name=Android%20Check%20Plan')
+await sleep(800)
+await P.getByLabel(/^Amount/).fill('9.99')
+await P.getByLabel('Next renewal').fill(dayjs(Number(adb('shell', 'date', '+%s').trim()) * 1000).add(20, 'day').format('YYYY-MM-DD'))
+await P.getByRole('button', { name: 'Add plan' }).click()
+const told = await waitFor(() => /"charges":\{"days":30,"total":9\.99,"count":1,/.test(shared()) && shared().includes('Android Check Plan'), 10_000)
+check('the snapshot says what plans will charge in the next 30 days', told.ok)
+
+const reopen = async () => { adb('shell', 'am', 'start', '-n', `${APP_ID}/.MainActivity`); await sleep(1500) }
+await reopen()
+check('the launcher is asked to place the "Plans, next 30 days" widget', await place('charges'))
+await reopen()
+check('and the "Add a thing" tile', await place('add'))
+await reopen()
+// A single-thing widget asks which thing as it is placed.
+const askedThing = await place('thing')
+await waitFor(() => !!onScreen(screen(), 'Which thing?'), 8000)
+ui = screen()
+shot('thing-picker')
+check('placing a single-thing widget asks which thing, in the app\'s own words', askedThing && !!onScreen(ui, 'Which thing?') && !!onScreen(ui, 'Closest to the end of its window') && !!onScreen(ui, 'Android Check Phone'), ui.map((n) => n.text).join(' | ').slice(0, 300))
+if (onScreen(ui, 'Android Check Phone')) await tap(onScreen(ui, 'Android Check Phone'))
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+
+// Where the launcher put a widget is its own business (a page that has room),
+// and Home returns to whichever page was last shown: look on each.
+const [screenW, screenH] = adb('shell', 'wm', 'size').match(/(\d+)x(\d+)/).slice(1).map(Number)
+async function findOnHome(match) {
+  await home()
+  await home() // twice: the first press may only leave the app, the second goes to the first page
+  for (let page = 0; page < 4; page++) {
+    const nodes = screen()
+    if (onScreen(nodes, match)) { shot(`widgets-page-${page}`); return nodes }
+    adb('shell', 'input', 'swipe', String(Math.round(screenW * 0.85)), String(Math.round(screenH / 2)), String(Math.round(screenW * 0.15)), String(Math.round(screenH / 2)), '250')
+    await sleep(1200)
+  }
+  return []
+}
+const texts = (nodes) => nodes.map((n) => n.text).join(' | ').slice(0, 400)
+
+ui = await findOnHome('Android Check Phone')
+const ringNumber = ui.find((n) => /^\d{1,3}$/.test(n.text))
+check('the single-thing widget shows the chosen thing, its verdict and how long is left', !!onScreen(ui, 'Android Check Phone') && ui.some((n) => /^\S.* · T[-+]\S+$/.test(n.text)) && !!ringNumber, texts(ui))
+await tap(onScreen(ui, 'Android Check Phone') ?? { x: 1, y: 1 })
+await sleep(1500)
+P = await attach()
+check('a tap on it opens that thing', foreground() === APP_ID && await P.getByRole('heading', { name: 'Android Check Phone' }).first().isVisible().catch(() => false))
+await back() // the thing's sheet
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+
+ui = await findOnHome('Plans, next 30 days')
+check('the plans widget lists the charge, with the amount and the total', !!onScreen(ui, 'Android Check Plan') && ui.filter((n) => n.text === '$9.99').length === 2, texts(ui))
+await tap(onScreen(ui, 'Android Check Plan') ?? { x: 1, y: 1 })
+await sleep(1500)
+P = await attach()
+check('a tap on a charge opens that plan', foreground() === APP_ID && await P.getByRole('dialog').getByText('Android Check Plan').first().isVisible().catch(() => false) || (foreground() === APP_ID && (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => '')) === 'Android Check Plan'))
+await closeForm()
+if (cdp) { await cdp.close().catch(() => {}); cdp = null }
+
+ui = await findOnHome('Add a thing')
+check('the "Add a thing" tile is on the home screen', !!onScreen(ui, 'Add a thing'), texts(ui))
+await tap(onScreen(ui, 'Add a thing') ?? { x: 1, y: 1 })
+await sleep(1500)
+P = await attach()
+check('a tap on it opens the add form, empty', foreground() === APP_ID && await sheets() === 1 && (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => 'missing')) === '')
+await closeForm()
 
 // ── Back, all the way out ────────────────────────────────────────────────────
 await openLink('thingglance://view/plans')

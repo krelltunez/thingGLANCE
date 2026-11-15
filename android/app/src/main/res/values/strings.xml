@@ -10,6 +10,12 @@
     <string name="widget_decide_description">The dates waiting on you, each with its countdown.</string>
     <string name="widget_next_label">Next up</string>
     <string name="widget_next_description">The one date that matters most right now.</string>
+    <string name="widget_thing_label">A single thing</string>
+    <string name="widget_thing_description">One thing: how much of its life is left, and its verdict.</string>
+    <string name="widget_charges_label">Plans, next 30 days</string>
+    <string name="widget_charges_description">What your plans are about to charge, and the total.</string>
+    <string name="widget_add_label">Add a thing</string>
+    <string name="widget_add_description">One tap to the add form.</string>
     <!-- Long-press shortcuts on the app icon. -->
     <string name="shortcut_add_thing">Add a thing</string>
     <string name="shortcut_add_plan">Add a plan</string>

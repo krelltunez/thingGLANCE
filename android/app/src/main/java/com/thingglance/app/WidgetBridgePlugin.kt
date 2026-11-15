@@ -1,5 +1,7 @@
 package com.thingglance.app
 
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
@@ -12,6 +14,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.thingglance.app.glance.DecideWidgetReceiver
 import com.thingglance.app.glance.NextUpWidgetReceiver
+import com.thingglance.app.glance.ThingConfigActivity
 import com.thingglance.app.reminders.ReminderPlan
 import com.thingglance.app.reminders.ReminderScheduler
 
@@ -70,8 +73,26 @@ class WidgetBridgePlugin : Plugin() {
         val receiver = RECEIVERS[call.getString("kind")]
         val manager = AppWidgetManager.getInstance(context)
         val supported = receiver != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.isRequestPinAppWidgetSupported
-        if (supported) manager.requestPinAppWidget(ComponentName(context, receiver!!), null, null)
+        // A launcher asks which thing only for a widget dragged from its own
+        // list, not for one placed from here. So for that widget the picker is
+        // opened once it is on the home screen.
+        val then = if (call.getString("kind") == "thing") thingPicker() else null
+        if (supported) manager.requestPinAppWidget(ComponentName(context, receiver!!), null, then)
         call.resolve(JSObject().put("supported", supported))
+    }
+
+    // Sent by Android when the widget has been placed, with the new widget's
+    // id filled in (hence mutable). The app is not on screen by then, so the
+    // intent says it may open an activity all the same.
+    private fun thingPicker(): PendingIntent {
+        val intent = Intent(context, ThingConfigActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val options = if (Build.VERSION.SDK_INT >= 35) {
+            @Suppress("DEPRECATION")
+            val mode = if (Build.VERSION.SDK_INT >= 36) ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS else ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            ActivityOptions.makeBasic().setPendingIntentCreatorBackgroundActivityStartMode(mode).toBundle()
+        } else null
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+        return PendingIntent.getActivity(context, 0, intent, flags, options)
     }
 
     companion object {
@@ -95,6 +116,9 @@ class WidgetBridgePlugin : Plugin() {
         private val RECEIVERS: Map<String, Class<*>> = mapOf(
             "decide" to DecideWidgetReceiver::class.java,
             "next" to NextUpWidgetReceiver::class.java,
+            "thing" to com.thingglance.app.glance.ThingWidgetReceiver::class.java,
+            "charges" to com.thingglance.app.glance.ChargesWidgetReceiver::class.java,
+            "add" to com.thingglance.app.glance.AddThingWidgetReceiver::class.java,
         )
 
         // The snapshot carries the reminder plan as well as what widgets

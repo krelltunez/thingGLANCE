@@ -19,7 +19,7 @@ import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
-import { WidgetBridge } from '@/native/widgetBridge'
+import { WidgetBridge, type WidgetKind } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
@@ -104,7 +104,7 @@ function General() {
   const { t } = useTranslation()
   // The launcher places the widget and asks the user to confirm. Where it
   // cannot (an old Android, a launcher without the feature), say how instead.
-  const addWidget = async (kind: 'decide' | 'next') => {
+  const addWidget = async (kind: WidgetKind) => {
     const { supported } = await WidgetBridge.pinWidget({ kind }).catch(() => ({ supported: false }))
     if (!supported) toast({ title: t('settings.general.widgetsByHand') })
   }
@@ -135,6 +135,9 @@ function General() {
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn" onClick={() => void addWidget('decide')}><LayoutGrid size={15} /> {t('widget.decide.title')}</button>
             <button type="button" className="btn" onClick={() => void addWidget('next')}><LayoutGrid size={15} /> {t('widget.next.title')}</button>
+            <button type="button" className="btn" onClick={() => void addWidget('thing')}><LayoutGrid size={15} /> {t('widget.thing.title')}</button>
+            <button type="button" className="btn" onClick={() => void addWidget('charges')}><LayoutGrid size={15} /> {t('widget.charges.title')}</button>
+            <button type="button" className="btn" onClick={() => void addWidget('add')}><LayoutGrid size={15} /> {t('widget.add')}</button>
           </div>
           <BackgroundRefreshNote />
         </Block>

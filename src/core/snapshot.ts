@@ -11,9 +11,9 @@ import type { DataSet, Day, EventType, Severity, Subscription, Thing } from './t
 import { today } from './dates'
 import { attentionQueue, buildHorizon } from './horizon'
 import { lifecycle, replacementFund, type Verdict } from './health'
-import { handlerOfEvent, visibleTo } from './household'
-import { eventLink } from './links'
-import { monthlyCost } from './money'
+import { concernsPlan, handlerOfEvent, visibleTo } from './household'
+import { eventLink, formatLink } from './links'
+import { chargesWithin, monthlyCost } from './money'
 import { capReminders, planReminders, type Reminder, type ReminderPrefs } from './reminders'
 import { textLocale } from './text'
 
@@ -47,10 +47,26 @@ export interface GlanceSnapshot {
   attention: SnapshotEvent[]
   upcoming: SnapshotEvent[]
   things: SnapshotThing[]
+  // What plans will charge over the next `days` days: the total, how many
+  // charges, and the soonest of them (capped like the dated lists).
+  charges: { days: number; total: number; count: number; items: SnapshotCharge[] }
   // The notifications this device should have pending, soonest first
   // (core/reminders.ts). A shell schedules exactly these and cancels the rest.
   reminders: Reminder[]
 }
+
+export interface SnapshotCharge {
+  subscriptionId: string
+  name: string
+  date: Day
+  // In `currency`.
+  amount: number
+  // What a tap opens: the plan.
+  link: string
+}
+
+// How far ahead `charges` looks.
+export const CHARGES_DAYS = 30
 
 export type SnapshotEventState = 'open' | 'sent' | 'done' | 'dismissed'
 
@@ -129,6 +145,9 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
     link: eventLink(e.key),
   })
   const active = data.things.filter((t) => t.status === 'active')
+  // Narrowed like the dated lists when the snapshot is for one member.
+  const plans = data.subscriptions.filter((s) => !opts.memberId || concernsPlan(s, opts.memberId, new Map(data.things.map((t) => [t.id, t]))))
+  const charges = chargesWithin(plans, ref, CHARGES_DAYS)
   const monthly = data.subscriptions.reduce((t, s) => t + monthlyCost(s), 0)
   return {
     version: SNAPSHOT_VERSION,
@@ -150,6 +169,12 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
       const life = lifecycle(t, data.coverages, ref)
       return { id: t.id, name: t.name, category: t.category, verdict: life.verdict, remaining: life.remaining, lifeEnd: life.lifeEnd, daysLeft: life.daysLeft ?? null, ownerMemberId: t.ownerMemberId }
     }),
+    charges: {
+      days: CHARGES_DAYS,
+      total: charges.reduce((sum, c) => sum + c.amount, 0),
+      count: charges.length,
+      items: charges.slice(0, limit).map((c) => ({ ...c, link: formatLink({ kind: 'plan', id: c.subscriptionId }) })),
+    },
     reminders: capReminders(planReminders(all, { meId: opts.viewerId, users, prefs: opts.reminderPrefs, now }), opts.maxReminders ?? 56),
   }
 }

@@ -33,6 +33,7 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `burn` | object | `monthly` and `yearly` plan cost, and `replacementMonthly`, the upgrade fund's monthly target. |
 | `attention` | events | What needs a decision, most pressing first. Capped by the `limit` option (8 by default). |
 | `upcoming` | events | What is coming, soonest first, without routine short-cycle renewals. Same cap. |
+| `charges` | object | What plans will charge over the next 30 days. See below. |
 | `things` | things | Every thing in service. |
 | `reminders` | reminders | The notifications this device should have pending, soonest first. |
 
@@ -51,6 +52,10 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `handlerId` | member id or null | Who deals with it. Null when it falls to nobody. The same on every device, including for a plan attached to a thing this device may not see. |
 | `state` | string | Where the decision stands: `open`, `sent` (handed to dayGLANCE as a task), `done` or `dismissed`. `attention` holds `open` and `sent` dates, since the app keeps a sent one in view until its task is completed; mark or hide those as you see fit. `upcoming` holds every date still ahead, whatever its state. |
 | `link` | string | What a tap opens: a `thingglance://event/<key>` link. Hand it to the app as it is. |
+
+### Charges
+
+`charges` is what plans will charge over the next `days` days (30): `total` and `count` cover every charge in that window, and `items` lists the soonest of them, capped like the dated lists. Each item has `subscriptionId`, `name`, `date`, `amount` (in `currency`) and a `link` that opens the plan. A plan that charges several times in the window (a weekly one) appears once per charge. A cancelled plan, one that does not renew, and a trial before it converts charge nothing and are left out.
 
 ### A thing
 

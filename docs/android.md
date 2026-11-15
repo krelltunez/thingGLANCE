@@ -38,7 +38,8 @@ To open the project in Android Studio: `npx cap open android`.
 - the back button closes the keyboard, then the sheet, then returns to the first screen, then leaves the app without closing it;
 - a thing added on the phone reaches a web device through a real vault, and the other way;
 - the native reader holds the live stream, and a change made on the web reaches the open phone by itself;
-- both widgets can be placed, show the right date and countdown, and open the app on a tap;
+- the widgets can be placed, show the right date and countdown, and open the app on a tap;
+- a single-thing widget asks which thing as it is placed and shows that thing; the plans widget lists a charge with its amount and the total; the add tile opens the empty add form;
 - the tick on a widget row clears the date with the app not running, the write waits in a queue, and is applied once;
 - "Send to dayGLANCE" on a widget row, with the app closed, marks the row at once and reaches a web device as a date handed to dayGLANCE;
 - a reminder is held at the chosen time and delivered by Android with the app in the background; "Done with this" on it dismisses it without opening the app, and a widget tick cancels a date's reminder;
@@ -57,11 +58,13 @@ node scripts/android-check.mjs emulator-5554
 
 **It wipes the app's data on its target, so it refuses anything that is not an emulator.** If a real phone is plugged in too, always pass the emulator's serial to `adb` (`-s emulator-5554`): a bare `adb install` with two devices attached fails, and with one attached it goes to the phone.
 
-Three things to know when writing checks like it:
+Five things to know when writing checks like it:
 
 - While DevTools is attached, the page is held "visible". It never hears that the app went to the background and came back, so the sync that runs on coming to the front does not run. Detach before sending the app to the background and attach again afterwards.
 - The first back press in a form goes to the on-screen keyboard, as in any Android app.
 - Do not use `force-stop` to stand in for a closed app. It puts the package in the "stopped" state, and Android 15 then disables its widgets until the user opens the app. The check ends the process from inside the app's own sandbox instead (`run-as`), which is what Android reclaiming memory looks like.
+- Start the emulator with a cold boot (`-no-snapshot-load`). Resumed from a quick-boot snapshot, the launcher can accept a widget and then never place it, and every widget check fails for no reason of the app's.
+- Attach with `connectOverCDP(url, { noDefaults: true })`. A WebView has one browser context and refuses the commands Playwright otherwise sends to set its own defaults on it. Where the launcher puts a widget is its own business too: the check looks on each home page.
 
 ## What the shell does
 
@@ -97,12 +100,15 @@ While the app is on screen it holds the vault's event stream open, so a change m
 
 ## Widgets
 
-Two so far, both Jetpack Glance (`android/app/src/main/java/com/thingglance/app/glance`):
+Five, all Jetpack Glance (`android/app/src/main/java/com/thingglance/app/glance`):
 
 | Widget | Shows |
 | --- | --- |
 | **Needs a decision** | The app's queue: each date inside its lead window, with its countdown. It scrolls. A tap on a row opens that date; the buttons at its end send it to dayGLANCE or clear it, without opening the app; the title opens the queue. |
 | **Next up** | One line: what needs a decision first, else the nearest date ahead that has not been cleared. When it is showing a date that needs a decision it has the same buttons, and clearing it brings the next one up. A date that is merely the nearest ahead has none, as in the app. |
+| **A single thing** | One thing: the ring of how much of its window is left (in its verdict's colour, with the share as a number), its name, its verdict and the countdown to the end of the window. Which thing is chosen when the widget is placed; the first choice is "closest to the end of its window", which follows whichever thing that is. A tap opens the thing. |
+| **Plans, next 30 days** | What plans will charge in the next 30 days: each charge with its date and amount, soonest first, and the total. A plan that charges more than once in the window has a row for each. It scrolls. A tap on a row opens the plan; the title opens Plans. |
+| **Add a thing** | A one-cell tile that opens the add form. |
 
 How they get their content:
 
@@ -113,11 +119,14 @@ How they get their content:
 - **A tap on a row is a `thingglance://` link** (the snapshot carries one for every date): it opens the app somewhere and changes nothing.
 - **"Send to dayGLANCE" is offered only when the app is connected to dayGLANCE** (the payload says so). A button that can only fail is worse than no button. A date sent this way reads as sent at once and keeps its tick; the app does the sending, since it holds the key and the connection. If the vault cannot be reached the send stays queued and is tried again, so the task is not silently lost; if dayGLANCE has been switched off meanwhile it is dropped and the row goes back to open.
 - **The buttons are the only things a widget can change, and it does not change them itself.** A widget cannot run the app, so `ClearDateAction` queues a write in `SharedDataStore`, in the shape the app's one door for outside writes takes (`{ action, payload, clientId }`), with an id it mints. The row leaves the widget at once, because a widget hides any date with a write waiting. The app collects the queue when it starts, when it comes to the front, and straight away if it happens to be running (`collectWidgetWrites` in `src/native/widgetBridge.ts`), and applies each through `dispatchExternalWrite`, so a write collected twice is applied once. A write is taken off the queue only after the widgets have been handed a snapshot that reflects it; the other way round, the row would flash back.
+- **Amounts are written natively** (`formatMoney`), in the snapshot's currency and language, by the same rule as the app's `money()`: cents only for an amount under a hundred that has them. The charges themselves come from the snapshot's `charges` field, worked out by `chargesWithin()` in `src/core/money.ts`, the same function the Glance page uses.
+- **The single thing's ring is a picture.** A widget cannot draw an arc, so `ThingWidget` draws the ring into a bitmap each time it composes.
+- **Which thing a widget shows is that widget's own state** (Glance's per-widget preferences), so two of them can show two things. `ThingConfigActivity` is the picker: a plain list in a dialog, read from the payload, with its words from the payload too. It opens three ways: from the launcher when the widget is dragged out of the launcher's own list; from the widget's edit button afterwards (`reconfigurable`); and, because a launcher does not ask when a widget is placed from inside an app, from the callback Android sends once a widget pinned from Settings is on the home screen. If the chosen thing is later retired or removed the widget says so and opens Things; it does not quietly switch to another.
 - **The rest follows without the app being opened.** The date's reminders on this phone are cancelled at once, and a background refresh is asked for, which carries the write to the vault and so to the household's other devices.
 
 Settings has an "add to home screen" button for each (Android 8 and later, where the launcher supports it).
 
-`WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation, feeds the parser broken payloads, and checks the write queue. The device check places both widgets on the emulator's home screen, reads what they show, taps a row, then kills the app and taps a tick.
+`WidgetDataTest` (run with `./gradlew testDebugUnitTest` in `android/`) pins the countdown against the web app's own notation, feeds the parser broken payloads, and checks the write queue. It also covers the charges and things the newer widgets read, which thing "automatic" picks, and the amounts. The device check places all five on the emulator's home screen, reads what they show, taps a row, then kills the app and taps a tick; for the newer three it picks a thing in the picker, adds a plan, and taps each widget through to the app.
 
 ## Reminders
 
@@ -160,6 +169,5 @@ Other choices worth knowing:
 
 ## Not there yet
 
-- **More widgets** (a single thing, plans this month, an add tile).
 - Quick Settings tiles, Tasker.
 - **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.

@@ -23,13 +23,15 @@ describe('the snapshot contract', () => {
     expect(snap().version).toBe(1)
   })
   it('has exactly these top-level fields', () => {
-    expect(keys(snap())).toEqual(['attention', 'burn', 'counts', 'currency', 'day', 'generatedAt', 'locale', 'reminders', 'scope', 'things', 'upcoming', 'version'])
+    expect(keys(snap())).toEqual(['attention', 'burn', 'charges', 'counts', 'currency', 'day', 'generatedAt', 'locale', 'reminders', 'scope', 'things', 'upcoming', 'version'])
   })
   it('has exactly these fields inside', () => {
     const s = snap()
     expect(keys(s.scope)).toEqual(['memberId', 'viewerId'])
     expect(keys(s.counts)).toEqual(['attention', 'subscriptions', 'things', 'urgent'])
     expect(keys(s.burn)).toEqual(['monthly', 'replacementMonthly', 'yearly'])
+    expect(keys(s.charges)).toEqual(['count', 'days', 'items', 'total'])
+    expect(keys(s.charges.items[0])).toEqual(['amount', 'date', 'link', 'name', 'subscriptionId'])
     expect(keys(s.things[0])).toEqual(['category', 'daysLeft', 'id', 'lifeEnd', 'name', 'ownerMemberId', 'remaining', 'verdict'])
     expect(keys(s.attention[0])).toEqual(['amount', 'date', 'days', 'detail', 'handlerId', 'key', 'link', 'severity', 'state', 'subscriptionId', 'thingId', 'title', 'type'])
     expect(keys(s.reminders[0])).toEqual(['amount', 'at', 'body', 'day', 'daysBefore', 'eventDate', 'eventKey', 'id', 'link', 'stage', 'subscriptionId', 'thingId', 'title', 'type'])
@@ -131,5 +133,50 @@ describe('a row with a figure that makes no sense', () => {
     }
     expect(Number.isFinite(s.burn.replacementMonthly)).toBe(true)
     expect(JSON.parse(JSON.stringify(s))).toEqual(s)
+  })
+})
+
+describe('what plans will charge next', () => {
+  const plans = (list: Subscription[]): DataSet => ({ things: [thing({})], coverages: [], subscriptions: list, decisions: [] })
+  const of = (data: DataSet, memberId: string | null = null) => buildSnapshot(data, { viewerId: 'ann', memberId, userIds: ['ann'], ref: REF, now: NOW }).charges
+
+  it('lists the next thirty days, soonest first, with the total', () => {
+    const c = of(plans([
+      sub({ id: 'year', name: 'Storage', amount: 120, cycle: 'yearly', anchorDate: '2026-12-01' }),
+      sub({ id: 'month', name: 'Music', amount: 10, cycle: 'monthly', anchorDate: '2026-11-20' }),
+      sub({ id: 'far', name: 'Domain', amount: 15, cycle: 'yearly', anchorDate: '2027-03-01' }),
+    ]))
+    expect(c.days).toBe(30)
+    expect(c.items.map((i) => [i.name, i.date, i.amount])).toEqual([['Music', '2026-11-20', 10], ['Storage', '2026-12-01', 120]])
+    expect(c).toMatchObject({ total: 130, count: 2 })
+    expect(c.items[0].link).toBe('thingglance://plan/month')
+  })
+  it('counts a weekly plan once for every charge in the window', () => {
+    const c = of(plans([sub({ id: 'w', name: 'Paper', amount: 3, cycle: 'weekly', anchorDate: '2026-11-13' })]))
+    expect(c.count).toBe(5)
+    expect(c.total).toBe(15)
+  })
+  it('leaves out what will not actually be charged', () => {
+    const c = of(plans([
+      sub({ id: 'gone', status: 'cancelled', anchorDate: '2026-11-20' }),
+      sub({ id: 'ends', autoRenew: false, anchorDate: '2026-11-20' }),
+      sub({ id: 'trial', name: 'Trial', status: 'trial', trialEnd: '2026-11-25', cycle: 'monthly', amount: 12, anchorDate: '2026-11-25' }),
+    ]))
+    // The trial's first charge is the day it converts.
+    expect(c.items.map((i) => [i.name, i.date])).toEqual([['Trial', '2026-11-25']])
+  })
+  it('counts every charge in the total even when the list is capped', () => {
+    const many = Array.from({ length: 12 }, (_, i) => sub({ id: `p${i}`, name: `Plan ${i}`, amount: 1, cycle: 'monthly', anchorDate: '2026-11-20' }))
+    const c = buildSnapshot(plans(many), { viewerId: null, ref: REF, now: NOW, limit: 5 }).charges
+    expect(c.items).toHaveLength(5)
+    expect(c).toMatchObject({ count: 12, total: 12 })
+  })
+  it('never includes another member\'s private plan, and follows the member filter', () => {
+    const mine = sub({ id: 'mine', name: 'Mine', payerMemberId: 'ann', anchorDate: '2026-11-20', cycle: 'monthly', coversThingIds: [] })
+    const theirs = sub({ id: 'theirs', name: 'Theirs', payerMemberId: 'ben', visibility: 'private', anchorDate: '2026-11-20', cycle: 'monthly', coversThingIds: [] })
+    const bens = sub({ id: 'bens', name: 'Bens', payerMemberId: 'ben', anchorDate: '2026-11-20', cycle: 'monthly', coversThingIds: [] })
+    const data = plans([mine, theirs, bens])
+    expect(of(data).items.map((i) => i.name).sort()).toEqual(['Bens', 'Mine'])
+    expect(of(data, 'ann').items.map((i) => i.name)).toEqual(['Mine'])
   })
 })

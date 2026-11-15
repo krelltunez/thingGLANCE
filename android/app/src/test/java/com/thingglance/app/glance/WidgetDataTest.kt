@@ -180,6 +180,86 @@ class WidgetDataTest {
         assertEquals("widget:12", kept.getJSONObject(0).getString("clientId"))
     }
 
+    private val newer = """
+        {"snapshot":{"version":1,"locale":"en-US","currency":"EUR",
+          "things":[
+            {"id":"t1","name":"MacBook Pro","verdict":"solid","remaining":0.62,"lifeEnd":"2190-03-01"},
+            {"id":"t2","name":"Dishwasher","verdict":"watch","remaining":0.08,"lifeEnd":"2190-01-01"},
+            {"id":"t3","name":"No dates yet","verdict":"unknown","remaining":null,"lifeEnd":null},
+            {"id":"t4","name":"Odd","verdict":"prime","remaining":7,"lifeEnd":"2027-02-31"},
+            {"name":"no id"}
+          ],
+          "charges":{"days":30,"total":41.48,"count":5,"items":[
+            {"subscriptionId":"s1","name":"iCloud+","date":"2190-01-03","amount":2.99,"link":"thingglance://plan/s1"},
+            {"subscriptionId":"s1","name":"iCloud+","date":"2190-01-10","amount":2.99,"link":"thingglance://plan/s1"},
+            {"subscriptionId":"s2","name":"Insurance","date":"2190-01-12","amount":35.5},
+            {"subscriptionId":"s3","name":"Bad date","date":"2190-02-30","amount":1},
+            {"name":"no plan","date":"2190-01-12","amount":1}
+          ]}},
+         "labels":{"verdicts":{"solid":"Solid","watch":"Keep an eye on it"},"thingPick":"Welches Ding?"}}
+    """.trimIndent()
+
+    @Test
+    fun readsWhatPlansWillCharge() {
+        val data = WidgetSnapshot.parse(newer)
+        assertEquals("EUR", data.currency)
+        assertEquals(41.48, data.chargesTotal, 0.0001)
+        // The count is the snapshot's: the list may be shorter than it.
+        assertEquals(5, data.chargesCount)
+        // A plan that charges twice in the window is two rows; a row with no
+        // plan or no real date is left out.
+        assertEquals(listOf("iCloud+", "iCloud+", "Insurance"), data.charges.map { it.name })
+        assertEquals("thingglance://plan/s1", data.charges[0].link)
+        // A row with no link of its own still opens Plans.
+        assertEquals("thingglance://view/plans", data.charges[2].link)
+    }
+
+    @Test
+    fun aSingleThingIsTheChosenOneOrTheOneClosestToTheEnd() {
+        val data = WidgetSnapshot.parse(newer)
+        assertEquals(listOf("t1", "t2", "t3", "t4"), data.things.map { it.id })
+        assertEquals("MacBook Pro", data.thing("t1")?.name)
+        // Left on automatic: the least of its window left.
+        assertEquals("Dishwasher", data.thing(null)?.name)
+        // The chosen one was retired or removed: nothing, not some other thing.
+        assertNull(data.thing("gone"))
+        // A share outside 0..1 is held to it, and a date that is not one is dropped.
+        assertEquals(1.0, data.things[3].remaining!!, 0.0)
+        assertNull(data.things[3].lifeEnd)
+        assertNull(data.things[2].remaining)
+        assertEquals("Keep an eye on it", data.labels.verdicts["watch"])
+        assertEquals("Welches Ding?", data.labels.thingPick)
+        assertEquals("Add a thing", data.labels.addThing)
+    }
+
+    @Test
+    fun withNoDatedThingAutomaticStillShowsOne() {
+        val data = WidgetSnapshot.parse("""{"snapshot":{"things":[{"id":"a","name":"Kettle","verdict":"unknown","remaining":null}]}}""")
+        assertEquals("Kettle", data.thing(null)?.name)
+        assertNull(WidgetSnapshot.parse("""{"snapshot":{"things":[]}}""").thing(null))
+        // A payload from before these fields existed.
+        val old = WidgetSnapshot.parse(payload)
+        assertTrue(old.charges.isEmpty())
+        assertEquals(0, old.chargesCount)
+        assertNull(old.thing(null))
+        assertEquals("USD", old.currency)
+    }
+
+    @Test
+    fun amountsAreWrittenAsTheAppWritesThem() {
+        val us = java.util.Locale.US
+        assertEquals("$2.99", formatMoney(2.99, "USD", us))
+        assertEquals("$15", formatMoney(15.0, "USD", us))
+        // Cents only below a hundred.
+        assertEquals("$120", formatMoney(119.99, "USD", us))
+        assertEquals("$1,234", formatMoney(1234.0, "USD", us))
+        // The currency is the snapshot's, the notation the language's.
+        assertTrue(formatMoney(35.5, "EUR", java.util.Locale.GERMANY).contains("35,50"))
+        assertTrue(formatMoney(35.5, "EUR", java.util.Locale.GERMANY).contains("€"))
+        // A code that is not a currency still reads as an amount.
+        assertEquals("XX 3.50", formatMoney(3.5, "XX", us))
+    }
+
     @Test
     fun aPayloadThatIsMissingOrBrokenDrawsAsNotLoaded() {
         for (bad in listOf(null, "", "   ", "{", "[]", "{\"labels\":{}}", "null")) {

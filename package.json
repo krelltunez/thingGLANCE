@@ -2,7 +2,7 @@
   "name": "thingglance",
   "private": true,
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Know what's next for your things: warranties, subscriptions, support windows and the right moment to upgrade.",
   "homepage": "https://www.glance-apps.com/thingglance",
   "type": "module",

@@ -21,7 +21,7 @@ Then copy `android/keystore.properties.example` to `android/keystore.properties`
 
 ## Each release
 
-1. **Set the version** in `package.json` (`npm version patch`, `minor` or `major`). The Android version name is read from there, and the version code follows from it: `major*1000000 + minor*10000 + patch*100`, so 0.1.0 is 10000 and 1.0.0 is 1000000.
+1. **Set the version** in `package.json` (`npm version patch`, `minor` or `major`). The Android version name is read from there, and the version code follows from it: `major*1000000 + minor*10000 + patch*100`, so 0.1.0 is 10000 and 1.0.0 is 1000000. The first public release is 1.0.0 (settled 2026-11-15: it is a paid app, and a 0.x number tells a buyer it is not finished). The test uploads made as 0.1.0 have lower codes, so Play accepts it after them.
 2. **Run the checks**: `npm run lint`, `npm test`, `npx tsc -b`, `npm run test:e2e`, `./gradlew testDebugUnitTest` in `android/`, and the device check on an emulator ([android.md](android.md#check-it-on-an-emulator)). The device check needs a `--webview-debug` build, so run it before the release build, not on it.
 3. **Build**:
 
@@ -121,5 +121,4 @@ In the order the console asks.
 
 ## Decisions still open
 
-- **The first version number.** `package.json` says 0.1.0. Whether the first public release is 0.1.0 or 1.0.0 only has to be settled before the production upload; test uploads of either are fine.
 - **The APK.** The release build makes one beside the bundle. The app has no paywall, so publishing that APK anywhere is giving the app away.

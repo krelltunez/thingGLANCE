@@ -111,7 +111,7 @@ describe('horizon', () => {
 describe('snapshot', () => {
   it('is plain JSON a widget can render without the app', () => {
     const snap = buildSnapshot(data({ things: [thing({ purchaseDate: '2025-11-24', lifespanMonths: 48, price: 800 })], coverages: [cov({})], subscriptions: [sub({})] }), { ref: REF, viewerId: null })
-    expect(snap.counts).toEqual({ things: 1, subscriptions: 1, attention: 1, urgent: 1 })
+    expect(snap.counts).toEqual({ things: 1, subscriptions: 1, attention: 1, urgent: 1, covered: 1 })
     expect(snap.burn.monthly).toBe(10)
     expect(JSON.parse(JSON.stringify(snap))).toEqual(snap)
   })

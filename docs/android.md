@@ -153,6 +153,10 @@ Two, for the panel pulled down from the top of the screen (`android/app/src/main
 
 Tasker and its kind can add things and plans, clear dates and read the snapshot by sending intents, once the user turns it on in Settings. [tasker.md](tasker.md) has the actions and how it is built. In short: a broadcast becomes one more entry in the queue the widgets' ticks use, so it is applied through the same door, on screen or by a background refresh, and the answer is broadcast back.
 
+## GLANCElauncher
+
+The family's home screen has a planning page for thingGLANCE when the app is installed. It reads the same payload the widgets do, as rows from a content provider, and sends "Done with this", "Send to dayGLANCE" and "confirm your data now" to a receiver. Both sit behind a permission only the launcher's signing certificate holds. [launcher.md](launcher.md) is the contract and how it is built.
+
 ## Reminders
 
 Android notifications for the dates that are worth one. Which dates, when, and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot. The scheduling is native (`reminders/`), so it works whoever brings the plan: the app on screen, a background refresh with no screen, or a tick on a widget.
@@ -178,7 +182,7 @@ What a run does, in order: sync with the vault; apply what was ticked on widgets
 - **An allowlist on both sides.** The run starts only what its list needs; nothing renders. `HeadlessBridge` has nine methods and no others, and a test holds the web side to exactly those.
 - **Two pages never work on the same storage.** If the app is opened during a run, `MainActivity` destroys the run's WebView before its own page loads, and the run also checks between steps. Nothing is lost: a write leaves the native queue only after it has been applied and the home screen updated, and whatever was applied but not yet pushed goes up with the app's own first sync.
 - **If the app is alive but not on screen** when the routine run comes due, no second page is started. The app's own page is asked to do the same work.
-- **Two triggers.** The routine run is periodic work, about every six hours (Android decides exactly when). The other is asked for by a widget tick or a notification's "Done with this" when the app is closed, waits for a network, and is not repeated within a minute: a request that comes too soon is not dropped but answered by one more run when the minute is up, so several taps are one run.
+- **Three triggers.** The routine run is periodic work, about every six hours (Android decides exactly when). The second is asked for by a widget tick or a notification's "Done with this" when the app is closed, waits for a network, and is not repeated within a minute: a request that comes too soon is not dropped but answered by one more run when the minute is up, so several taps are one run. The third is GLANCElauncher asking the app to confirm its data while the app is closed, at most every ten minutes ([launcher.md](launcher.md)).
 - **It leaves a record.** The last twenty runs are kept (what triggered each, when, how it went). Settings → General shows when the last one finished.
 
 On the emulator a run takes well under a second of work.

@@ -388,10 +388,14 @@ const lastRefresh = (trigger) => {
   const log = JSON.parse(shared().match(/name="refresh_log">(\[.*?\])<\/string>/s)?.[1] ?? '[]')
   return log.filter((e) => e.trigger === trigger).pop() ?? null
 }
+// The queue itself, not the whole file: the payload beside it now lists the
+// writes that were applied (for GLANCElauncher), ids and all.
+const queued = () => shared().match(/name="pending_writes">(.*?)<\/string>/s)?.[1] ?? '[]'
 const onDemand = await waitFor(() => lastRefresh('home-screen') !== null, 60_000)
 check('a refresh runs by itself soon after the tick', onDemand.ok && lastRefresh('home-screen')?.outcome === 'ran', JSON.stringify(lastRefresh('home-screen')))
 check('it synced with the vault and applied the tick', (lastRefresh('home-screen')?.synced ?? []).includes('vault') && lastRefresh('home-screen')?.applied === 1)
-check('the queue of writes is empty afterwards', !/widget:[0-9a-f-]{36}/.test(shared()))
+check('the queue of writes is empty afterwards', !/widget:[0-9a-f-]{36}/.test(queued()))
+check('and the payload lists the tick among the writes that were applied', /"handledWrites":\[[^\]]*widget:[0-9a-f-]{36}/.test(shared()))
 await W.getByRole('tab', { name: /^Glance/ }).first().click()
 const reached = await waitFor(() => W.evaluate(() => document.querySelectorAll('button[title="Done with this"]').length === 0), 20_000)
 check('the tick reaches the web device, with the phone app never opened', reached.ok && foreground() !== APP_ID)
@@ -440,7 +444,7 @@ check('a refresh does the sending, by itself', sentRun.ok, `after ${Math.round(s
 const marked = await waitFor(() => W.getByText('In dayGLANCE').first().isVisible().catch(() => false), 20_000)
 check('the web device shows the date as handed to dayGLANCE', marked.ok && foreground() !== APP_ID)
 ui = screen()
-check('the widget still shows it as sent once the app has caught up', !!onScreen(ui, 'In dayGLANCE') && !/widget:[0-9a-f-]{36}/.test(shared()))
+check('the widget still shows it as sent once the app has caught up', !!onScreen(ui, 'In dayGLANCE') && !/widget:[0-9a-f-]{36}/.test(queued()))
 
 // Opening the app afterwards finds it all done.
 P = await launch()

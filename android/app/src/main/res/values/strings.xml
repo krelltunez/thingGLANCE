@@ -20,6 +20,10 @@
          tile takes its name from the app, in the app's language. -->
     <string name="tile_decide">Needs a decision</string>
     <string name="tile_add">Add a thing</string>
+    <!-- The permission only GLANCElauncher holds (docs/launcher.md). Android
+         shows these in an app's permission details, if anywhere. -->
+    <string name="launcher_permission_label">Read thingGLANCE data for GLANCElauncher</string>
+    <string name="launcher_permission_description">Lets GLANCElauncher show your dates, things and plan charges, and clear a date or send it to dayGLANCE.</string>
     <!-- Long-press shortcuts on the app icon. -->
     <string name="shortcut_add_thing">Add a thing</string>
     <string name="shortcut_add_plan">Add a plan</string>

@@ -4,7 +4,7 @@
 
 It is plain JSON. A native shell stores it for a widget, a headless refresh hands it to the launcher, and an MCP tool returns it as it is.
 
-**Version 1 is frozen as of 2026-11-13.** `src/core/snapshot.test.ts` pins the field lists below, so a change to the shape fails a test until someone has decided what kind of change it is.
+**Version 1 is frozen as of 2026-11-13.** Added since, without a new version: `counts.covered`, `charges.months` and a thing's `lifeStart`, `coverageEnd`, `supportEnd` and `lifeEndReason` (2026-11-15, for GLANCElauncher's page). `src/core/snapshot.test.ts` pins the field lists below, so a change to the shape fails a test until someone has decided what kind of change it is.
 
 ## Changing it
 
@@ -29,7 +29,7 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | `locale` | BCP 47 tag | The language and region the text in this snapshot is written for (`title`, `detail`, a reminder's `title` and `body`). Format your own dates and amounts for the same tag. |
 | `scope.viewerId` | member id or null | The member this device belongs to. Null when nobody has claimed it. |
 | `scope.memberId` | member id or null | The member the dated lists were narrowed to. Null for everyone. |
-| `counts` | object | `things` in service, `subscriptions` not cancelled, `attention` (the queue's length), `urgent` (queue items due within two weeks or past). |
+| `counts` | object | `things` in service, `subscriptions` not cancelled, `attention` (the queue's length), `urgent` (queue items due within two weeks or past), `covered` (things in service under a coverage today). |
 | `burn` | object | `monthly` and `yearly` plan cost, and `replacementMonthly`, the upgrade fund's monthly target. |
 | `attention` | events | What needs a decision, most pressing first. Capped by the `limit` option (8 by default). |
 | `upcoming` | events | What is coming, soonest first, without routine short-cycle renewals. Same cap. |
@@ -57,9 +57,13 @@ Readers are separate programs, and a stored snapshot may have been written by an
 
 `charges` is what plans will charge over the next `days` days (30): `total` and `count` cover every charge in that window, and `items` lists the soonest of them, capped like the dated lists. Each item has `subscriptionId`, `name`, `date`, `amount` (in `currency`) and a `link` that opens the plan. A plan that charges several times in the window (a weekly one) appears once per charge. A cancelled plan, one that does not renew, and a trial before it converts charge nothing and are left out.
 
+`months` is the year ahead: twelve entries, one per calendar month starting with the month of `day`, each with `month` (its first day) and `total`. The month in progress counts from `day` on. It is what the app's own charges chart is drawn from.
+
 ### A thing
 
 `id`, `name`, `category`, `verdict` (`prime`, `solid`, `watch`, `replace`, `overdue` or `unknown`), `remaining` (share of its window left, 0 to 1), `lifeEnd`, `daysLeft` and `ownerMemberId` (null for the household). `remaining`, `lifeEnd` and `daysLeft` are null when the thing has no dates yet.
+
+For drawing its life as a bar: `lifeStart` (when its clock started), `coverageEnd` (when the latest coverage ends), `supportEnd`, and `lifeEndReason` (`plan` when the planned replacement closes its window, `support` when support running out does). Each is null where unknown.
 
 ### A reminder
 

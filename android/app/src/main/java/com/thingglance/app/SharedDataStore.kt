@@ -1,6 +1,8 @@
 package com.thingglance.app
 
 import android.content.Context
+import com.thingglance.app.launcher.LauncherProvider
+import com.thingglance.app.launcher.LauncherRefresh
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -10,7 +12,8 @@ import java.util.UUID
 // What passes between the web app and the surfaces that cannot run it.
 //
 //   - The widget payload: written by the app, read by widgets
-//     (src/native/widgetBridge.ts).
+//     (src/native/widgetBridge.ts) and, as rows, by GLANCElauncher
+//     (launcher/, docs/launcher.md).
 //   - Pending writes: made on the home screen while the app is not running,
 //     applied by the app the next time it is (docs/links-and-intents.md). Each
 //     carries an id minted here, so applying it twice changes nothing. Writes
@@ -36,8 +39,11 @@ object SharedDataStore {
     val changes: StateFlow<Int> get() = writes
 
     fun writeWidgetPayload(context: Context, json: String) {
-        prefs(context).edit().putString(KEY_WIDGETS, json).apply()
+        // commit(), not apply(): the launcher is told now and reads at once,
+        // from another process.
+        prefs(context).edit().putString(KEY_WIDGETS, json).putLong(KEY_CHECKED_AT, System.currentTimeMillis()).commit()
         writes.value += 1
+        LauncherProvider.changed(context)
     }
 
     fun readWidgetPayload(context: Context): String? = prefs(context).getString(KEY_WIDGETS, null)
@@ -121,6 +127,18 @@ object SharedDataStore {
         return true
     }
 
+    // A write GLANCElauncher asked for: { action, payload, clientId, from }.
+    // False when one with the same id is already waiting (it re-sends).
+    @Synchronized
+    fun queueLauncher(context: Context, entry: JSONObject): Boolean = queueAutomation(context, entry)
+
+    @Synchronized
+    fun isPendingWrite(context: Context, clientId: String): Boolean {
+        val queue = pending(context)
+        for (i in 0 until queue.length()) if (queue.optJSONObject(i)?.optString("clientId") == clientId) return true
+        return false
+    }
+
     internal fun added(queue: JSONArray, entry: JSONObject): Boolean {
         val id = entry.optString("clientId")
         for (i in 0 until queue.length()) if (queue.optJSONObject(i)?.optString("clientId") == id) return false
@@ -182,6 +200,67 @@ object SharedDataStore {
 
     fun refreshLog(context: Context): String = prefs(context).getString(KEY_REFRESH_LOG, "[]") ?: "[]"
 
+    // ── GLANCElauncher: how fresh, and how each of its refreshes went ───────
+
+    private const val KEY_CHECKED_AT = "launcher_checked_at"
+    private const val KEY_SYNCED_AT = "launcher_synced_at"
+    private const val KEY_LAUNCHER_LOG = "launcher_refresh_log"
+
+    // When the app last looked, whether or not anything had changed.
+    fun launcherCheckedAt(context: Context): Long = prefs(context).getLong(KEY_CHECKED_AT, 0L)
+
+    fun launcherSyncedAt(context: Context): String? = prefs(context).getString(KEY_SYNCED_AT, null)
+
+    // "Still here, nothing changed": no payload to write, but the launcher
+    // measures freshness from this.
+    fun touchLauncherHeartbeat(context: Context, syncedAt: String?) {
+        val edit = prefs(context).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis())
+        if (!syncedAt.isNullOrEmpty()) edit.putString(KEY_SYNCED_AT, syncedAt)
+        edit.commit()
+    }
+
+    fun launcherRefreshLog(context: Context): String = prefs(context).getString(KEY_LAUNCHER_LOG, "[]") ?: "[]"
+
+    fun launcherRefreshEntry(context: Context, clientId: String): JSONObject? =
+        LauncherRefresh.find(LauncherRefresh.parse(launcherRefreshLog(context)), clientId)
+
+    // Logs a REFRESH and answers where it goes. Null for an id met before:
+    // the launcher re-sends, and one request is logged once.
+    @Synchronized
+    fun logLauncherRefresh(context: Context, clientId: String, now: Long, appOpen: Boolean): LauncherRefresh.Route? {
+        val log = LauncherRefresh.parse(launcherRefreshLog(context))
+        if (LauncherRefresh.seen(log, clientId)) return null
+        val route = LauncherRefresh.route(log, appOpen, lastRefreshAt(context), now)
+        storeLauncherLog(context, LauncherRefresh.appended(log, LauncherRefresh.entry(clientId, now, appOpen, route)))
+        return route
+    }
+
+    @Synchronized
+    fun appendLauncherRefresh(context: Context, entry: JSONObject) {
+        storeLauncherLog(context, LauncherRefresh.appended(LauncherRefresh.parse(launcherRefreshLog(context)), entry))
+    }
+
+    // False when the entry is gone.
+    @Synchronized
+    fun patchLauncherRefresh(context: Context, clientId: String, patch: JSONObject): Boolean {
+        val log = LauncherRefresh.patched(LauncherRefresh.parse(launcherRefreshLog(context)), clientId, patch) ?: return false
+        storeLauncherLog(context, log)
+        return true
+    }
+
+    // The hold ran out: marks the request unanswered, unless it was answered
+    // in the meantime. True when it wrote.
+    @Synchronized
+    fun launcherRefreshUnanswered(context: Context, clientId: String, heldFrom: Long, now: Long): Boolean {
+        val entry = launcherRefreshEntry(context, clientId) ?: return false
+        val patch = LauncherRefresh.unanswered(entry, heldFrom, now) ?: return false
+        return patchLauncherRefresh(context, clientId, patch)
+    }
+
+    private fun storeLauncherLog(context: Context, log: JSONArray) {
+        prefs(context).edit().putString(KEY_LAUNCHER_LOG, log.toString()).commit()
+    }
+
     private fun pending(context: Context): JSONArray = try {
         JSONArray(prefs(context).getString(KEY_WRITES, "[]"))
     } catch (e: Exception) {
@@ -192,6 +271,8 @@ object SharedDataStore {
         // commit(): the widget redraws from this straight after.
         prefs(context).edit().putString(KEY_WRITES, queue.toString()).commit()
         writes.value += 1
+        // A date ticked off anywhere leaves the launcher's page too.
+        LauncherProvider.changed(context)
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

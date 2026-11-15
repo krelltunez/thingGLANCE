@@ -25,7 +25,7 @@ import { i18nReady } from '@/i18n'
 import { drainIntentsNow } from '@/intents/receive'
 import { createRosterDbEngine } from '@/multiuser/rosterVault'
 import { registerRosterDbEngine } from '@/multiuser/rosterDirtyTracker'
-import { collectWidgetWrites, pushPayloadNow, type NativeSurface } from '@/native/widgetBridge'
+import { collectWidgetWrites, noteSynced, pushPayloadNow, type NativeSurface } from '@/native/widgetBridge'
 import { createDbEngine } from '@/sync/dbEngine'
 import { registerDbEngine } from '@/sync/dirtyTracker'
 import { dbCryptoConfig, settleKeyStorage } from '@/sync/keyHooks'
@@ -97,7 +97,10 @@ export async function buildSyncRoads(report: ReportError): Promise<HeadlessRoad[
   })
   if (vault) {
     registerDbEngine(vault)
-    roads.push({ name: 'vault', run: () => vault.dbSyncCycle() })
+    // The launcher reads when the vault last answered from the snapshot this
+    // run hands over: what it was before the run, then what the run made it.
+    noteSynced(vault.getLastSynced())
+    roads.push({ name: 'vault', run: async () => { await vault.dbSyncCycle(); noteSynced(vault.getLastSynced()) } })
   }
   const roster = createRosterDbEngine({ onError: (message) => report('roster', message) })
   if (roster) {

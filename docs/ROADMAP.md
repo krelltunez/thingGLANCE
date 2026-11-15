@@ -199,7 +199,7 @@ Rules lastGLANCE learned the hard way:
 
 This is where keeping `src/core` and `src/sync` free of React pays off: the headless root can import them directly.
 
-**Launcher-side work is required.** The launcher is currently hardcoded for dayGLANCE and lastGLANCE through its `GlanceClient` seam. thingGLANCE needs a client there and a decision about what its card shows (the queue and the next date are the obvious candidates).
+**Built, 2026-11-15.** thingGLANCE's half is in [launcher.md](launcher.md): the provider, the receiver, the permission, the heartbeat and the refresh log, all on top of the widgets' payload and queue. The launcher's half (a third `GlanceApp`, a planning page per app, thingGLANCE's page) is in `../GLANCElauncher`. Checked together on the emulator; see the end of launcher.md for what was and was not.
 
 ## Phase 4: iOS (L)
 

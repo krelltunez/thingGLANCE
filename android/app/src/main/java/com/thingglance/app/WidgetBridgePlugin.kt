@@ -19,6 +19,7 @@ import com.thingglance.app.glance.DecideWidgetReceiver
 import com.thingglance.app.glance.NextUpWidgetReceiver
 import com.thingglance.app.glance.ThingConfigActivity
 import com.thingglance.app.glance.WidgetSnapshot
+import com.thingglance.app.launcher.LauncherProvider
 import com.thingglance.app.tiles.TILES
 import com.thingglance.app.tiles.tileLabel
 import com.thingglance.app.reminders.ReminderPlan
@@ -66,6 +67,29 @@ class WidgetBridgePlugin : Plugin() {
 
     override fun load() {
         live = java.lang.ref.WeakReference(this)
+    }
+
+    // The app looked and nothing had changed. GLANCElauncher measures how
+    // fresh its page is from this (docs/launcher.md).
+    @PluginMethod
+    fun heartbeat(call: PluginCall) {
+        SharedDataStore.touchLauncherHeartbeat(context, call.getString("syncedAt"))
+        LauncherProvider.changed(context)
+        call.resolve()
+    }
+
+    // How a refresh GLANCElauncher asked this page for went:
+    // { clientId, outcome, reason?, durationMs }.
+    @PluginMethod
+    fun recordLauncherRefresh(call: PluginCall) {
+        val clientId = call.getString("clientId")
+        if (!clientId.isNullOrEmpty()) {
+            val patch = org.json.JSONObject().put("outcome", call.getString("outcome") ?: "ran").put("finishedAt", System.currentTimeMillis())
+                .put("reason", call.getString("reason") ?: org.json.JSONObject.NULL)
+            call.getInt("durationMs")?.let { patch.put("durationMs", it) }
+            if (SharedDataStore.patchLauncherRefresh(context, clientId, patch)) LauncherProvider.changed(context)
+        }
+        call.resolve()
     }
 
     // The last few background refreshes, newest last, as JSON.
@@ -140,6 +164,15 @@ class WidgetBridgePlugin : Plugin() {
         fun askLiveAppToRefresh(): Boolean {
             val plugin = live?.get() ?: return false
             plugin.notifyListeners("refreshRequested", JSObject())
+            return true
+        }
+
+        // GLANCElauncher asked for a refresh and the app's page exists: the
+        // page does it, and reports through recordLauncherRefresh. Answers
+        // false when there is no page to ask.
+        fun askLiveAppForLauncherRefresh(clientId: String): Boolean {
+            val plugin = live?.get() ?: return false
+            plugin.notifyListeners("launcherRefresh", JSObject().put("clientId", clientId))
             return true
         }
 

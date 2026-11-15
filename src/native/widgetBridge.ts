@@ -13,15 +13,16 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { liveQuery } from 'dexie'
 import { verdictLabel, type Verdict } from '@/core/health'
 import { tr } from '@/core/text'
-import type { GlanceSnapshot } from '@/core/snapshot'
+import type { GlanceSnapshot, SnapshotCharge, SnapshotEvent } from '@/core/snapshot'
 import { db } from '@/db/client'
 import i18n from '@/i18n'
 import { isIntentsEnabled } from '@/intents/config'
 import type { ExternalWrite, IntentResult } from '@/intents/handleIntent'
 import { currentSnapshot, dispatchExternalWrite } from '@/intents/inbound'
+import { readLedger } from '@/intents/ledger'
 import { subscribeHousehold } from '@/multiuser/settings'
 import { subscribeSettings } from '@/state/settings'
-import { syncNow } from '@/sync/manager'
+import { getSyncState, syncErrorText, syncNow } from '@/sync/manager'
 
 export interface WidgetLabels {
   decideTitle: string
@@ -71,6 +72,21 @@ export type TileResult = 'added' | 'already' | 'dismissed'
 
 const VERDICT_CODES: Verdict[] = ['prime', 'solid', 'watch', 'replace', 'overdue', 'retired', 'unknown']
 
+// GLANCElauncher's share of the payload (docs/launcher.md). Its page is a
+// screen, not a widget, so it takes longer lists than `snapshot` holds, and it
+// keeps its own outbox, so it needs to see which of its writes have landed.
+export interface LauncherBlock {
+  attention: SnapshotEvent[]
+  upcoming: SnapshotEvent[]
+  charges: SnapshotCharge[]
+  // The newest writes from outside that were applied, oldest first. The
+  // launcher stops re-sending a write once its id is here.
+  handledWrites: { clientId: string; action: string; entityId: string | null }[]
+  // When the vault was last synced in full, or null with no vault: what the
+  // launcher measures "is this fresh?" from.
+  syncedAt: string | null
+}
+
 export interface WidgetPayload {
   snapshot: GlanceSnapshot
   labels: WidgetLabels
@@ -78,6 +94,7 @@ export interface WidgetPayload {
   // reminders offer "Send to dayGLANCE": a button that can only fail is worse
   // than no button.
   canSend: boolean
+  launcher: LauncherBlock
 }
 
 interface WidgetBridgePlugin {
@@ -92,7 +109,13 @@ interface WidgetBridgePlugin {
   // `results`: how each went, a JSON object of results by id. The native
   // side passes one on to whoever asked for the write (an automation app).
   acknowledgeWrites(options: { clientIds: string[]; results: string }): Promise<void>
+  // "Still here, nothing changed": stamps when the app last looked, for the
+  // launcher, without writing the payload again.
+  heartbeat(options: { syncedAt: string | null }): Promise<void>
+  // How a refresh the launcher asked for went.
+  recordLauncherRefresh(options: { clientId: string; outcome: 'ran' | 'failed'; reason?: string; durationMs: number }): Promise<void>
   addListener(eventName: 'pendingWrites' | 'refreshRequested', listener: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: 'launcherRefresh', listener: (request: { clientId: string }) => void): Promise<PluginListenerHandle>
   // The last few background refreshes, newest last: a JSON array.
   refreshLog(): Promise<{ log: string }>
 }
@@ -119,8 +142,11 @@ export async function pushPayloadNow(surface: NativeSurface = pluginSurface): Pr
   await surface.updateSnapshot(JSON.stringify(await widgetPayload()))
 }
 
-// More dates than the app's own lists show: a tall widget scrolls.
+// More dates than the app's own lists show: a tall widget scrolls. The
+// launcher's page takes more again.
 const WIDGET_EVENTS = 12
+const LAUNCHER_EVENTS = 40
+const HANDLED_SHOWN = 60
 const SETTLE_MS = 600
 
 // The catalog's templates as they are, slots and all: the native side fills
@@ -159,15 +185,46 @@ export function widgetLabels(waiting = 0): WidgetLabels {
   }
 }
 
-export async function widgetPayload(): Promise<WidgetPayload> {
-  const snapshot = await currentSnapshot({ limit: WIDGET_EVENTS })
-  return { snapshot, labels: widgetLabels(snapshot.counts.attention), canSend: isIntentsEnabled() }
+// A background refresh has no sync manager: it tells this module when its own
+// vault cycle finished (headless/headlessRefresh.ts).
+let notedSyncedAt: string | null = null
+export function noteSynced(at: string | null): void { if (at) notedSyncedAt = at }
+const syncedAt = (): string | null => getSyncState().lastSynced ?? notedSyncedAt
+
+// The widgets' share of a snapshot built with the launcher's longer lists:
+// the same object a build with the widgets' own limit gives.
+export function widgetShare(full: GlanceSnapshot): GlanceSnapshot {
+  return {
+    ...full,
+    attention: full.attention.slice(0, WIDGET_EVENTS),
+    upcoming: full.upcoming.slice(0, WIDGET_EVENTS),
+    charges: { ...full.charges, items: full.charges.items.slice(0, WIDGET_EVENTS) },
+  }
 }
 
-// Everything in the payload except the moment it was made, so an unchanged
-// one is not written again. The reminder plan counts: the native side
-// schedules from it, and it moves when the reminder time or a date does.
-const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '' } })
+export function launcherBlock(full: GlanceSnapshot, at: string | null = syncedAt()): LauncherBlock {
+  return {
+    attention: full.attention,
+    upcoming: full.upcoming,
+    charges: full.charges.items,
+    handledWrites: readLedger().slice(-HANDLED_SHOWN).map((h) => ({ clientId: h.clientId, action: h.action, entityId: h.entityId })),
+    syncedAt: at,
+  }
+}
+
+export async function widgetPayload(): Promise<WidgetPayload> {
+  // Built once, with the longer lists; the widgets get the head of each.
+  const full = await currentSnapshot({ limit: LAUNCHER_EVENTS })
+  const snapshot = widgetShare(full)
+  return { snapshot, labels: widgetLabels(snapshot.counts.attention), canSend: isIntentsEnabled(), launcher: launcherBlock(full) }
+}
+
+// Everything in the payload except the moments it was made and last synced,
+// so an unchanged one is not written again. The reminder plan counts: the
+// native side schedules from it, and it moves when the reminder time or a
+// date does.
+export const fingerprint = (p: WidgetPayload): string =>
+  JSON.stringify({ ...p, snapshot: { ...p.snapshot, generatedAt: '' }, launcher: { ...p.launcher, syncedAt: '' } })
 
 // ── Writes made on the home screen ───────────────────────────────────────────
 
@@ -231,7 +288,11 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
       const payload = await widgetPayload()
       try { onSnapshot?.(payload.snapshot) } catch { /* a listener must not stop the widgets */ }
       const print = fingerprint(payload)
-      if (print === last) return
+      if (print === last) {
+        // Nothing to redraw, but the app did look: the launcher counts that.
+        await WidgetBridge.heartbeat({ syncedAt: payload.launcher.syncedAt })
+        return
+      }
       await pluginSurface.updateSnapshot(JSON.stringify(payload))
       last = print
     } catch {
@@ -260,6 +321,27 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
   // on screen. A second page must never work on the same storage, so the
   // native side asks this one to do the same work: sync, collect, hand over.
   void WidgetBridge.addListener('refreshRequested', () => { void syncNow().finally(() => { collect(); soon() }) })
+  // May this page be closed? Asked by the shell when the page has stopped
+  // answering in the background and a background run should take over
+  // (docs/launcher.md). Not while a form or a sheet is open: closing the page
+  // would lose what is in it.
+  ;(window as Window & { __tgRetireCheck?: () => string }).__tgRetireCheck = () => (document.querySelector('[role="dialog"]') ? 'busy' : 'ok')
+  // GLANCElauncher asked the app to confirm its data (docs/launcher.md). The
+  // same work, then the answer: the launcher shows how each request went.
+  void WidgetBridge.addListener('launcherRefresh', ({ clientId }) => {
+    const started = Date.now()
+    void (async () => {
+      await syncNow().catch(() => {})
+      await collectWidgetWrites(now)
+      await now()
+      const sync = getSyncState()
+      const failed = sync.phase === 'error'
+      await WidgetBridge.recordLauncherRefresh({
+        clientId, outcome: failed ? 'failed' : 'ran', durationMs: Date.now() - started,
+        ...(failed ? { reason: syncErrorText(sync.errorCode, sync.errorMessage) } : {}),
+      }).catch(() => {})
+    })()
+  })
   // Coming back after midnight, the same data makes a different snapshot.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { collect(); soon() }

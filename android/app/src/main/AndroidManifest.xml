@@ -147,6 +147,26 @@
             </intent-filter>
         </receiver>
 
+        <!-- GLANCElauncher (docs/launcher.md): the snapshot as rows, and the
+             launcher's writes. Both exported, both behind a permission only
+             the launcher's signing certificate holds. -->
+        <provider
+            android:name=".launcher.LauncherProvider"
+            android:authorities="com.thingglance.app.launcher"
+            android:exported="true"
+            android:readPermission="com.thingglance.permission.LAUNCHER" />
+
+        <receiver
+            android:name=".launcher.LauncherIntentReceiver"
+            android:exported="true"
+            android:permission="com.thingglance.permission.LAUNCHER">
+            <intent-filter>
+                <action android:name="com.thingglance.app.launcher.DECIDE" />
+                <action android:name="com.thingglance.app.launcher.SEND" />
+                <action android:name="com.thingglance.app.launcher.REFRESH" />
+            </intent-filter>
+        </receiver>
+
         <!-- Quick Settings tiles. Each opens the app at a thingglance:// link;
              the first also says how many dates are waiting. Exported because
              only the system may bind them (the permission). -->
@@ -193,6 +213,20 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
     </application>
+
+    <!-- GLANCElauncher's permission to read the snapshot and send writes.
+         signature|knownSigner: this app's own signature, whatever it is, or
+         one of the LAUNCHER's certificates in res/values/launcher_certs.xml.
+         It says nothing about how thingGLANCE is signed. knownSigner exists
+         from Android 12; before that only the signature half applies and the
+         launcher (Android 12 and later itself) has no page for thingGLANCE. -->
+    <permission
+        android:name="com.thingglance.permission.LAUNCHER"
+        android:label="@string/launcher_permission_label"
+        android:description="@string/launcher_permission_description"
+        android:protectionLevel="signature|knownSigner"
+        android:knownCerts="@array/launcher_known_certs"
+        tools:targetApi="s" />
 
     <!-- Permissions -->
 

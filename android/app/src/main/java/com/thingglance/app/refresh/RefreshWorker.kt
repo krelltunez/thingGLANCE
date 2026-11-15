@@ -25,6 +25,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.thingglance.app.SharedDataStore
 import com.thingglance.app.WidgetBridgePlugin
+import com.thingglance.app.launcher.LauncherProvider
+import com.thingglance.app.launcher.LauncherRefresh
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,9 +47,11 @@ import java.util.concurrent.TimeUnit
 // app's own files at the app's own origin, so it shares the app's storage,
 // and HeadlessBridge stands in for the plugins a run uses.
 //
-// Two triggers: a routine run a few times a day, and a run soon after
+// Three triggers: a routine run a few times a day, a run soon after
 // something is done on the home screen while the app is closed, so that it
-// reaches the vault and the household's other devices.
+// reaches the vault and the household's other devices, and a run
+// GLANCElauncher asked for (launcher/LauncherIntentReceiver.kt), whose
+// outcome is also written where the launcher reads it.
 //
 // If the app is opened during a run, abortForLiveApp() destroys this WebView,
 // on the main thread, before the app's own loads. Two pages must never work
@@ -91,6 +95,7 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         val trigger = inputData.getString(KEY_TRIGGER) ?: TRIGGER_ROUTINE
+        val launcherId = inputData.getString(KEY_LAUNCHER_ID)
         val now = System.currentTimeMillis()
         val decision = RefreshPolicy.decide(appOpen, trigger == TRIGGER_ON_DEMAND, SharedDataStore.lastRefreshAt(appContext), now)
         when (decision) {
@@ -99,6 +104,9 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
             // asked, and this job stays alive a little while so the process is
             // not put back to sleep under it.
             is RefreshPolicy.Decision.AppIsOpen -> {
+                // Opened between the launcher's request and this run: the app
+                // syncs as it opens, so the request is answered by that.
+                answerLauncher(launcherId, "aborted", "app opened", now)
                 if (WidgetBridgePlugin.askLiveAppToRefresh()) delay(LIVE_REFRESH_HOLD_MS)
                 return Result.success()
             }
@@ -109,12 +117,20 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
                 requestLater(appContext, RefreshPolicy.ON_DEMAND_FLOOR_MS - decision.sinceLastMs)
                 return Result.success()
             }
-            is RefreshPolicy.Decision.Run -> run(trigger, now)
+            is RefreshPolicy.Decision.Run -> run(trigger, now, launcherId)
         }
         return Result.success()
     }
 
-    private suspend fun run(trigger: String, startedAt: Long) {
+    // Writes how a run went where GLANCElauncher reads it.
+    private fun answerLauncher(clientId: String?, outcome: String, reason: String?, startedAt: Long) {
+        if (clientId == null) return
+        val entry = SharedDataStore.launcherRefreshEntry(appContext, clientId) ?: return
+        SharedDataStore.patchLauncherRefresh(appContext, clientId, LauncherRefresh.finished(entry, outcome, reason, startedAt, System.currentTimeMillis()))
+        LauncherProvider.changed(appContext)
+    }
+
+    private suspend fun run(trigger: String, startedAt: Long, launcherId: String?) {
         // Stamped at the start, so a run that crashes still counts.
         SharedDataStore.setLastRefreshAt(appContext, startedAt)
         val run = Run()
@@ -127,7 +143,12 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
             run.webView?.loadUrl(ENTRY)
             true
         }
-        if (!booted) return
+        if (!booted) {
+            answerLauncher(launcherId, "aborted", "app opened", startedAt)
+            return
+        }
+        // The launcher's page says a refresh is under way.
+        LauncherProvider.changed(appContext)
 
         val reported = withTimeoutOrNull(RefreshPolicy.CAP_MS) {
             val starting = withTimeoutOrNull(RefreshPolicy.BOOT_MS) {
@@ -143,6 +164,7 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
         val fallback = if (reported == null) RefreshPolicy.unreported(run.abortRequested, timedOut, run.rendererGone, run.started) else null
         val entry = RefreshPolicy.entry(trigger, startedAt, System.currentTimeMillis(), reported, fallback)
         SharedDataStore.appendRefreshLog(appContext, entry)
+        answerLauncher(launcherId, entry.optString("outcome", "failed"), if (entry.has("reason")) entry.optString("reason") else null, startedAt)
         Log.i(TAG, "background refresh: $entry")
     }
 
@@ -196,6 +218,8 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
         private const val ROUTINE_WORK = "thingglance-refresh-routine"
         private const val ON_DEMAND_WORK = "thingglance-refresh-on-demand"
         private const val KEY_TRIGGER = "trigger"
+        private const val KEY_LAUNCHER_ID = "launcherClientId"
+        const val TRIGGER_LAUNCHER = "launcher"
         private const val LIVE_REFRESH_HOLD_MS = 20_000L
         const val TRIGGER_ROUTINE = "routine"
         const val TRIGGER_ON_DEMAND = "home-screen"
@@ -209,6 +233,9 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
 
         // True while the app's own page exists (MainActivity sets it).
         @JvmStatic @Volatile var appOpen: Boolean = false
+
+        // True while a background run's page exists.
+        @JvmStatic val running: Boolean get() = current != null
 
         // Called first thing in MainActivity.onCreate, on the main thread,
         // before the app's own page loads: a run in progress is destroyed.
@@ -251,6 +278,20 @@ class RefreshWorker(private val appContext: Context, params: WorkerParameters) :
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(ON_DEMAND_WORK, ExistingWorkPolicy.KEEP, request)
+        }
+
+        // GLANCElauncher asked for a refresh and the app is not running. The
+        // receiver has already decided it is not too soon and logged the
+        // request under `clientId`; the run writes its outcome there.
+        // Expedited from Android 12 (a plain job there), so it starts now
+        // and not when Android next runs jobs; the launcher's permission does
+        // not exist before 12.
+        @JvmStatic
+        fun requestForLauncher(context: Context, clientId: String) {
+            val request = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setInputData(Data.Builder().putString(KEY_TRIGGER, TRIGGER_LAUNCHER).putString(KEY_LAUNCHER_ID, clientId).build())
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) request.setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            WorkManager.getInstance(context).enqueueUniqueWork("thingglance-refresh-launcher", ExistingWorkPolicy.KEEP, request.build())
         }
 
         // The run that follows a throttled one. Its own name, because the work

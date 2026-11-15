@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The signers com.thingglance.permission.LAUNCHER trusts (AndroidManifest.xml,
+  docs/launcher.md): SHA-256 digests of GLANCElauncher's signing certificates,
+  lowercase hex, no colons. These are the LAUNCHER's certificates, not
+  thingGLANCE's, and the same digests dayGLANCE and lastGLANCE list. How
+  thingGLANCE itself is signed (a debug key, an upload key, Play's app signing
+  key) has no bearing on this file.
+
+  To read one:  keytool -list -v -keystore <keystore> -alias <alias> | grep SHA256
+  then strip the colons and lowercase.
+
+  One entry covers every launcher build: its key was given to Play App
+  Signing, so its Play build carries the same certificate as its GitHub
+  releases. If the launcher is ever signed with another key, add that digest.
+-->
+<resources>
+    <string-array name="launcher_known_certs">
+        <!-- GLANCElauncher release certificate (GitHub releases and Google Play) -->
+        <item>7e6d39d03c5d4c4f4c947c4d7f9657e9ae6ab94d296c97d684333450c2b7791d</item>
+    </string-array>
+</resources>

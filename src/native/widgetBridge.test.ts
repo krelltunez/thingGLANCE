@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildSnapshot } from '@/core/snapshot'
 import { setTranslator } from '@/core/text'
-import { collectWidgetWrites, widgetLabels, type NativeSurface } from './widgetBridge'
+import type { DataSet, Subscription } from '@/core/types'
+import { collectWidgetWrites, fingerprint, launcherBlock, widgetLabels, widgetShare, type NativeSurface, type WidgetPayload } from './widgetBridge'
 
 afterEach(() => setTranslator(null))
 
@@ -52,5 +54,46 @@ describe('writes queued outside the app', () => {
     const acknowledge = vi.fn(async () => {})
     await collectWidgetWrites(async () => {}, { updateSnapshot: async () => {}, pendingWrites: async () => '[]', acknowledgeWrites: acknowledge })
     expect(acknowledge).not.toHaveBeenCalled()
+  })
+})
+
+describe('GLANCElauncher\'s share of the payload', () => {
+  const stamp = '2026-01-01T00:00:00.000Z'
+  const plan = (i: number): Subscription => ({
+    id: `s${i}`, kind: 'subscription', name: `Plan ${i}`, amount: 10 + i, cycle: 'yearly', anchorDate: `2026-12-${String(i + 1).padStart(2, '0')}`,
+    autoRenew: true, status: 'active', review: true, coversThingIds: [], coversMemberIds: [], payerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: stamp, updatedAt: stamp,
+  })
+  const data: DataSet = { things: [], coverages: [], subscriptions: Array.from({ length: 20 }, (_, i) => plan(i)), decisions: [] }
+  const opts = { viewerId: null, ref: '2026-11-15', now: Date.parse('2026-11-15T16:00:00Z') }
+  // Built inside each test: the language in use is part of a snapshot.
+  const build = () => buildSnapshot(data, { ...opts, limit: 40 })
+
+  it('gives the widgets exactly what a build with their own limit gives', () => {
+    const full = build()
+    expect(full.attention.length).toBeGreaterThan(12)
+    expect(widgetShare(full)).toEqual(buildSnapshot(data, { ...opts, limit: 12 }))
+  })
+
+  it('gives the launcher the longer lists, and when the vault last answered', () => {
+    const full = build()
+    const block = launcherBlock(full, '2026-11-15T15:00:00.000Z')
+    expect(block.attention).toEqual(full.attention)
+    expect(block.upcoming).toEqual(full.upcoming)
+    expect(block.charges).toEqual(full.charges.items)
+    expect(block.syncedAt).toBe('2026-11-15T15:00:00.000Z')
+    // No storage here, so no ledger: an empty list, not a failure.
+    expect(block.handledWrites).toEqual([])
+  })
+
+  it('does not count a later sync or a later build as a change', () => {
+    const full = build()
+    const payload = (generatedAt: string, syncedAt: string | null): WidgetPayload => ({
+      snapshot: { ...widgetShare(full), generatedAt }, labels: widgetLabels(1), canSend: false, launcher: launcherBlock(full, syncedAt),
+    })
+    const a = payload('2026-11-15T16:00:00.000Z', null)
+    expect(fingerprint(payload('2026-11-15T17:00:00.000Z', '2026-11-15T16:59:00.000Z'))).toBe(fingerprint(a))
+    // A write that landed is a change: the launcher is waiting to see it.
+    const landed = { ...a, launcher: { ...a.launcher, handledWrites: [{ clientId: 'w1', action: 'decide', entityId: 'k' }] } }
+    expect(fingerprint(landed)).not.toBe(fingerprint(a))
   })
 })

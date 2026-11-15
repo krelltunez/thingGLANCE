@@ -13,7 +13,7 @@ import { attentionQueue, buildHorizon } from './horizon'
 import { lifecycle, replacementFund, type Verdict } from './health'
 import { concernsPlan, handlerOfEvent, visibleTo } from './household'
 import { eventLink, formatLink } from './links'
-import { chargesWithin, monthlyCost } from './money'
+import { chargesWithin, forecast, monthlyCost } from './money'
 import { capReminders, planReminders, type Reminder, type ReminderPrefs } from './reminders'
 import { textLocale } from './text'
 
@@ -41,15 +41,17 @@ export interface GlanceSnapshot {
   // Whose device this was built for (null: nobody has claimed it), and the
   // member the dated lists were narrowed to (null: everyone).
   scope: { viewerId: string | null; memberId: string | null }
-  counts: { things: number; subscriptions: number; attention: number; urgent: number }
+  // `covered`: how many of the things in service are under a coverage today.
+  counts: { things: number; subscriptions: number; attention: number; urgent: number; covered: number }
   burn: { monthly: number; yearly: number; replacementMonthly: number }
   // What needs a decision, most pressing first, then what is coming.
   attention: SnapshotEvent[]
   upcoming: SnapshotEvent[]
   things: SnapshotThing[]
   // What plans will charge over the next `days` days: the total, how many
-  // charges, and the soonest of them (capped like the dated lists).
-  charges: { days: number; total: number; count: number; items: SnapshotCharge[] }
+  // charges, and the soonest of them (capped like the dated lists). `months`
+  // is the year ahead, a total per calendar month starting with this one.
+  charges: { days: number; total: number; count: number; items: SnapshotCharge[]; months: SnapshotMonth[] }
   // The notifications this device should have pending, soonest first
   // (core/reminders.ts). A shell schedules exactly these and cancels the rest.
   reminders: Reminder[]
@@ -65,8 +67,16 @@ export interface SnapshotCharge {
   link: string
 }
 
-// How far ahead `charges` looks.
+// One calendar month of plan charges: its first day, and what leaves the
+// account in it (from `day` on, for the month in progress).
+export interface SnapshotMonth {
+  month: Day
+  total: number
+}
+
+// How far ahead `charges` looks, and how many months `charges.months` covers.
 export const CHARGES_DAYS = 30
+export const CHARGES_MONTHS = 12
 
 export type SnapshotEventState = 'open' | 'sent' | 'done' | 'dismissed'
 
@@ -102,6 +112,13 @@ export interface SnapshotThing {
   remaining: number | null
   lifeEnd: Day | null
   daysLeft: number | null
+  // What a life bar is drawn from: when its clock started, when the latest
+  // coverage ends, when support ends, and which of the two ends its window
+  // (the plan to replace it, or support running out). Null where unknown.
+  lifeStart: Day | null
+  coverageEnd: Day | null
+  supportEnd: Day | null
+  lifeEndReason: 'support' | 'plan' | null
   // Null for the household.
   ownerMemberId: string | null
 }
@@ -148,6 +165,7 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
   // Narrowed like the dated lists when the snapshot is for one member.
   const plans = data.subscriptions.filter((s) => !opts.memberId || concernsPlan(s, opts.memberId, new Map(data.things.map((t) => [t.id, t]))))
   const charges = chargesWithin(plans, ref, CHARGES_DAYS)
+  const lives = new Map(active.map((t) => [t.id, lifecycle(t, data.coverages, ref)]))
   const monthly = data.subscriptions.reduce((t, s) => t + monthlyCost(s), 0)
   return {
     version: SNAPSHOT_VERSION,
@@ -161,19 +179,25 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
       subscriptions: data.subscriptions.filter((s) => s.status !== 'cancelled').length,
       attention: queue.length,
       urgent: queue.filter((e) => e.severity === 'urgent' || e.severity === 'past').length,
+      covered: active.filter((t) => lives.get(t.id)!.covered).length,
     },
     burn: { monthly, yearly: monthly * 12, replacementMonthly: replacementFund(active, data.coverages, ref).monthly },
     attention: queue.slice(0, limit).map(slim),
     upcoming: events.filter((e) => e.days >= 0 && !e.quiet && !e.repeat).slice(0, limit).map(slim),
     things: active.map((t) => {
-      const life = lifecycle(t, data.coverages, ref)
-      return { id: t.id, name: t.name, category: t.category, verdict: life.verdict, remaining: life.remaining, lifeEnd: life.lifeEnd, daysLeft: life.daysLeft ?? null, ownerMemberId: t.ownerMemberId }
+      const life = lives.get(t.id)!
+      return {
+        id: t.id, name: t.name, category: t.category, verdict: life.verdict, remaining: life.remaining, lifeEnd: life.lifeEnd, daysLeft: life.daysLeft ?? null,
+        lifeStart: life.start, coverageEnd: life.warrantyEnd, supportEnd: life.supportEnd, lifeEndReason: life.lifeEndReason,
+        ownerMemberId: t.ownerMemberId,
+      }
     }),
     charges: {
       days: CHARGES_DAYS,
       total: charges.reduce((sum, c) => sum + c.amount, 0),
       count: charges.length,
       items: charges.slice(0, limit).map((c) => ({ ...c, link: formatLink({ kind: 'plan', id: c.subscriptionId }) })),
+      months: forecast(plans, CHARGES_MONTHS, ref).map((m) => ({ month: m.month, total: m.total })),
     },
     reminders: capReminders(planReminders(all, { meId: opts.viewerId, users, prefs: opts.reminderPrefs, now }), opts.maxReminders ?? 56),
   }

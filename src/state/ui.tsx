@@ -27,6 +27,10 @@ export interface UI {
   modal: Modal
   open: (m: Modal) => void
   close: () => void
+  // The first-run welcome steps aside for good. For someone who arrived with
+  // somewhere to go (a link): it covers everything, the place they asked for
+  // included.
+  leaveWelcome: () => void
 }
 
 export const UIContext = createContext<UI | null>(null)

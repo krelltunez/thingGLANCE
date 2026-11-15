@@ -1,0 +1,82 @@
+name: Android
+
+# Compiles the Android shell and runs its JVM unit tests on every change that
+# can affect it. Without this, Kotlin and Java reach a real compiler only on a
+# developer's machine.
+#
+# Capacitor's plugin modules live in node_modules and `cap sync` copies the
+# web build into the native project, so the job installs, builds the web app
+# and syncs before Gradle runs. A dependency bump can break the native build,
+# so package changes run it too. A debug build: no keystore is needed, and
+# none is ever given to CI.
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # The Capacitor CLI (`cap sync`) needs Node 22 or later.
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # What build-android.sh runs: the web build, then `cap sync android`.
+      - name: Build the web app and sync Capacitor
+        run: npm run build:android
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Accepts the SDK licences, so the Android Gradle plugin can fetch the
+      # platform and build tools it needs.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and unit-test
+        working-directory: android
+        run: ./gradlew --stacktrace :app:assembleDebug :app:testDebugUnitTest
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: android/app/build/reports/tests/
+          if-no-files-found: ignore

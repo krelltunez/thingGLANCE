@@ -20,9 +20,9 @@ That builds the web app, copies it into the Android project, and produces `andro
 | --- | --- |
 | `./build-android.sh` | A debug APK. |
 | `./build-android.sh --webview-debug` | A debug APK whose WebView can be inspected and driven. Needed for the device check below. Never ship one: anyone with a cable could read the app's storage. |
-| `./build-android.sh --release` | A signed release APK and a Play bundle. Needs `android/keystore.properties`, which is not in the repository. |
+| `./build-android.sh --release` | A signed release: the Play bundle and an APK, in `outputs/`, with checksums. Needs `android/keystore.properties`, which is not in the repository. `--build N` gives it a test version code. |
 
-`android/keystore.properties` has four lines: `storeFile`, `storePassword`, `keyAlias`, `keyPassword`. Keep it and the keystore file out of git (both are ignored).
+[release.md](release.md) has the whole release: making the key, what the build contains, and what the Play Console asks. CI compiles the debug build and runs the JVM unit tests on every change under `android/` (`.github/workflows/android.yml`); it is never given a signing key.
 
 To open the project in Android Studio: `npx cap open android`.
 
@@ -188,10 +188,10 @@ On the emulator a run takes well under a second of work.
 Other choices worth knowing:
 
 - **Cleartext HTTP is allowed**, so a self-hosted vault on a home network (`http://192.168.x.x:8080`) works. Android cannot scope that to the local network. Everything sent to a vault is encrypted before it leaves; what plain HTTP exposes is the device token, so use HTTPS for a vault reachable from outside.
-- **Cloud backup leaves out the WebView's storage and the Keystore entries.** The vault, or the in-app backup file, is how data moves to a new phone. A direct phone-to-phone transfer is allowed; credentials do not survive it (the Keystore key stays behind), so the new phone asks to connect again.
+- **Cloud backup leaves out the WebView's storage, the Keystore entries, what the widgets show and the reminders' record.** That last one is left out of a phone-to-phone transfer too: it is the list of alarms this phone holds, and on another phone it would claim reminders that are not set. The vault, or the in-app backup file, is how data moves to a new phone. A direct phone-to-phone transfer is allowed; credentials do not survive it (the Keystore key stays behind), so the new phone asks to connect again.
 - **`minifyEnabled` stays off.** Plugin bridges are found by reflection.
 - **Icons and splash images** are rendered from the web app's artwork by `node scripts/gen-android-icons.mjs`.
 
 ## Not there yet
 
-- **A release build.** Nothing has been signed or uploaded. The Play listing (paid, $9.99) and its closed test are still to be set up.
+- **A release.** The release build works and has been tried on an emulator, signed with a throwaway key. Nothing has been signed with a real key or uploaded: the key, the Play listing (paid, $9.99), its graphics and the privacy policy are still to do ([release.md](release.md)).

@@ -26,7 +26,7 @@ import { ThingForm } from '@/components/ThingForm'
 import { CoverageForm, SubscriptionForm } from '@/components/PlanForms'
 import { Settings } from '@/components/Settings'
 import { CommandPalette, PassphraseModal, Welcome } from '@/components/Overlays'
-import { needsWelcome } from '@/state/welcome'
+import { markWelcomed, needsWelcome } from '@/state/welcome'
 import { Toasts, Wordmark } from '@/components/ui'
 import { cx } from '@/components/kit'
 
@@ -265,11 +265,17 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }, [])
 
+  const leaveWelcome = useCallback(() => {
+    if (needsWelcome()) markWelcomed()
+    setWelcome(false)
+  }, [])
+
   const ui = useMemo<UI>(() => ({
     view, setView,
     thingId, openThing: setThingId,
     modal, open: setModal, close: () => setModal(null),
-  }), [view, setView, thingId, modal])
+    leaveWelcome,
+  }), [view, setView, thingId, modal, leaveWelcome])
 
   // The hardware back button (a shell asks through native/backStack.ts): close
   // what is on top, one thing per press, then fall back to the first screen.

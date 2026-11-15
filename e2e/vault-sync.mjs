@@ -377,6 +377,29 @@ check('C (shell): after a reload it is still connected and asks for no passphras
 await goto(C, 'Things')
 check('C (shell): it syncs like any other device', await C.getByText('E2E Outside Write').first().isVisible().catch(() => false))
 
+// ── A first run that arrives by a link ───────────────────────────────────────
+// The welcome covers the whole app on a first run. Someone whose first open
+// is a product page shared into the app, or the "add" tile, came with
+// somewhere to go: the welcome steps aside, and stays aside.
+{
+  const ctx = await browser.newContext({ viewport: { width: 420, height: 900 } })
+  const fresh = await ctx.newPage()
+  await fresh.goto(APP)
+  await fresh.waitForTimeout(800)
+  check('a first run opens on the welcome', await fresh.getByRole('button', { name: /Explore with sample data/ }).isVisible().catch(() => false))
+  await fresh.goto(`${APP}?link=${encodeURIComponent('action/add?name=First Run Kettle')}`)
+  await fresh.waitForTimeout(1200)
+  const firstRun = {
+    form: (await fresh.getByLabel('Name', { exact: true }).inputValue().catch(() => '')) === 'First Run Kettle',
+    welcome: await fresh.getByRole('button', { name: /Explore with sample data/ }).isVisible().catch(() => false),
+  }
+  check('a link on a first run shows what it opens, not the welcome over it', firstRun.form && !firstRun.welcome, JSON.stringify(firstRun))
+  await fresh.goto(APP)
+  await fresh.waitForTimeout(800)
+  check('and the welcome does not come back', !(await fresh.getByRole('button', { name: /Explore with sample data/ }).isVisible().catch(() => false)))
+  await ctx.close()
+}
+
 console.log('\n' + results.map((r) => r.join('  ')).join('\n'))
 await browser.close()
 process.exit(results.some((r) => r[0] === 'FAIL') ? 1 : 0)

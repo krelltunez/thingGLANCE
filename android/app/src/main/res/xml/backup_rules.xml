@@ -5,4 +5,5 @@
     <exclude domain="root" path="app_webview/" />
     <exclude domain="sharedpref" path="thingglance_secure_store.xml" />
     <exclude domain="sharedpref" path="thingglance_shared.xml" />
+    <exclude domain="sharedpref" path="thingglance_reminders.xml" />
 </full-backup-content>

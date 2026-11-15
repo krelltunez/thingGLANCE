@@ -46,6 +46,10 @@ export function useLinks(ui: UI, d: DataValue): void {
     if (!pending || !ready) return
     setPending(null)
     const target = pending
+    // On a first run the welcome covers the whole app, and so whatever this
+    // link opens: a product page shared into a fresh install would open the
+    // add form where nobody can see it. They came with somewhere to go.
+    ui.leaveWelcome()
     const gone = (what: 'thing' | 'plan' | 'date') => {
       if (!lookedAgain.current) {
         lookedAgain.current = true

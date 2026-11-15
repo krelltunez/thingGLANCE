@@ -11,13 +11,22 @@
      - thingglance_shared.xml: what widgets show. It carries names and dates,
        and the app rebuilds it on first open.
 
-     A direct device-to-device transfer is left unrestricted: it never lands on
-     a server. Credentials still do not survive it (the Keystore key stays
-     behind), so the new device asks to connect again. -->
+     - thingglance_reminders.xml: the alarms THIS phone is holding. Android's
+       alarms do not travel, so on another phone the list would be a claim
+       that reminders are set when none are, and an unchanged plan would then
+       set nothing. Left out, the first snapshot sets them all.
+     A direct device-to-device transfer is left unrestricted but for that
+     last file, for the same reason: it never lands on a server. Credentials
+     still do not survive it (the Keystore key stays behind), so the new
+     device asks to connect again. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="app_webview/" />
         <exclude domain="sharedpref" path="thingglance_secure_store.xml" />
         <exclude domain="sharedpref" path="thingglance_shared.xml" />
+        <exclude domain="sharedpref" path="thingglance_reminders.xml" />
     </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="thingglance_reminders.xml" />
+    </device-transfer>
 </data-extraction-rules>

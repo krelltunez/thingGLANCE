@@ -4,7 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceModifier
+import androidx.glance.Image
+import androidx.glance.ImageProvider
+import androidx.glance.action.actionParametersOf
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.layout.size
+import com.thingglance.app.R
 import androidx.glance.GlanceTheme
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
@@ -65,6 +73,39 @@ internal fun CountdownBadge(days: Int, labels: WidgetLabels, wide: Boolean = fal
                 fontSize = if (wide) 14.sp else 12.sp,
                 textAlign = TextAlign.Center,
             ),
+        )
+    }
+}
+
+// The buttons at the end of a row: send it to dayGLANCE (when the app is
+// connected to it), and "Done with this". A date already sent shows a quiet
+// mark where the send button was.
+@Composable
+internal fun RowActions(event: WidgetEvent, data: WidgetData) {
+    val quiet = GlanceTheme.colors.onSurfaceVariant
+    if (event.state == "sent") {
+        Image(
+            provider = ImageProvider(R.drawable.ic_widget_send),
+            contentDescription = data.labels.sent,
+            colorFilter = ColorFilter.tint(ACCENT),
+            modifier = GlanceModifier.size(36.dp).padding(9.dp),
+        )
+    } else if (data.canSend(event)) {
+        Image(
+            provider = ImageProvider(R.drawable.ic_widget_send),
+            contentDescription = data.labels.send,
+            colorFilter = ColorFilter.tint(quiet),
+            modifier = GlanceModifier.size(36.dp).padding(9.dp)
+                .clickable(actionRunCallback<SendDateAction>(actionParametersOf(EVENT_KEY to event.key))),
+        )
+    }
+    if (data.needsDecision(event)) {
+        Image(
+            provider = ImageProvider(R.drawable.ic_widget_check),
+            contentDescription = data.labels.done,
+            colorFilter = ColorFilter.tint(quiet),
+            modifier = GlanceModifier.size(36.dp).padding(8.dp)
+                .clickable(actionRunCallback<ClearDateAction>(actionParametersOf(EVENT_KEY to event.key))),
         )
     }
 }

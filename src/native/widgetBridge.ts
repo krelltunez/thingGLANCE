@@ -15,7 +15,8 @@ import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import { db } from '@/db/client'
 import i18n from '@/i18n'
-import type { ExternalWrite } from '@/intents/handleIntent'
+import { isIntentsEnabled } from '@/intents/config'
+import type { ExternalWrite, IntentResult } from '@/intents/handleIntent'
 import { currentSnapshot, dispatchExternalWrite } from '@/intents/inbound'
 import { subscribeHousehold } from '@/multiuser/settings'
 import { subscribeSettings } from '@/state/settings'
@@ -30,6 +31,10 @@ export interface WidgetLabels {
   // What the tick on a row is called, for screen readers, and the button on
   // a reminder.
   done: string
+  // "Send to dayGLANCE" on a row or a reminder, and the mark of a date
+  // already handed over.
+  send: string
+  sent: string
   // The name Android shows for the reminders' notification channel.
   channel: string
   channelDescription: string
@@ -42,6 +47,10 @@ export interface WidgetLabels {
 export interface WidgetPayload {
   snapshot: GlanceSnapshot
   labels: WidgetLabels
+  // True when this device is connected to dayGLANCE. Only then do widgets and
+  // reminders offer "Send to dayGLANCE": a button that can only fail is worse
+  // than no button.
+  canSend: boolean
 }
 
 interface WidgetBridgePlugin {
@@ -95,6 +104,8 @@ export function widgetLabels(): WidgetLabels {
     nextEmpty: tr('widget.next.empty'),
     today: tr('widget.today'),
     done: tr('notify.done'),
+    send: tr('notify.send'),
+    sent: tr('parts.inDayglance'),
     channel: tr('notify.channel'),
     channelDescription: tr('notify.channelDescription'),
     days: template('time.days'),
@@ -104,7 +115,7 @@ export function widgetLabels(): WidgetLabels {
 }
 
 export async function widgetPayload(): Promise<WidgetPayload> {
-  return { snapshot: await currentSnapshot({ limit: WIDGET_EVENTS }), labels: widgetLabels() }
+  return { snapshot: await currentSnapshot({ limit: WIDGET_EVENTS }), labels: widgetLabels(), canSend: isIntentsEnabled() }
 }
 
 // Everything in the payload except the moment it was made, so an unchanged
@@ -121,6 +132,10 @@ const fingerprint = (p: WidgetPayload): string => JSON.stringify({ ...p, snapsho
 // The order matters. A write is acknowledged (and so removed from the queue)
 // only after the widgets have been handed a snapshot that already reflects it.
 // Acknowledge first, and the row would flash back until the next snapshot.
+// A "send" the vault could not be reached for. Every other refusal is final.
+export const isUnsentSend = (write: ExternalWrite, result: IntentResult): boolean =>
+  write.action === 'send' && !result.success && result.code === 'failed'
+
 let collecting: Promise<number> = Promise.resolve(0)
 
 // Resolves with how many of the writes changed something.
@@ -139,9 +154,12 @@ export function collectWidgetWrites(afterApplying: () => Promise<void>, surface:
     for (const write of writes) {
       try {
         // Applied, already applied, or refused for good (the date is gone):
-        // all three are finished with. Only an exception is worth another try.
+        // all three are finished with. Two things are worth another try: an
+        // exception, and a send that could not reach the vault, which stays
+        // queued so the task is not silently lost.
         const result = await dispatchExternalWrite(write)
         if (result.success && !result.deduped) changed += 1
+        if (isUnsentSend(write, result)) continue
         settled.push(write.clientId!)
       } catch { /* left queued for the next collection */ }
     }

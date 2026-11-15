@@ -45,8 +45,11 @@ internal data class WidgetLabels(
     val nextTitle: String,
     val nextEmpty: String,
     val today: String,
-    // What the button on a row is called, for screen readers.
+    // What the buttons on a row are called, for screen readers, and what a
+    // date already handed to dayGLANCE is marked with.
     val done: String,
+    val send: String,
+    val sent: String,
     val days: String,
     val months: String,
     val years: String,
@@ -56,6 +59,9 @@ internal data class WidgetData(
     // False until the app has been opened once and written a payload.
     val loaded: Boolean,
     val locale: Locale,
+    // True when the app is connected to dayGLANCE: only then is there a
+    // "send" to offer.
+    val canSend: Boolean,
     val labels: WidgetLabels,
     val attention: List<WidgetEvent>,
     val upcoming: List<WidgetEvent>,
@@ -64,6 +70,17 @@ internal data class WidgetData(
     // the nearest one ahead.
     fun without(cleared: Set<String>): WidgetData =
         if (cleared.isEmpty()) this else copy(attention = attention.filter { it.key !in cleared }, upcoming = upcoming.filter { it.key !in cleared })
+
+    // A date the user has just sent from the home screen reads as sent at
+    // once, before the app has done the sending.
+    fun sending(keys: Set<String>): WidgetData {
+        if (keys.isEmpty()) return this
+        val mark = { e: WidgetEvent -> if (e.key in keys && e.state == "open") e.copy(state = "sent") else e }
+        return copy(attention = attention.map(mark), upcoming = upcoming.map(mark))
+    }
+
+    // Offered on a date that needs a decision and has not been handed over.
+    fun canSend(event: WidgetEvent): Boolean = canSend && event.state == "open" && needsDecision(event)
 
     // In the queue, so "Done with this" applies. A date that is only the
     // nearest one ahead is not waiting on anyone yet.
@@ -83,6 +100,8 @@ private val FALLBACK_LABELS = WidgetLabels(
     nextEmpty = "Open thingGLANCE to load your dates",
     today = "today",
     done = "Done with this",
+    send = "Send to dayGLANCE",
+    sent = "In dayGLANCE",
     days = "{{n}}d",
     months = "{{n}}mo",
     years = "{{n}}y",
@@ -102,12 +121,14 @@ internal object WidgetSnapshot {
     // the home screen: that write is still waiting for the app, and the row
     // should not sit there until it runs.
     fun read(context: Context): WidgetData =
-        parse(SharedDataStore.readWidgetPayload(context)).without(SharedDataStore.pendingDecideKeys(context))
+        parse(SharedDataStore.readWidgetPayload(context))
+            .without(SharedDataStore.pendingDecideKeys(context))
+            .sending(SharedDataStore.pendingSendKeys(context))
 
     // A payload that is missing or unreadable draws as "not loaded", never as a
     // crash: a widget that throws shows the system's error tile.
     fun parse(json: String?): WidgetData {
-        val empty = WidgetData(false, Locale.getDefault(), FALLBACK_LABELS, emptyList(), emptyList())
+        val empty = WidgetData(false, Locale.getDefault(), false, FALLBACK_LABELS, emptyList(), emptyList())
         if (json.isNullOrBlank()) return empty
         return try {
             val root = JSONObject(json)
@@ -117,6 +138,7 @@ internal object WidgetSnapshot {
             WidgetData(
                 loaded = true,
                 locale = Locale.forLanguageTag(snapshot.optString("locale", "en")),
+                canSend = root.optBoolean("canSend", false),
                 labels = WidgetLabels(
                     decideTitle = text("decideTitle", FALLBACK_LABELS.decideTitle),
                     decideEmpty = text("decideEmpty", "Nothing needs a decision"),
@@ -124,6 +146,8 @@ internal object WidgetSnapshot {
                     nextEmpty = text("nextEmpty", "Nothing coming up"),
                     today = text("today", FALLBACK_LABELS.today),
                     done = text("done", FALLBACK_LABELS.done),
+                    send = text("send", FALLBACK_LABELS.send),
+                    sent = text("sent", FALLBACK_LABELS.sent),
                     days = text("days", FALLBACK_LABELS.days),
                     months = text("months", FALLBACK_LABELS.months),
                     years = text("years", FALLBACK_LABELS.years),

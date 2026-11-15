@@ -108,7 +108,11 @@ class WidgetBridgePlugin : Plugin() {
                     context,
                     ReminderPlan.parse(root.getJSONObject("snapshot").optJSONArray("reminders")),
                     labels?.let {
-                        ReminderScheduler.Labels(it.optString("channel", ""), it.optString("channelDescription", ""), it.optString("done", ""))
+                        ReminderScheduler.Labels(
+                            it.optString("channel", ""), it.optString("channelDescription", ""), it.optString("done", ""),
+                            // Only when the app says it can send.
+                            if (root.optBoolean("canSend", false)) it.optString("send", "") else "",
+                        )
                             .takeIf { l -> l.channel.isNotBlank() && l.done.isNotBlank() }
                     },
                 )

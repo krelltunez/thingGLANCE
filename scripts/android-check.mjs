@@ -110,6 +110,16 @@ function screen() {
 const onScreen = (nodes, match) => nodes.find((n) => (match instanceof RegExp ? match.test(n.text) : n.text === match))
 const tap = async (node) => { adb('shell', 'input', 'tap', String(Math.round(node.x)), String(Math.round(node.y))); await sleep(1200) }
 const home = async () => { adb('shell', 'input', 'keyevent', 'KEYCODE_HOME'); await sleep(1500) }
+// The first back press in a form goes to the on-screen keyboard, if it is up.
+// On a freshly started emulator it can take a moment to appear, so this waits
+// for it instead of assuming.
+// (Filtered on the device: the full dump runs to megabytes.)
+const keyboardUp = () => adbQuiet('shell', 'dumpsys input_method | grep -c mInputShown=true').trim() !== '0' && adbQuiet('shell', 'dumpsys input_method | grep -c mInputShown=true').trim() !== ''
+async function closeForm() {
+  await waitFor(async () => keyboardUp(), 4000)
+  if (keyboardUp()) await back()
+  await back()
+}
 const foreground = () => adb('shell', 'dumpsys', 'activity', 'activities').match(/topResumedActivity=.*?\s(\S+)\/\S+/)?.[1] ?? ''
 
 // ── A clean start ────────────────────────────────────────────────────────────
@@ -134,8 +144,9 @@ check('no service worker is registered in the WebView', env.workers === 0)
 await P.getByRole('button', { name: 'Add my first thing' }).click()
 await sleep(800)
 const sheets = () => P.evaluate(() => document.querySelectorAll('[role=dialog]').length)
-// The form focuses its first field, so the keyboard is up: Android gives the
-// first back press to the keyboard, as in any app.
+// The form focuses its first field, so the keyboard comes up: Android gives
+// the first back press to the keyboard, as in any app.
+await waitFor(async () => keyboardUp(), 6000)
 await back()
 check('back closes the keyboard first, and the sheet stays', await sheets() === 1 && foreground() === APP_ID)
 await back()
@@ -179,6 +190,16 @@ check('the root key is in the Keystore, and no key of any kind is in IndexedDB',
 const prefs = adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_secure_store.xml')
 check('on disk the Keystore entries are ciphertext', prefs.includes('thingglance-vault-config') && prefs.includes('v1:') && !prefs.includes(TOKEN) && !prefs.includes(ACCOUNT))
 
+// ── Connect dayGLANCE ────────────────────────────────────────────────────────
+// With it on, widgets and reminders offer "Send to dayGLANCE". The key for
+// that comes from the Keystore, so no passphrase is asked for again.
+await openLink('thingglance://settings/integrations')
+await sleep(800)
+await P.getByRole('switch', { name: /Send and receive/ }).click()
+await sleep(1200)
+check('dayGLANCE is switched on without asking for the passphrase again', (await P.getByRole('switch', { name: /Send and receive/ }).getAttribute('aria-checked')) === 'true' && !(await P.getByRole('textbox', { name: 'Passphrase' }).isVisible().catch(() => false)))
+await back()
+
 // ── Add a thing on the phone ─────────────────────────────────────────────────
 await openLink('thingglance://action/add?name=Android%20Check%20Phone')
 await sleep(800)
@@ -195,11 +216,11 @@ await sleep(6000) // the debounced push
 adb('shell', `am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.SUBJECT 'Shared Kettle Pro' --es android.intent.extra.TEXT 'https://shop.example/kettle?id=1' -n ${APP_ID}/.MainActivity`)
 await sleep(1500)
 check('something shared from another app opens the add form with its name', (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => '')) === 'Shared Kettle Pro')
-await back(); await back()
+await closeForm()
 adb('shell', `am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'https://shop.example/kettle?id=1' -n ${APP_ID}/.MainActivity`)
 await sleep(1500)
 check('a bare address opens the form empty, not named after the address', (await P.getByLabel('Name', { exact: true }).inputValue().catch(() => 'missing')) === '')
-await back(); await back()
+await closeForm()
 const shortcuts = adb('shell', 'dumpsys', 'shortcut')
 // (The dump shortens each shortcut's address, so they are counted by id.)
 check('the app icon has its long-press shortcuts', ['id=add_thing', 'id=add_plan', 'id=queue'].every((id) => shortcuts.includes(id)))
@@ -302,6 +323,7 @@ let ui = screen()
 check('the "Needs a decision" widget shows the date and its countdown', !!onScreen(ui, 'Needs a decision') && !!onScreen(ui, 'Manufacturer warranty ends') && !!onScreen(ui, 'T-20d'), ui.map((n) => n.text).filter((t) => /warranty|decision|T-|Next up/i.test(t)).join(' | '))
 check('the "Next up" widget shows it too', !!onScreen(ui, 'Next up') && ui.filter((n) => n.text === 'Manufacturer warranty ends').length >= 2)
 check('each row says what it is about and when', ui.some((n) => /^Android Check Phone · /.test(n.text)))
+check('with dayGLANCE connected, both widgets offer "Send to dayGLANCE"', ui.filter((n) => n.text === 'Send to dayGLANCE').length === 2)
 
 // A tap on a row opens that date in the app.
 if (cdp) { await cdp.close().catch(() => {}); cdp = null }
@@ -390,6 +412,26 @@ check('and Android is holding a reminder for it', adb('shell', 'run-as', APP_ID,
 check('all of it with the phone app never opened', foreground() !== APP_ID)
 shot('widgets-refreshed')
 
+// "Send to dayGLANCE" on the widget, still with the app closed. The row reads
+// as sent at once; a refresh does the sending, and the web device sees the
+// date marked. (It may wait a minute: a refresh has just run, and several
+// taps in a row are meant to be one run's work.)
+const send = ui.filter((n) => n.text === 'Send to dayGLANCE').sort((a, b) => a.y - b.y)[0]
+check('the camera\'s row offers "Send to dayGLANCE"', !!send)
+if (send) await tap(send)
+await sleep(500)
+ui = screen()
+check('the row reads as sent at once, and no longer offers to send', !!onScreen(ui, 'In dayGLANCE') && !onScreen(ui, 'Send to dayGLANCE') && ui.some((n) => /^Web Warranty Camera · /.test(n.text)), ui.map((n) => n.text).filter((t) => /Camera|dayGLANCE|Done/i.test(t)).join(' | '))
+check('and its reminder on this phone is cancelled: it is dayGLANCE\'s to remind about now', !adb('shell', 'run-as', APP_ID, 'cat', 'shared_prefs/thingglance_reminders.xml').includes('Web Warranty Camera'))
+const sends = () => JSON.parse(shared().match(/name="refresh_log">(\[.*?\])<\/string>/s)?.[1] ?? '[]').filter((e) => e.trigger === 'home-screen' && e.applied > 0).length
+const before = sends()
+const sentRun = await waitFor(() => sends() > before, 100_000)
+check('a refresh does the sending, by itself', sentRun.ok, `after ${Math.round(sentRun.ms / 1000)} s`)
+const marked = await waitFor(() => W.getByText('In dayGLANCE').first().isVisible().catch(() => false), 20_000)
+check('the web device shows the date as handed to dayGLANCE', marked.ok && foreground() !== APP_ID)
+ui = screen()
+check('the widget still shows it as sent once the app has caught up', !!onScreen(ui, 'In dayGLANCE') && !/widget:[0-9a-f-]{36}/.test(shared()))
+
 // Opening the app afterwards finds it all done.
 P = await launch()
 await openLink('thingglance://view/things')
@@ -435,7 +477,7 @@ if (!QUICK) {
   shot('notification')
   ui = screen()
   const done = onScreen(ui, 'Done with this')
-  check('the notification says what and when, and offers "Done with this"', !!onScreen(ui, 'Manufacturer warranty ends') && ui.some((n) => /^Android Check Tablet · in 7 days/.test(n.text)) && !!done, ui.map((n) => n.text).filter((t) => /warranty|Tablet|Done/i.test(t)).join(' | '))
+  check('the notification says what and when, and offers "Done with this" and "Send to dayGLANCE"', !!onScreen(ui, 'Manufacturer warranty ends') && ui.some((n) => /^Android Check Tablet · in 7 days/.test(n.text)) && !!done && !!onScreen(ui, /^Send to dayGLANCE$/i), ui.map((n) => n.text).filter((t) => /warranty|Tablet|Done|Send/i.test(t)).join(' | '))
   if (done) await tap(done)
   await sleep(2000)
   // "Done with this" does not open the app: the notification goes, and the

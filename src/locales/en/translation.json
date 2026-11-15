@@ -932,7 +932,7 @@
       "activity": "Activity",
       "activityEmpty": "Nothing sent or received yet.",
       "otherSurfaces": "Other surfaces",
-      "otherSurfacesHint": "Widgets, the menu bar popup, GLANCElauncher cards and MCP tools will all read one object: the glance snapshot. This is what it holds right now, including the reminders this device would get. Nothing schedules them yet: that arrives with the phone and desktop apps.",
+      "otherSurfacesHint": "Widgets, the menu bar popup, GLANCElauncher cards and MCP tools all read one object: the glance snapshot. This is what it holds right now, including the reminders this device would get. A browser does not schedule them; the phone app does.",
       "snapshotCopied": "Full snapshot copied",
       "copySnapshot": "Copy full snapshot"
     },
@@ -996,6 +996,7 @@
   "notify": {
     "channel": "Dates",
     "channelDescription": "Warranties ending, plans renewing, support running out.",
-    "done": "Done with this"
+    "done": "Done with this",
+    "send": "Send to dayGLANCE"
   }
 }

@@ -13,7 +13,8 @@ import java.util.UUID
 //     (src/native/widgetBridge.ts).
 //   - Pending writes: made on the home screen while the app is not running,
 //     applied by the app the next time it is (docs/links-and-intents.md). Each
-//     carries an id minted here, so applying it twice changes nothing.
+//     carries an id minted here, so applying it twice changes nothing. Writes
+//     an automation app asked for wait in the same queue (automation/).
 //
 // A private preferences file, left out of cloud backup
 // (res/xml/data_extraction_rules.xml): it carries names and dates, and the
@@ -73,16 +74,58 @@ object SharedDataStore {
     @Synchronized
     fun readPendingWrites(context: Context): String = pending(context).toString()
 
+    // Answers what was taken off, so whoever asked for a write can be told
+    // how it went (automation/Automation.kt).
     @Synchronized
-    fun acknowledge(context: Context, clientIds: Set<String>) {
-        if (clientIds.isEmpty()) return
+    fun acknowledge(context: Context, clientIds: Set<String>): List<JSONObject> {
+        if (clientIds.isEmpty()) return emptyList()
+        val (kept, settled) = split(pending(context)) { !clientIds.contains(it.optString("clientId")) }
+        store(context, kept)
+        return settled
+    }
+
+    // The queue in two: what a test keeps, and what it does not.
+    internal fun split(queue: JSONArray, keep: (JSONObject) -> Boolean): Pair<JSONArray, List<JSONObject>> {
         val kept = JSONArray()
-        val queue = pending(context)
+        val gone = ArrayList<JSONObject>()
         for (i in 0 until queue.length()) {
             val w = queue.optJSONObject(i) ?: continue
-            if (!clientIds.contains(w.optString("clientId"))) kept.put(w)
+            if (keep(w)) kept.put(w) else gone.add(w)
         }
-        store(context, kept)
+        return kept to gone
+    }
+
+    // ── Automation apps ──────────────────────────────────────────────────────
+
+    private const val KEY_AUTOMATION = "automation_enabled"
+
+    // Off until the user turns it on: the receiver is open to every app on
+    // the phone. Kept here so it holds with the app not running.
+    fun isAutomationEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_AUTOMATION, false)
+
+    // Turning it off drops what it had queued: nothing asked for while it was
+    // on is applied after the user has said no.
+    @Synchronized
+    fun setAutomationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_AUTOMATION, enabled).commit()
+        if (!enabled) store(context, split(pending(context)) { !it.has("reply") }.first)
+    }
+
+    // A write an automation app asked for: { action, payload, clientId, reply }.
+    // False when one with the same id is already waiting.
+    @Synchronized
+    fun queueAutomation(context: Context, entry: JSONObject): Boolean {
+        val queue = pending(context)
+        if (!added(queue, entry)) return false
+        store(context, trimmed(queue))
+        return true
+    }
+
+    internal fun added(queue: JSONArray, entry: JSONObject): Boolean {
+        val id = entry.optString("clientId")
+        for (i in 0 until queue.length()) if (queue.optJSONObject(i)?.optString("clientId") == id) return false
+        queue.put(entry)
+        return true
     }
 
     // The dates with a "done" waiting to be applied: a widget leaves them out
@@ -99,6 +142,8 @@ object SharedDataStore {
         for (i in 0 until queue.length()) {
             val w = queue.optJSONObject(i) ?: continue
             if (w.optString("action") != action) continue
+            // Putting a date back is not clearing it.
+            if (w.optJSONObject("payload")?.optString("state") == "restore") continue
             val key = w.optJSONObject("payload")?.optString("event_key").orEmpty()
             if (key.isNotEmpty()) keys.add(key)
         }

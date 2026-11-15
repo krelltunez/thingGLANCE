@@ -68,7 +68,7 @@ export function headlessSurface(bridge: HeadlessBridge): NativeSurface {
   return {
     updateSnapshot: async (json) => { bridge.updateSnapshot(json) },
     pendingWrites: async () => bridge.pendingWrites(),
-    acknowledgeWrites: async (clientIds) => { bridge.acknowledgeWrites(JSON.stringify(clientIds)) },
+    acknowledgeWrites: async (clientIds, results) => { bridge.acknowledgeWrites(JSON.stringify(clientIds), JSON.stringify(results)) },
   }
 }
 

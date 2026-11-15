@@ -48,6 +48,13 @@
                 <data android:scheme="thingglance" />
             </intent-filter>
 
+            <!-- An automation app (Tasker) opening the app somewhere: it
+                 carries a link, and only navigates (LaunchLinks). -->
+            <intent-filter>
+                <action android:name="app.thingglance.OPEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
 
         <!-- Home-screen widgets (Jetpack Glance). They draw from what the web
@@ -122,6 +129,23 @@
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
         </activity>
+
+        <!-- Automation apps (Tasker and the like), docs/tasker.md. Exported:
+             any app may send these. The receiver does nothing until the user
+             turns the switch on in Settings, and each write still goes
+             through the app's one door for outside writes. -->
+        <receiver
+            android:name=".automation.AutomationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="app.thingglance.CREATE" />
+                <action android:name="app.thingglance.CREATE_PLAN" />
+                <action android:name="app.thingglance.ADD_COVERAGE" />
+                <action android:name="app.thingglance.DECIDE" />
+                <action android:name="app.thingglance.SEND" />
+                <action android:name="app.thingglance.QUERY" />
+            </intent-filter>
+        </receiver>
 
         <!-- Quick Settings tiles. Each opens the app at a thingglance:// link;
              the first also says how many dates are waiting. Exported because

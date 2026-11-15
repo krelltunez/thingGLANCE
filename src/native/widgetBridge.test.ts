@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setTranslator } from '@/core/text'
-import { widgetLabels } from './widgetBridge'
+import { collectWidgetWrites, widgetLabels, type NativeSurface } from './widgetBridge'
 
 afterEach(() => setTranslator(null))
 
@@ -21,5 +21,36 @@ describe('the words handed to the home screen', () => {
     const { waiting } = widgetLabels(5000)
     expect(waiting.length).toBe(61)
     expect(waiting[60]).toBe('60 waiting')
+  })
+})
+
+describe('writes queued outside the app', () => {
+  // Both of these are refused before anything is read or written, so no
+  // database is needed to see what is reported back.
+  const queued = [
+    { action: 'no_such_action', clientId: 'a', payload: {} },
+    { action: 'create_thing', clientId: 'b', payload: {} },
+    { action: 'create_thing', payload: { name: 'No id' } },
+  ]
+
+  it('reports how each one went when it acknowledges them', async () => {
+    const order: string[] = []
+    const acknowledge = vi.fn(async () => { order.push('acknowledge') })
+    const surface: NativeSurface = { updateSnapshot: async () => {}, pendingWrites: async () => JSON.stringify(queued), acknowledgeWrites: acknowledge }
+    const changed = await collectWidgetWrites(async () => { order.push('snapshot') }, surface)
+    expect(changed).toBe(0)
+    // The home screen is brought up to date first, then the queue is cleared.
+    expect(order).toEqual(['snapshot', 'acknowledge'])
+    const [ids, results] = acknowledge.mock.calls[0] as unknown as [string[], Record<string, { success: boolean; code?: string }>]
+    // A write with no id of its own is not taken at all.
+    expect(ids).toEqual(['a', 'b'])
+    expect(results.a).toMatchObject({ success: false, code: 'unknown_action' })
+    expect(results.b).toMatchObject({ success: false, code: 'invalid' })
+  })
+
+  it('acknowledges nothing when nothing is queued', async () => {
+    const acknowledge = vi.fn(async () => {})
+    await collectWidgetWrites(async () => {}, { updateSnapshot: async () => {}, pendingWrites: async () => '[]', acknowledgeWrites: acknowledge })
+    expect(acknowledge).not.toHaveBeenCalled()
   })
 })

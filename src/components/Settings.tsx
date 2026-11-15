@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { DAY, fmtDay, fmtMoment } from '@/core/dates'
 import { CURRENCIES } from '@/core/money'
+import { listText } from '@/core/text'
 import { languages } from '@/locales'
 import { LanguagePicker } from './LanguagePicker'
 import { buildSnapshot } from '@/core/snapshot'
@@ -17,6 +18,7 @@ import { describeTies, isTied, type MemberTies } from '@/core/household'
 import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/config'
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
+import { automationEnabled, setAutomationEnabled } from '@/native/automation'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
 import { WidgetBridge, type TileKind, type WidgetKind } from '@/native/widgetBridge'
@@ -457,6 +459,30 @@ function RosterStatus({ empty }: { empty: boolean }) {
   )
 }
 
+// What an automation app may send, and what comes back. Names on the wire,
+// not words: they read the same in every language.
+const AUTOMATION_ACTIONS = ['CREATE', 'CREATE_PLAN', 'ADD_COVERAGE', 'DECIDE', 'SEND', 'QUERY', 'OPEN'].map((a) => `app.thingglance.${a}`)
+const AUTOMATION_RESULT = 'app.thingglance.RESULT'
+
+// The switch lives on the native side, which has to obey it with the app not
+// running, so it is read from there and not from the app's own settings.
+function AutomationApps() {
+  const { t } = useTranslation()
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    let live = true
+    void automationEnabled().then((v) => { if (live) setOn(v) })
+    return () => { live = false }
+  }, [])
+  return (
+    <Block title={t('settings.integrations.automation')} hint={t('settings.integrations.automationHint')}>
+      <Toggle checked={on} onChange={(v) => void setAutomationEnabled(v).then(setOn)} label={t('settings.integrations.automationToggle')}
+        hint={t('settings.integrations.automationToggleHint')} />
+      {on && <p className="mt-3 break-words text-xs text-dim">{t('settings.integrations.automationActions', { actions: listText(AUTOMATION_ACTIONS), result: AUTOMATION_RESULT })}</p>}
+    </Block>
+  )
+}
+
 function Integrations() {
   const { t } = useTranslation()
   useIntentsVersion()
@@ -517,6 +543,7 @@ function Integrations() {
             )}
         </Block>
       )}
+      {shell() === 'native' && <AutomationApps />}
       <Block title={t('settings.integrations.otherSurfaces')} hint={t('settings.integrations.otherSurfacesHint')}>
         <SnapshotPeek />
       </Block>

@@ -126,7 +126,7 @@ class HeadlessBridge(
     }
 
     @JavascriptInterface
-    fun acknowledgeWrites(idsJson: String) {
+    fun acknowledgeWrites(idsJson: String, resultsJson: String?) {
         run.markStarted()
         val ids = HashSet<String>()
         try {
@@ -135,7 +135,7 @@ class HeadlessBridge(
         } catch (e: Exception) {
             return
         }
-        SharedDataStore.acknowledge(context, ids)
+        com.thingglance.app.automation.Automation.acknowledged(context, SharedDataStore.acknowledge(context, ids), resultsJson)
         WidgetBridgePlugin.refreshAll(context)
     }
 

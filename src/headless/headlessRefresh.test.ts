@@ -88,7 +88,7 @@ describe('what a run may ask of the shell', () => {
     const { bridge } = fakeBridge()
     const watched = new Proxy(bridge, { get: (target, prop: string) => { used.add(prop); return target[prop as keyof HeadlessBridge] } })
     const surface = headlessSurface(watched)
-    await surface.updateSnapshot('{}'); await surface.pendingWrites(); await surface.acknowledgeWrites(['a'])
+    await surface.updateSnapshot('{}'); await surface.pendingWrites(); await surface.acknowledgeWrites(['a'], {})
     const store = headlessSecureStore(watched)
     await store.get('k'); await store.set('k', 'v'); await store.remove('k')
     vi.stubGlobal('window', {})
@@ -107,10 +107,12 @@ describe('what a run may ask of the shell', () => {
     expect(await store.get('absent')).toBeNull()
     await expect(store.get('broken')).rejects.toThrow('unavailable')
   })
-  it('acknowledges writes by id', async () => {
+  it('acknowledges writes by id, and says how each went', async () => {
     const acknowledged = vi.fn()
-    await headlessSurface(fakeBridge({ acknowledgeWrites: acknowledged }).bridge).acknowledgeWrites(['widget:1', 'notification:x:done'])
+    await headlessSurface(fakeBridge({ acknowledgeWrites: acknowledged }).bridge).acknowledgeWrites(['widget:1', 'notification:x:done'], { 'widget:1': { success: true, event_key: 'k' } })
     expect(JSON.parse(acknowledged.mock.calls[0][0])).toEqual(['widget:1', 'notification:x:done'])
+    // The second argument is what an automation app is answered with.
+    expect(JSON.parse(acknowledged.mock.calls[0][1])).toEqual({ 'widget:1': { success: true, event_key: 'k' } })
   })
 })
 

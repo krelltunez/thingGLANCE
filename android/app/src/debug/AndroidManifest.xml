@@ -6,5 +6,14 @@
         <receiver
             android:name=".refresh.DebugRefreshReceiver"
             android:exported="true" />
+        <!-- A test hook, in debug builds only: logs a RESULT sent back to this
+             package, standing in for an automation app. -->
+        <receiver
+            android:name=".automation.DebugResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.thingglance.RESULT" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

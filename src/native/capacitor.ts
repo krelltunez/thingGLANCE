@@ -1,19 +1,21 @@
-// The Capacitor shell (Android today, iOS later): everything the native side
-// brings, handed to the app through the seams in docs/shells.md. On the web
-// this module does nothing.
+// The Capacitor shell (Android and iOS): everything the native side brings,
+// handed to the app through the seams in docs/shells.md. On the web this
+// module does nothing.
 //
-//   keystore   SecureStorePlugin (Android Keystore) as the shell's secureStore
+//   keystore   SecureStorePlugin (the Android Keystore, the iOS Keychain) as
+//              the shell's secureStore
 //   network    CapacitorHttp patches window.fetch onto the native HTTP stack,
-//              so the vault needs no CORS entry for https://localhost. It is
+//              so the vault needs no CORS entry for the app's origin. It is
 //              registered as the shell's transport, which also puts the app's
 //              deadlines on it (it ignores AbortSignal by itself).
 //   live sync  the vault's event stream is read natively and passed in
 //              (native/vaultSse.ts)
 //   links      thingglance:// URLs the system hands the app go to openLink()
-//   back       the hardware back button closes what is on top, then leaves
+//   back       Android's back button closes what is on top, then leaves
 //   status bar follows the app's theme
 //   reminders  scheduled natively from the reminder plan in the snapshot
-//              (android: reminders/); only the permission prompt is here
+//              (android: reminders/, ios: Reminders/); only the permission
+//              prompt is here
 //   widgets    the snapshot is written to the native side whenever it changes
 //              (native/widgetBridge.ts)
 
@@ -44,13 +46,19 @@ const keystore: SecureStore = {
   remove: (key) => Keystore.delete({ key }),
 }
 
-// The launch URL stays attached to the activity, so a reload (every connection
+// The launch URL stays attached to the activity (on iOS, to the app), so a reload (every connection
 // change ends in one) would open it again. Remembered for the life of the
 // WebView session only.
 const LAUNCH_SEEN = 'tg_launch_url_seen'
 
 function followLinks(): void {
-  void CapacitorApp.addListener('appUrlOpen', ({ url }) => { if (url) openLink(url) })
+  void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+    if (!url) return
+    // iOS keeps the newest link as the launch URL too: seen here, it is not
+    // opened a second time after the next reload.
+    try { sessionStorage.setItem(LAUNCH_SEEN, url) } catch { /* opened again after a reload, at worst */ }
+    openLink(url)
+  })
   void CapacitorApp.getLaunchUrl().then((launch) => {
     const url = launch?.url
     if (!url) return
@@ -97,12 +105,11 @@ export function startCapacitorShell(): void {
   followLinks()
   handleBackButton()
   followTheme()
-  if (Capacitor.getPlatform() === 'android') {
-    // One snapshot feeds both: what the widgets show, and the reminder plan
-    // the native side schedules from. All that is left to do here is ask for
-    // permission the first time there is something to remind about.
-    startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
-    // A copy installed by the Play Store says so, once, for the record.
-    void recordOwnershipFromShell()
-  }
+  // One snapshot feeds both: what the widgets show, and the reminder plan the
+  // native side schedules from. All that is left to do here is ask for
+  // permission the first time there is something to remind about.
+  startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
+  // A copy installed by a store (Google Play, the App Store) says so, once,
+  // for the record.
+  void recordOwnershipFromShell()
 }

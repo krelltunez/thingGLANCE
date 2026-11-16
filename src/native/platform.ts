@@ -22,6 +22,16 @@ export function shell(): Shell {
   return 'web'
 }
 
+// Which phone system the native shell is on, or null outside one. Most of
+// the app never needs to know: this is for the few things only one of them
+// has (Android's widget pinning, tiles and automation apps).
+export function nativePlatform(): 'android' | 'ios' | null {
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor
+  if (!cap?.isNativePlatform?.()) return null
+  const platform = cap.getPlatform?.()
+  return platform === 'android' || platform === 'ios' ? platform : null
+}
+
 // "Chrome on macOS": a short name for this device in the household's device
 // list. It only has to tell two of them apart.
 export function describeDevice(): string {

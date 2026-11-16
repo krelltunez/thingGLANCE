@@ -128,7 +128,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, width = 'max
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 animate-fade-in bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <div className={cx('panel hud relative flex max-h-[92svh] w-full animate-slide-up flex-col rounded-b-none !bg-panel sm:max-h-[86svh] sm:animate-pop sm:rounded-b-2xl', width, className)}>
+      <div className={cx('panel hud relative flex max-h-[min(92svh,calc(100svh_-_env(safe-area-inset-top)_-_8px))] w-full animate-slide-up flex-col rounded-b-none !bg-panel sm:max-h-[86svh] sm:animate-pop sm:rounded-b-2xl', width, className)}>
         <header className="flex items-start justify-between gap-4 border-b border-line/10 px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-ink">{title}</h2>

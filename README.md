@@ -4,7 +4,7 @@
 
 thingGLANCE is the fourth GLANCE app (dayGLANCE is orange, lastGLANCE green, lifeGLANCE purple, this one sky blue). It is **not** a home inventory. It tracks the handful of things you own that carry dates: when the warranty lapses, when a plan renews, when security updates stop, and when you said you would replace it.
 
-> Status: v1.0, in testing on Google Play. Web app + PWA, an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)), and a desktop app for macOS, Windows and Linux with a tray popup and reminders ([docs/desktop.md](docs/desktop.md)). iOS comes later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
+> Status: v1.0, in testing on Google Play. Web app + PWA, an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)), a desktop app for macOS, Windows and Linux with a tray popup and reminders ([docs/desktop.md](docs/desktop.md)), and an iPhone and iPad app with reminders ([docs/ios.md](docs/ios.md)); its widgets are still to come.
 
 ## What it does
 

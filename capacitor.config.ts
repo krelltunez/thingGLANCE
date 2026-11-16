@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli'
+import { KeyboardResize } from '@capacitor/keyboard'
 
 // One id on every store (docs/ROADMAP.md: "Decide these before anything
 // ships"). lastGLANCE's Android and iOS ids never matched, and it cost them.
@@ -14,6 +15,18 @@ const config: CapacitorConfig = {
     // CAP_WEBVIEW_DEBUG=1 at `cap sync` for a throwaway test build; never ship
     // one. (scripts/android-check.mjs needs it to drive the app.)
     webContentsDebuggingEnabled: process.env.CAP_WEBVIEW_DEBUG === '1',
+    // Named, so that a plugin added for iOS (the keyboard's) is not built
+    // into the Android app as well, where it has nothing to do and would put
+    // its own listener on the window's insets.
+    includePlugins: ['@capacitor/app', '@capacitor/status-bar'],
+  },
+  ios: {
+    // Reminders are the app's own (ios: Reminders/ReminderResponder.swift,
+    // set as the notification delegate in AppDelegate). Left on, Capacitor
+    // makes itself the delegate when its bridge starts, and with no plugin
+    // behind it every reminder is hidden while the app is open and every
+    // button and tap is dropped.
+    handleApplicationNotifications: false,
   },
   plugins: {
     // Requests go out on the native HTTP stack, so the vault needs no CORS
@@ -24,6 +37,11 @@ const config: CapacitorConfig = {
     // keeps clear of it with env(safe-area-inset-top). The style is set to
     // match the theme at runtime (src/native/capacitor.ts).
     StatusBar: { style: 'DARK', overlaysWebView: true },
+    // iOS only. The WebView itself shrinks when the keyboard comes up, which
+    // is what `interactive-widget=resizes-content` in index.html does on
+    // Android and iOS has no word for: a bottom sheet stays above the keys
+    // instead of behind them.
+    Keyboard: { resize: KeyboardResize.Native },
   },
 }
 

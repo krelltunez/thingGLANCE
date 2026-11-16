@@ -203,6 +203,8 @@ This is where keeping `src/core` and `src/sync` free of React pays off: the head
 
 ## Phase 4: iOS (L)
 
+> Built so far, 2026-11-15: the app, the shell seams, the App Group hand-off and notifications (steps 1, 2 and 5). [ios.md](ios.md) describes it and says what was checked. Widgets and the entry points are next.
+
 Order, again from lastGLANCE's plan:
 
 1. **App Group and the snapshot bridge**, read-only. Put the App Group on every App ID first and regenerate profiles.

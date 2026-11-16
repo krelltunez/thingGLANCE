@@ -30,7 +30,7 @@ import { hasShellTransport } from '@/native/shell'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
 import { WidgetBridge, type TileKind, type WidgetKind } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
-import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
+import { dismissRestoredCopy, recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
 import { blockedMessage, checkPrivateAddress, grantPrivateAddress, type PrivateAddressBlock } from '@/sync/privateAddress'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
 import { APP_ID, getVaultConfig } from '@/sync/vaultConfig'
@@ -376,6 +376,12 @@ function Vault() {
   return (
     <div className="space-y-3">
       {sync.errorCode === 'KEYSTORE_UNREADABLE' && <p className="rounded-lg border border-bad/25 bg-bad/10 px-3 py-2 text-xs leading-relaxed text-bad">{syncErrorText(sync.errorCode, null)}</p>}
+      {sync.errorCode === 'RESTORED_COPY' && (
+        <div className={cx('rounded-lg border px-3 py-2 text-xs leading-relaxed', TONES.warn.soft)}>
+          <p>{syncErrorText(sync.errorCode, null)}</p>
+          <button type="button" className="mt-1 font-medium underline" onClick={dismissRestoredCopy}>{t('settings.vault.restoredLeaveOff')}</button>
+        </div>
+      )}
       <Block title={t('settings.vault.syncWith')} hint={t('settings.vault.syncWithHint')}>
         <Segmented value={mode} onChange={(m) => { setMode(m); setNote(null) }} options={[
           { id: 'self', label: t('settings.vault.selfHosted') },

@@ -8,6 +8,7 @@ import { clearDbRootKey, createVaultClient } from '@glance-apps/sync'
 import { tr } from '@/core/text'
 import { getDeviceId } from './deviceId'
 import { dbCryptoConfig } from './keyHooks'
+import { clearRestoredCopyNotice } from './restoredCopy'
 import { flushSecretWrites } from './secrets'
 import { netFetch, shellFetchImpl } from './shellFetch'
 import {
@@ -80,6 +81,8 @@ async function applyConnection(next: VaultConfig): Promise<void> {
   const prev = getVaultConfig()
   const sameStream = !!prev && !!prev.vaultToken && !vaultIdentityChanged(prev, next)
   setVaultConfig(next)
+  // Connected here now, whatever this copy of the data was before.
+  clearRestoredCopyNotice()
   if (sameStream) {
     // A rotated token on the same stream keeps its cursors and keys.
     clearCredentialHalt()

@@ -40,6 +40,11 @@ export interface ShellBridge {
   fetch?: typeof fetch
   secureStore?: SecureStore
   eventStream?: ShellEventStream
+  // True when the keystore stays on the device while the page's storage can
+  // arrive from another one: an iPhone set up from a backup gets the app's
+  // data and none of its Keychain. The keystore then says which device this
+  // is (sync/deviceIdentity.ts). Only the iOS shell sets it today.
+  deviceBoundKeystore?: boolean
 }
 
 let registered: ShellBridge | null = null

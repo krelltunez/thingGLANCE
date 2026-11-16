@@ -13,7 +13,9 @@ import Security
 //
 // Items are kept ThisDeviceOnly, so they are in no backup that could be
 // restored to another phone, and AfterFirstUnlock, so a sync that runs while
-// the phone is locked can still read them.
+// the phone is locked can still read them. The web side leans on the first:
+// it keeps the device id here, and a copy of the app's storage whose id this
+// Keychain does not know came from another device (src/sync/deviceIdentity.ts).
 //
 // After lastGLANCE's SecureStorePlugin.swift, which answers null for every
 // failure; thingGLANCE's contract tells the two apart.

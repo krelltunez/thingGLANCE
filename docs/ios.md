@@ -51,6 +51,7 @@ The seams are the ones in [shells.md](shells.md); `src/native/capacitor.ts` regi
 | **Plugins** | The app's own plugins are not found by themselves on iOS. `BridgeViewController` registers each one, and `SceneDelegate` puts that controller in the window. With a plain `CAPBridgeViewController` there, every plugin is undefined on the web side |
 | **Keystore** | `SecureStorePlugin`: the Keychain, this device only, readable after the first unlock. Nothing stored is a `null`; a Keychain that cannot be used is a rejection, which the app treats differently (`src/sync/secrets.ts`) |
 | **Signing out by deleting** | The Keychain outlives the app. On the first run after an install the plugin clears what an earlier copy left, so deleting thingGLANCE signs this device out, as on Android |
+| **Which device this is** | The Keychain also holds the device id (`src/sync/deviceIdentity.ts`), and the page's storage keeps a copy. A copy that arrived from another device's backup does not match, and takes a new one: see [Backups](#backups) |
 | **Network** | `CapacitorHttp` puts `fetch` on the native stack, so the vault needs no CORS entry. Plain http is allowed to the local network only (`NSAllowsLocalNetworking`): a vault at home works, and nothing further away is reached without TLS |
 | **Live sync** | `VaultSsePlugin` and `VaultSseClient` read the vault's event stream natively and pass each event in; the WebView cannot stream it. Copied from lastGLANCE. It runs only while the app is in front, and only ever makes a sync come sooner |
 | **Links** | `thingglance://` is in `Info.plist`. Capacitor hands a link to the web side, which opens it in one place (`src/state/useLinks.ts`). A link only navigates |
@@ -104,6 +105,27 @@ Every one of these ends in a link or in the widgets' queue, the two doors in [li
 
 **How a link made outside reaches the page.** An extension cannot hand the app a link, and an intent that opens the app runs before the page exists. So the native side writes the link down in the App Group (`SharedStore.setPendingLink`, `queueShare`) and the web side takes it (`WidgetBridge.takeLink()`, `followQueuedLinks()` in `src/native/capacitor.ts`): at the start, when told one is waiting, and each time the app comes to the front. Only a `thingglance://` link is ever handed on, and it goes to `openLink()` like any other. A tap on a reminder and a `thingglance://` URL from another app still arrive through Capacitor.
 
+## Backups
+
+The app's data is in the device's own backup (iCloud, or a Mac), like any other app's. That is deliberate: someone with no vault gets their things back on a new phone without having thought ahead. It differs from Android, where the data is left out of Google's backup ([android.md](android.md)).
+
+What a backup carries to another device, and what it does not:
+
+| | |
+| --- | --- |
+| **Carried** | The database, the page's storage (settings, sync cursors, the device id), the App Group (what the widgets show, anything still queued) |
+| **Left behind** | Everything in the Keychain: the vault connection, the encryption key, the device id's own entry. They are kept for this device only |
+
+So a restored copy has the data and no connection, and it would still call itself by the old device's id. The vault keeps one credential and one cursor per device id, so two devices under one id (an iPad set up from the iPhone's backup, an old phone kept in use) would sign each other out. The check in `src/sync/deviceIdentity.ts` runs at every start, before anything reads the id, and compares the page's copy with the Keychain's:
+
+- **They match:** nothing happens. This is every ordinary start, and a restore onto the same device when the backup brings that device's Keychain items back with it. If it does not, the copy is treated as one from another device, which costs a reconnect and nothing else.
+- **The page has an id the Keychain does not know:** the storage came from another device. The copy takes a new id, whatever is left of the connection is removed, and the person the old device belonged to is carried over, so private things stay visible. If the copy was syncing where it came from, the sync indicator says that this device is not, until it is connected again or the user chooses "Leave this device off". The data is untouched, and so is the old device's own row in the household.
+- **The Keychain did not answer:** nothing happens, and the next start asks again.
+
+A device connected again after a restore joins as a new device that already has data: the same path as connecting any device for the first time.
+
+The check is behind `deviceBoundKeystore` on the shell's bridge ([shells.md](shells.md)) and only the iOS shell sets it. Android's phone-to-phone transfer carries the page's storage as well and has not been given the same check.
+
 ## Reminders
 
 Which dates notify, and when, is decided in `src/core/reminders.ts` and travels in the snapshot. `ReminderScheduler` makes the system's pending notifications match that list each time the app hands over a payload: it schedules what is new, cancels what is gone and leaves the rest. iOS delivers them with the app closed.
@@ -126,6 +148,7 @@ On the iPhone 17 simulator (iOS 27.2), with a throwaway local vault:
 - A reminder's "Done with this" queued the write, the running app applied it, and the queue went from 4 dates to 3.
 - A `thingglance://event/...` link opened the plan it names.
 - Connecting to the vault kept the connection in the Keychain; a restart was still connected and asked for no passphrase; deleting and reinstalling the app started signed out.
+- A copy moved to another device: the app's container (database, page storage, preferences, App Group) was copied from one simulator, connected and with a member chosen, to a second with an empty Keychain. The second opened with the data, a new device id, the same member, no connection and "Sync needs attention"; it asked about notifications for itself; connected again, it synced, and the first simulator stayed connected under its own id and received what the second added. A real backup and restore was not tried: a simulator cannot make one.
 - A thing added on the phone reached a browser on the same account, and one added in the browser reached the phone within seconds, with the native stream connected.
 
 - The widgets drew from the sample data in the gallery in every Home Screen size. With "Needs a decision" on the Home Screen, a tick removed the date at once and queued the write; opening the app applied it (4 dates to 3) and emptied the queue.

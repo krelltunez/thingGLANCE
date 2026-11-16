@@ -190,7 +190,8 @@
       "verifier": "This vault server is too old to verify the encryption key. Update the server.",
       "unknownApp": "This vault does not accept thingGLANCE yet. Add \"thingglance\" to the server's allowed apps (GLANCEVAULT_ALLOWED_APPS) and recreate its container.",
       "failed": "Sync failed.",
-      "keystore": "This device's secure storage did not answer, so the saved connection could not be read and sync is paused. Close the app and open it again. Changes you make meanwhile are kept and will sync then."
+      "keystore": "This device's secure storage did not answer, so the saved connection could not be read and sync is paused. Close the app and open it again. Changes you make meanwhile are kept and will sync then.",
+      "restored": "This copy of your data came from a backup of another device. The connection to GLANCEvault stayed on that device, so nothing here is syncing. Connect this device to sync again."
     },
     "passphrase": {
       "wrong": "That passphrase does not match this vault account. Use the one your other GLANCE apps sync with.",
@@ -813,6 +814,7 @@
     },
     "vault": {
       "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",
+      "restoredLeaveOff": "Leave this device off",
       "couldNotConnect": "Could not connect.",
       "tokenRejected": "The vault rejected that token.",
       "tokenForbidden": "That token cannot access this account.",

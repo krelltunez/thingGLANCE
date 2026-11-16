@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import GlanceKit
 
 // The window lives on the scene: the current SDK refuses to launch an app that
 // keeps it on the app delegate. Links and activities arrive here too, and go
@@ -20,6 +21,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
+        // A quick action that started the app.
+        if let item = connectionOptions.shortcutItem { _ = open(item) }
+    }
+
+    // A quick action on the app's icon, with the app already running.
+    func windowScene(_ windowScene: UIWindowScene,
+                     performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(open(shortcutItem))
+    }
+
+    // An item's type is the link it opens (Info.plist). It is written down for
+    // the web side to take, like every other link made outside the app.
+    private func open(_ item: UIApplicationShortcutItem) -> Bool {
+        guard OutsideLinks.isOurs(item.type) else { return false }
+        SharedStore().setPendingLink(item.type)
+        WidgetBridgePlugin.announcePendingLink()
+        return true
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

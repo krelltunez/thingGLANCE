@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>thingGLANCE</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<!-- Written out, not $(PRODUCT_BUNDLE_PACKAGE_TYPE): see the widget
+	     extension's Info.plist. -->
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Text, or one web page: what Android's share target takes. -->
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<!-- The bare name, which @objc(ShareViewController) on the class makes
+		     its runtime name. Without that attribute this would have to be
+		     $(PRODUCT_MODULE_NAME).ShareViewController. -->
+		<key>NSExtensionPrincipalClass</key>
+		<string>ShareViewController</string>
+	</dict>
+</dict>
+</plist>

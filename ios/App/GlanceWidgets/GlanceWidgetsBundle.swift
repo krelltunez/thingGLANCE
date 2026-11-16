@@ -15,5 +15,10 @@ struct GlanceWidgetsBundle: WidgetBundle {
         AddThingWidget()
         WaitingAccessoryWidget()
         NextDateAccessoryWidget()
+        // Control Center controls came with iOS 18; the rest of the bundle
+        // stays on the extension's 17.
+        if #available(iOSApplicationExtension 18.0, *) {
+            AddThingControl()
+        }
     }
 }

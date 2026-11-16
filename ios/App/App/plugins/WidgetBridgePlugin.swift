@@ -13,6 +13,10 @@ import WidgetKit
 //                      the reminder plan inside it
 //   pendingWrites      what was ticked outside the app and is not applied yet
 //   acknowledgeWrites  applied: taken off the queue
+//   takeLink           a place the app was asked to open at from outside (a
+//                      quick action, a shortcut, the Control Center button),
+//                      or something shared into it. iOS only: on Android the
+//                      system hands those over as a link itself.
 //
 // What only Android has (pinning a widget from Settings, Quick Settings tiles,
 // GLANCElauncher's refresh, the background refresh's log) answers "not here".
@@ -26,6 +30,7 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "pendingWrites", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "acknowledgeWrites", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "heartbeat", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeLink", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pinWidget", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addTile", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "recordLauncherRefresh", returnType: CAPPluginReturnPromise),
@@ -42,6 +47,18 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     // the web side collects it now instead of on the next visit.
     static func announcePendingWrites() {
         live?.notifyListeners("pendingWrites", data: [:])
+    }
+
+    // A link was written down while the app is running: the web side takes it
+    // now. It asks again each time the app comes to the front, so nothing
+    // depends on this arriving.
+    static func announcePendingLink() {
+        live?.notifyListeners("pendingLink", data: [:])
+    }
+
+    // One link per call, taken off the store, or null.
+    @objc func takeLink(_ call: CAPPluginCall) {
+        call.resolve(["link": SharedStore().takeLink() ?? NSNull()])
     }
 
     @objc func updateSnapshot(_ call: CAPPluginCall) {

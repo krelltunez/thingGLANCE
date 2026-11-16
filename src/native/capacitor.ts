@@ -30,6 +30,7 @@ import { askOnceIfNeeded } from './notifications'
 import { registerShell, type SecureStore } from './shell'
 import { nativeEventStream } from './vaultSse'
 import { recordOwnershipFromShell } from './ownership'
+import { settleDeviceIdentity } from '@/sync/deviceIdentity'
 import { startWidgetBridge, WidgetBridge } from './widgetBridge'
 
 interface SecureStorePlugin {
@@ -116,16 +117,23 @@ export function startCapacitorShell(): void {
     fetch: (input, init) => window.fetch(input, init),
     secureStore: keystore,
     eventStream: nativeEventStream() ?? undefined,
+    // The Keychain's items are kept for this device only, and an iPhone's
+    // backup carries the page's storage to the next one (docs/ios.md).
+    deviceBoundKeystore: Capacitor.getPlatform() === 'ios',
   })
   followLinks()
   followQueuedLinks()
   handleBackButton()
   followTheme()
-  // One snapshot feeds both: what the widgets show, and the reminder plan the
-  // native side schedules from. All that is left to do here is ask for
-  // permission the first time there is something to remind about.
-  startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
-  // A copy installed by a store (Google Play, the App Store) says so, once,
-  // for the record.
-  void recordOwnershipFromShell()
+  // Both of the next two read the device id, so they wait for it to be
+  // settled (sync/deviceIdentity.ts). On Android that is already done.
+  void settleDeviceIdentity().then(() => {
+    // One snapshot feeds both: what the widgets show, and the reminder plan
+    // the native side schedules from. All that is left to do here is ask for
+    // permission the first time there is something to remind about.
+    startWidgetBridge((snapshot) => void askOnceIfNeeded(snapshot.reminders))
+    // A copy installed by a store (Google Play, the App Store) says so, once,
+    // for the record.
+    void recordOwnershipFromShell()
+  })
 }

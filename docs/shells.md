@@ -60,6 +60,7 @@ Two things on a device are worth stealing: the vault token, and the encryption r
 Things to know when wiring a real keystore:
 
 - **The secure store is three async calls:** `get`, `set`, `remove`, all on strings. `get` answers `null` for "nothing stored" and rejects for "could not read"; the app treats those differently, so do not turn one into the other.
+- **A keystore that stays on the device can say which device this is.** Where the page's storage can arrive from another device and the keystore cannot (an iPhone set up from a backup), the shell sets `deviceBoundKeystore` on its bridge. The device id is then kept in the keystore, with a copy in localStorage, and a copy that does not match takes a new id at boot (`settleDeviceIdentity()`, before `hydrateSecrets()`; [ios.md](ios.md#backups)). Anything a shell starts that reads the device id waits for it.
 - **The app does not trust it to be fast, ordered or reliable.** Every call goes through `secureOp()` (`src/sync/secrets.ts`): one at a time, in the order asked, each with a 4-second deadline. A plugin does not need to serialise its own calls.
 - **What it stores is opaque.** The token is wrapped with a revision number; the root key is wrapped with the account it belongs to. Store the strings as given.
 - **A keystore that refuses a write loses nothing.** The change is kept in localStorage (as on the web) with its revision, survives the reload, and is moved across on the next boot. The newest revision always wins, so an older copy can never overwrite a newer connection.

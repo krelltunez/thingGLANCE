@@ -272,6 +272,18 @@ export async function attachThisDevice(memberId: string, label?: string): Promis
   markDirty(id)
 }
 
+// A copy of the app's storage that arrived on another device takes a new
+// device id (src/sync/deviceIdentity.ts). Whoever held the device it came from
+// holds this one, until they say otherwise. The old device's row is left
+// alone: it is that device's to write, and it may still be in use.
+export async function inheritDeviceLink(fromDeviceId: string): Promise<void> {
+  const id = getDeviceId()
+  if (fromDeviceId === id) return
+  const from = await db.devices.get(fromDeviceId)
+  if (!from || (await db.devices.get(id))) return
+  await attachThisDevice(from.memberId, from.label)
+}
+
 // A store build reports that it was bought (src/native/ownership.ts). Kept as
 // this device's own row, so it reaches the vault with everything else. Called
 // on every start; an unchanged fact writes nothing.

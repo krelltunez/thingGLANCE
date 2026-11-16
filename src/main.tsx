@@ -13,6 +13,7 @@ import { lockViewportScaleOnIPhone } from './native/viewportZoom'
 import { startDesktopShell } from './native/desktopShell'
 import { registerShell } from './native/shell'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
+import { settleDeviceIdentity } from './sync/deviceIdentity'
 import { settleKeyStorage } from './sync/keyHooks'
 import { hydrateSecrets } from './sync/secrets'
 
@@ -64,7 +65,8 @@ settleServiceWorker()
 // Two things have to be in memory before the first render. Credentials a shell
 // keeps in its keystore: the sync engines read the connection as they mount.
 // And the starting language, so nothing paints in English first. On the web,
-// in English, both resolve at once.
+// in English, both resolve at once. Before either, an iPhone checks that its
+// storage is its own and not another device's backup (sync/deviceIdentity.ts).
 if (trayMode && desktop) {
   // The app's theme is set in the main window; this window hears of a change
   // through the storage they share.
@@ -78,7 +80,7 @@ if (trayMode && desktop) {
   })
 } else if (headless) {
   void import('./headless/headlessRefresh').then(({ runHeadlessRefresh }) => runHeadlessRefresh({ bridge: headless }))
-} else void Promise.allSettled([hydrateSecrets().then(settleKeyStorage), i18nReady]).then(() => {
+} else void Promise.allSettled([settleDeviceIdentity().then(hydrateSecrets).then(settleKeyStorage), i18nReady]).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

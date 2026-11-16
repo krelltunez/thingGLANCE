@@ -91,6 +91,12 @@ export function resetVaultSyncState(): void {
 // start; a mismatch is treated as the account change it is.
 const STREAM_OWNER_KEY = 'tg_stream_for'
 
+// True when this storage has synced with a vault and was not disconnected
+// since. It says nothing about whether the credentials are still here.
+export function hadVaultStream(): boolean {
+  try { return !!localStorage.getItem(STREAM_OWNER_KEY) } catch { return false }
+}
+
 export const vaultAccountTag = (c: Pick<VaultConfig, 'vaultUrl' | 'accountId'> | null = getVaultConfig()): string =>
   c ? `${c.vaultUrl.trim()}|${c.accountId.trim()}` : ''
 

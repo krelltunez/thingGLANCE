@@ -9,6 +9,7 @@ import { createDbEngine, isUnknownAppError, markAllLocalEntitiesDirty } from './
 import { dbCryptoConfig } from './keyHooks'
 import { checkKeyAgainstSiblings, rewriteOwnVerifier, tryPassphrase, type SiblingKeyCheck } from './keyCheck'
 import { registerDbEngine } from './dirtyTracker'
+import { clearRestoredCopyNotice, restoredCopyNotice } from './restoredCopy'
 import { secretsUnreadable } from './secrets'
 import { getVaultConfig, isVaultEnabled, settleStreamOwner, vaultAccountTag } from './vaultConfig'
 import { probeAllowedApps } from './vaultConnect'
@@ -106,6 +107,7 @@ export function syncErrorText(code: string | null, message: string | null): stri
     case 'VERIFIER_UNSUPPORTED': return tr('sync.error.verifier')
     case 'UNKNOWN_APP': return tr('sync.error.unknownApp')
     case 'KEYSTORE_UNREADABLE': return tr('sync.error.keystore')
+    case 'RESTORED_COPY': return tr('sync.error.restored')
     default: return message || tr('sync.error.failed')
   }
 }
@@ -117,6 +119,12 @@ async function cycle(): Promise<void> {
   } catch { /* reported through onError */ }
   set({ lastSynced: engine.getLastSynced(), pending: engine.getDirtySet().length })
   if (roster && !state.rosterUnsupported) roster.dbSyncCycle().catch(() => { /* reported through onError */ })
+}
+
+// "Leave it off": the user has read that this copy is not syncing here.
+export function dismissRestoredCopy(): void {
+  clearRestoredCopyNotice()
+  if (state.errorCode === 'RESTORED_COPY') set({ phase: 'off', errorCode: null, errorMessage: null })
 }
 
 export async function syncNow(): Promise<void> {
@@ -132,7 +140,11 @@ export async function startSync(): Promise<void> {
   if (!isVaultEnabled()) {
     // "Could not read the keystore" is not "not connected": say so, and leave
     // local edits to the hold in dirtyHold.ts until a launch that can read it.
-    set(secretsUnreadable() ? { phase: 'error', errorCode: 'KEYSTORE_UNREADABLE', errorMessage: null } : { phase: 'off' })
+    // And a copy that came from another device's backup, where it was syncing,
+    // is not "never connected" either (restoredCopy.ts).
+    set(secretsUnreadable() ? { phase: 'error', errorCode: 'KEYSTORE_UNREADABLE', errorMessage: null }
+      : restoredCopyNotice() ? { phase: 'error', errorCode: 'RESTORED_COPY', errorMessage: null }
+      : { phase: 'off' })
     return
   }
   // Cursors left by another account (a change of connection that was cut

@@ -53,6 +53,12 @@ export async function requestNotifyPermission(): Promise<boolean> {
   }
 }
 
+// The answer belongs to the device that was asked. A copy of the app's storage
+// that arrived from another one (sync/deviceIdentity.ts) asks for itself.
+export function forgetNotifyAsked(): void {
+  try { localStorage.removeItem(ASKED_KEY) } catch { /* nothing to forget */ }
+}
+
 // Called with each new plan. The alarms are already set by the native side;
 // this only asks for permission the first time there is something to show,
 // which is the moment the question makes sense to the person answering it.

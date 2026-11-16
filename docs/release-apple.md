@@ -56,9 +56,14 @@ In the order it asks. The text is in [`store-assets/apple/listing.md`](../store-
 
 A copy the App Store installed records that it was bought: the store's own date for the purchase, `store: "appstore"`, and the app version ([release.md](release.md#owned-since)). The Mac App Store build records `store: "mas"`. A build from Xcode or TestFlight records nothing. It is a record and never a check.
 
+## Device backups
+
+Decided 2026-11-16: the iOS app's data stays in the device's own backup, unlike Android's. The vault connection does not travel (it is in the Keychain, for this device only), and a copy restored onto another device takes a new device id and says that it is not syncing there ([ios.md](ios.md#backups)). The privacy policy says the same.
+
+- [ ] **On real devices:** restore a backup of a connected iPhone onto a second device. It should open with the data, not connected, with "Sync needs attention" in the header, and both devices should sync once the second is connected again. A simulator cannot make a backup; what was checked there is a copy of the app's container moved to a second simulator.
+
 ## Decisions still open
 
-- **Device backups.** On Android the app keeps its data out of Google's backup, and moving phones is done through the vault or a backup file. On iOS nothing excludes it: the database is part of the device's own backup, and the vault connection (in the Keychain, this device only) is not. That is what the privacy policy's pull request says. To match Android instead, the WebView's data folder would be marked as excluded from backup in the app.
 - **Languages.** The app ships English. The words iOS shows before the app has run (widget gallery names, quick actions, Siri phrases, the share sheet's card) are English in the Swift and the Info.plist; a second language needs string catalogs for them as well as a `src/locales` folder. Below an iOS 17 deployment target, Siri phrases go in `.strings`, not a string catalog.
 - **A background refresh.** Android refreshes a few times a day with the app closed. iOS does not yet: a date settled on another device stays in the widgets and the reminders here until the app is next opened.
 - **An App Store badge on the site.** The product page says "coming soon" until there is a listing to link to.

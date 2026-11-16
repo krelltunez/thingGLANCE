@@ -994,7 +994,8 @@
       "privacy": "Privacy policy",
       "terms": "Terms of use",
       "store": {
-        "play": "Google Play"
+        "play": "Google Play",
+        "mas": "the Mac App Store"
       },
       "family": "Part of the GLANCE family",
       "familyHint": "dayGLANCE plans the day, lastGLANCE remembers when you last did something, lifeGLANCE holds the long view. thingGLANCE watches the things you own.",
@@ -1108,5 +1109,10 @@
       "comingUp": "Coming up",
       "charges": "{{amount}} in plan charges over the next {{days}} days"
     }
+  },
+  "update": {
+    "available": "thingGLANCE {{version}} is available.",
+    "download": "Download",
+    "dismiss": "Dismiss"
   }
 }

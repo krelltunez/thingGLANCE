@@ -30,6 +30,7 @@ import { isIntentsEnabled } from '@/intents/config'
 import { currentSnapshot } from '@/intents/inbound'
 import { desktopBridge, type DesktopBridge, type DesktopHttp } from './desktop'
 import { openLink } from './links'
+import { recordOwnershipFromShell } from './ownership'
 import { registerShell, type SecureStore, type ShellEventStream } from './shell'
 import { LAUNCHER_EVENTS, collectWidgetWrites, watchPayloadInputs, widgetLabels, type NativeSurface, type WidgetLabels } from './widgetBridge'
 
@@ -228,4 +229,6 @@ export function startDesktopShell(): void {
   escapeLeavesFullscreen(bridge)
   followDesktopLinks(bridge)
   startDesktopFeed(bridge)
+  // A copy from the Mac App Store says so, once, for the record.
+  void recordOwnershipFromShell()
 }

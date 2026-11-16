@@ -4,7 +4,7 @@
 
 thingGLANCE is the fourth GLANCE app (dayGLANCE is orange, lastGLANCE green, lifeGLANCE purple, this one sky blue). It is **not** a home inventory. It tracks the handful of things you own that carry dates: when the warranty lapses, when a plan renews, when security updates stop, and when you said you would replace it.
 
-> Status: v1.0, in testing on Google Play. Web app + PWA, and an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)). iOS, the desktop app and MCP come later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
+> Status: v1.0, in testing on Google Play. Web app + PWA, an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)), and a desktop app for macOS, Windows and Linux with a tray popup and reminders ([docs/desktop.md](docs/desktop.md)). iOS, MCP and Stream Deck come later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
 
 ## What it does
 
@@ -35,7 +35,21 @@ npm test           # unit tests for the date, cost, lookup and live-sync logic
 npm run build      # type-check + production build + service worker
 npm run gen:icons  # re-render the PWA icons from public/icons/*.svg
 ./build-android.sh # a debug APK (needs JDK 21 and the Android SDK; see docs/android.md)
+npm run dev:electron    # the desktop app, with hot reload
+npm run build:electron  # its installers for this OS, in dist-app/ (see docs/desktop.md)
 ```
+
+## The desktop app
+
+The same app in a window of its own, on macOS, Windows and Linux.
+
+- **No setup for sync.** The desktop app makes its own requests, so a self-hosted vault needs no entry for it in its allowed origins. A vault on your own network (or this computer) is reached once you allow that address, in a dialog the app shows the first time.
+- **Reminders with the window closed.** The app stays in the menu bar or tray. On macOS a reminder has "Done with this" and "Send to dayGLANCE" buttons.
+- **A tray popup** with what wants a decision, what is coming up, and a search over your things. It can have a global shortcut.
+- **`thingglance://` links** open the app at a thing, a plan or a view.
+- **Your vault token and key are kept in the system's keystore** (the macOS Keychain, Windows DPAPI, the Linux secret service).
+
+The direct downloads are on the [releases page](https://github.com/krelltunez/thingGLANCE/releases). There is no auto-update: the app says when a newer release is out. On Linux the tray is a menu, and an AppImage handles `thingglance://` links only once it is integrated with the desktop.
 
 ## Self-hosting
 
@@ -90,7 +104,7 @@ docker compose up -d --force-recreate
 
 **If household members do not sync**, check that `glance-users` is in the list. A vault that leaves it out still syncs things, but refuses the shared roster for every GLANCE app, and each app quietly keeps only its own copy. thingGLANCE says so under Settings → Household; dayGLANCE and lastGLANCE need a restart after the list is fixed, since they stop trying for the rest of the session.
 
-The allowed origins travel the same road, so the same checks apply to `GLANCEVAULT_ALLOWED_ORIGINS`.
+The allowed origins travel the same road, so the same checks apply to `GLANCEVAULT_ALLOWED_ORIGINS`. Only the web app and the PWA need an origin allowed: the Android and desktop apps make their own requests.
 
 ### End-to-end test
 
@@ -109,10 +123,14 @@ src/
   multiuser/   glance-users roster engine + device-local preferences
   intents/     Vault transport, key store, emit (create) and receive (notify)
   lookup/      Wikipedia + endoflife.date behind one lookupProduct()
-  native/      platform.ts: the single place that knows which shell this is
+  native/      platform.ts: the single place that knows which shell this is;
+               capacitor.ts and desktopShell.ts hand each shell's pieces to the app
+  tray/        The desktop tray popup: the same bundle, drawn from the snapshot
   state/       React glue: live data context, UI context, settings, toasts
   views/       Glance, Horizon, Things, Plans
   components/  Kit (ui.tsx), domain parts, detail drawer, forms, settings
+electron/      The desktop app's main process and preload (docs/desktop.md)
+android/       The Android app (docs/android.md)
 ```
 
 - **Widgets, tray popup, GLANCElauncher, MCP** should read one object: `buildSnapshot()` in [src/core/snapshot.ts](src/core/snapshot.ts). It is plain JSON (counts, burn, the queue, upcoming events, per-thing verdicts) and versioned. Settings → Integrations shows the live one and copies it.

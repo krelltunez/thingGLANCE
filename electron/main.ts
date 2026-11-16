@@ -30,6 +30,8 @@ import { applyOpenAtLogin, closeAction, isAcceleratorText, launchedHidden, loadD
 import { createCommandQueue, type CommandSource } from './commandQueue.js';
 import { DEEP_LINK_SCHEME, acceptDeepLink, deepLinkFromArgv } from './deepLink.js';
 import { createReminderScheduler, type PlannedReminder, type ReminderWords } from './reminderScheduler.js';
+import { availableUpdate, CHECK_CACHE_MS, RELEASES_API, type AvailableUpdate } from './updateCheck.js';
+import { OWNED_FILE, ensureOwnership } from './ownership.js';
 import { isClickAfterBlurHide, parseTrayPayload, popupPosition, settledHere, trayEvent, trayMenuItems, trayState, type TrayPayload } from './trayModel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -483,6 +485,30 @@ ipcMain.handle('shell:set-shortcut', (event, kind: unknown, accelerator: unknown
     saveDesktopSettings(app.getPath('userData'), desktopSettings);
   }
   return { ok, ...shortcutsView() };
+});
+
+// The "update available" notice (updateCheck.ts): direct builds only; the App
+// Store updates the Mac App Store build. Answers from a cache within the hour,
+// and never throws: a failed check is simply no notice.
+let updateCache: { at: number; result: AvailableUpdate | null } | null = null;
+ipcMain.handle('shell:latest-release', async (event) => {
+  if (!isMainWindowSender(event.sender) || process.mas) return null;
+  if (updateCache && Date.now() - updateCache.at < CHECK_CACHE_MS) return updateCache.result;
+  try {
+    const res = await net.fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'thingGLANCE-desktop' } });
+    const result = res.ok ? availableUpdate(await res.json(), app.getVersion(), process.platform) : null;
+    updateCache = { at: Date.now(), result };
+    return result;
+  } catch {
+    return null;
+  }
+});
+
+// "Owned since" (ownership.ts): the Mac App Store build says it was bought,
+// once, for the record. Every other build answers with nothing.
+ipcMain.handle('ownership:get', (event) => {
+  if (!isMainWindowSender(event.sender)) return {};
+  return ensureOwnership({ file: path.join(app.getPath('userData'), OWNED_FILE), isStoreBuild: process.mas === true, now: Date.now(), version: app.getVersion() }) ?? {};
 });
 
 // The page's foreground kicks never fire for a hidden window, or on a resume

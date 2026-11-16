@@ -28,6 +28,7 @@ import { Settings } from '@/components/Settings'
 import { CommandPalette, PassphraseModal, Welcome } from '@/components/Overlays'
 import { markWelcomed, needsWelcome } from '@/state/welcome'
 import { Toasts, Wordmark } from '@/components/ui'
+import { UpdateNotice } from '@/components/UpdateNotice'
 import { cx } from '@/components/kit'
 
 // The names are in the catalog under app.nav, keyed by the view's id.
@@ -231,6 +232,7 @@ function Shell({ ui }: { ui: UI }) {
       {modal?.type === 'passphrase' && <PassphraseModal />}
       {modal?.type === 'palette' && <CommandPalette initialQuery={modal.query} />}
       <Toasts />
+      <UpdateNotice />
     </div>
   )
 }

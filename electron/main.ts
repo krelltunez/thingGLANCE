@@ -32,6 +32,16 @@ import { DEEP_LINK_SCHEME, acceptDeepLink, deepLinkFromArgv } from './deepLink.j
 import { createReminderScheduler, type PlannedReminder, type ReminderWords } from './reminderScheduler.js';
 import { availableUpdate, CHECK_CACHE_MS, RELEASES_API, type AvailableUpdate } from './updateCheck.js';
 import { OWNED_FILE, ensureOwnership } from './ownership.js';
+import type http from 'node:http';
+import { createIdempotencyStore, createWriteGate, type HostBridge } from '@glance-apps/mcp-host';
+import {
+  applyTransition, DEFAULT_LOCAL_INTEGRATIONS, integrationsView, listenerEffects, loadLocalIntegrations, mcpGates, mcpPort, saveLocalIntegrations,
+  type ListenerStatus, type LocalIntegrationsConfig, type McpEffect, type StreamDeckEffect,
+} from './localIntegrations.js';
+import { bindErrorCode, startMcpServer } from './mcpServer.js';
+import { createRendererBridge } from './mcpRendererBridge.js';
+import { createJournal } from './mcpJournal.js';
+import { discoveryFilePath, syncDiscoveryFile } from './mcpDiscovery.js';
 import { isClickAfterBlurHide, parseTrayPayload, popupPosition, settledHere, trayEvent, trayMenuItems, trayState, type TrayPayload } from './trayModel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -274,13 +284,29 @@ function isTrayWindowSender(sender: Electron.WebContents): boolean {
 }
 
 function currentTrayState() {
-  return trayState(trayPayload, { decided: decidedHere, sent: sentHere });
+  return { ...trayState(trayPayload, { decided: decidedHere, sent: sentHere }), assistant: currentIntegrationsView().assistant };
 }
 
 function trayIconPath(name: string): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'tray', name)
     : path.join(__dirname, '..', 'electron', 'resources', 'tray', name);
+}
+
+/**
+ * The assistant's items, while the MCP server is on or there is something to
+ * undo: undo everything assistants changed this session, and turn the server
+ * off, without opening the window (docs/mcp.md, "What you can see").
+ */
+function mcpTrayItems(): Electron.MenuItemConstructorOptions[] {
+  const changes = mcpJournal.entries().length;
+  const bound = mcpGates(integrationsConfig).bound;
+  if (!bound && changes === 0) return [];
+  return [
+    ...(changes > 0 ? [{ label: `${label('trayMcpUndo', 'Undo assistant changes')} (${changes})`, click: () => { void undoMcpWrites(); } }] : []),
+    ...(bound ? [{ label: label('trayMcpOff', 'Turn off assistant access'), click: () => { runIntegrationsTransition({ type: 'set-mcp-read-tier', tier: 'off' }); } }] : []),
+    { type: 'separator' },
+  ];
 }
 
 function trayMenu(withEvents: boolean): Menu {
@@ -290,7 +316,7 @@ function trayMenu(withEvents: boolean): Menu {
     done: label('trayDone', 'Done with this'),
     nothingWaiting: label('trayNothingWaiting', 'Nothing waiting on a decision'),
   }, withEvents);
-  return Menu.buildFromTemplate(items.map((item): Electron.MenuItemConstructorOptions => {
+  return Menu.buildFromTemplate([...mcpTrayItems(), ...items.map((item): Electron.MenuItemConstructorOptions => {
     switch (item.kind) {
       case 'open': return { label: item.label, click: () => showMainWindow() };
       case 'quit': return { label: item.label, click: () => app.quit() };
@@ -304,7 +330,7 @@ function trayMenu(withEvents: boolean): Menu {
       };
       default: return { type: 'separator' };
     }
-  }));
+  })]);
 }
 
 function refreshTray(): void {
@@ -433,6 +459,178 @@ ipcMain.on('tray:open', (event, link: unknown) => {
 });
 ipcMain.on('tray:hide', (event) => {
   if (isTrayWindowSender(event.sender)) live(trayWindow)?.hide();
+});
+
+// ── Local integrations (docs/mcp.md) ────────────────────────────────────────
+// The MCP server and the Stream Deck listener, both off until turned on in
+// Settings. localIntegrations.ts decides; this applies.
+let integrationsConfig: LocalIntegrationsConfig = DEFAULT_LOCAL_INTEGRATIONS;
+const integrationsStatus: { mcp: ListenerStatus; streamDeck: ListenerStatus } = {
+  mcp: { running: false, error: null },
+  streamDeck: { running: false, error: null },
+};
+
+function currentIntegrationsView() {
+  return integrationsView(integrationsConfig, integrationsStatus, { writesPaused: mcpGate.writesDisabled(), undoable: mcpJournal.entries().length });
+}
+
+function pushIntegrationsStatus(): void {
+  live(mainWindow)?.webContents.send('local-integrations:status', currentIntegrationsView());
+  // The tray popup's indicator and the menu's assistant items follow it.
+  refreshTray();
+}
+
+// The MCP listener (mcpServer.ts). The bridge to the page is made once and
+// kept across stops and starts; the token is read on every request, so a new
+// one needs no restart.
+let mcpServerHandle: http.Server | null = null;
+let mcpBridge: HostBridge | null = null;
+// Writes: made once and kept across stops and starts, so turning the server
+// off and on cannot reset the rate limit or the replay window. The journal is
+// the session's: a restart clears it.
+const mcpGate = createWriteGate();
+const mcpStore = createIdempotencyStore<Record<string, unknown>>();
+const mcpJournal = createJournal();
+
+function pushJournal(): void {
+  live(mainWindow)?.webContents.send('mcp-journal:changed', mcpJournal.snapshot());
+  pushIntegrationsStatus();
+}
+
+/** Undo one item's changes, or all of them, newest first, through the page. */
+async function undoMcpWrites(groupKey?: string): Promise<{ ok: boolean; undone?: number; skipped?: unknown[]; error?: string }> {
+  const { ops, seqs } = mcpJournal.plan(groupKey);
+  if (ops.length === 0) return { ok: true, undone: 0, skipped: [] };
+  mcpBridge ??= createRendererBridge(() => live(mainWindow));
+  const r = await mcpBridge.request('undo_mcp_writes', { ops }, 10_000);
+  if (!r.ok) return { ok: false, error: r.error.code };
+  mcpJournal.remove(seqs);
+  pushJournal();
+  const data = (r.data ?? {}) as { undone?: number; skipped?: unknown[] };
+  logStartup(`mcp undo: ${data.undone ?? 0} undone, ${data.skipped?.length ?? 0} kept`);
+  return { ok: true, undone: data.undone ?? 0, skipped: data.skipped ?? [] };
+}
+
+// The discovery file (mcpDiscovery.ts): where the stdio bridge finds the port
+// and token. Written while the server runs, kept current, removed when it
+// stops; never on the Mac App Store build. A run on a profile of its own (the
+// tests) keeps the file there, never where a person's copy writes it.
+const MCP_DISCOVERY_FILE = process.env['THINGGLANCE_USER_DATA_DIR']
+  ? path.join(app.getPath('userData'), 'mcp.json')
+  : discoveryFilePath(process.platform, process.env, app.getPath('home'), process.mas === true);
+
+function updateDiscoveryFile(): void {
+  const running = integrationsStatus.mcp.running && mcpGates(integrationsConfig).bound;
+  const failure = syncDiscoveryFile(MCP_DISCOVERY_FILE, running ? { port: mcpPort(integrationsConfig), token: integrationsConfig.mcp.token ?? '' } : null);
+  if (failure) logStartup(`mcp discovery file not updated: ${failure}`);
+}
+
+function setMcpStatus(status: ListenerStatus): void {
+  integrationsStatus.mcp = status;
+  updateDiscoveryFile();
+  pushIntegrationsStatus();
+}
+
+function startMcpListener(): void {
+  if (mcpServerHandle || !mcpGates(integrationsConfig).bound) return;
+  mcpBridge ??= createRendererBridge(() => live(mainWindow));
+  const srv = startMcpServer({
+    token: () => integrationsConfig.mcp.token ?? '',
+    portOverride: integrationsConfig.mcp.portOverride,
+    version: app.getVersion(),
+    readDeps: {
+      bridge: mcpBridge,
+      now: () => Date.now(),
+      timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    writeDeps: {
+      bridge: mcpBridge,
+      gate: mcpGate,
+      store: mcpStore,
+      token: () => integrationsConfig.mcp.token ?? '',
+      includeWrites: () => mcpGates(integrationsConfig).includeWrites,
+      onWritesDisabled: () => {
+        logStartup('mcp: writes turned off after repeated rate-limit overruns, until restart');
+        pushIntegrationsStatus();
+      },
+      journal: mcpJournal,
+      onWrite: pushJournal,
+    },
+    log: logStartup,
+    logError: logStartup,
+  });
+  if (!srv) { setMcpStatus({ running: false, error: 'bind_failed' }); return; }
+  mcpServerHandle = srv;
+  srv.on('listening', () => { if (mcpServerHandle === srv) setMcpStatus({ running: true, error: null }); });
+  srv.on('error', (err) => {
+    if (mcpServerHandle !== srv) return;
+    mcpServerHandle = null;
+    try { srv.close(); } catch { /* never bound */ }
+    setMcpStatus({ running: false, error: bindErrorCode(err) });
+  });
+}
+
+/** Stop and free the port at once, so a restart on the same port does not race its own rebind. */
+function stopMcpListener(onClosed?: () => void): void {
+  const srv = mcpServerHandle;
+  mcpServerHandle = null;
+  integrationsStatus.mcp = { running: false, error: null };
+  updateDiscoveryFile();
+  if (!srv) { onClosed?.(); return; }
+  srv.close(() => onClosed?.());
+  srv.closeAllConnections();
+}
+
+function applyMcpEffect(effect: McpEffect): void {
+  if (effect === 'start') startMcpListener();
+  else if (effect === 'stop') stopMcpListener();
+  else if (effect === 'restart') stopMcpListener(() => startMcpListener());
+}
+
+// The Stream Deck listener is not built yet: its switch is kept, and logged.
+function applyStreamDeckEffect(effect: StreamDeckEffect): void {
+  if (effect !== 'none') logStartup(`stream deck: ${effect} (no listener in this build)`);
+}
+
+function applyListenerEffects(effects: { mcp: McpEffect; streamDeck: StreamDeckEffect }): void {
+  applyMcpEffect(effects.mcp);
+  applyStreamDeckEffect(effects.streamDeck);
+}
+
+/** Read the file and start whatever it turns on. Once, at ready. */
+function startLocalIntegrations(): void {
+  const { config, recovered } = loadLocalIntegrations(app.getPath('userData'));
+  if (recovered) logStartup('local-integrations.json was unreadable: set aside as .corrupt, everything off');
+  integrationsConfig = config;
+  applyListenerEffects(listenerEffects(DEFAULT_LOCAL_INTEGRATIONS, config));
+}
+
+/** Apply one Settings change: save it, start or stop what it says, and tell the page. */
+function runIntegrationsTransition(action: unknown) {
+  const result = applyTransition(integrationsConfig, action, {
+    now: () => new Date().toISOString(),
+    newToken: () => crypto.randomBytes(32).toString('hex'),
+  });
+  if (!result.ok) return { ok: false, error: result.error, view: currentIntegrationsView() };
+  const before = integrationsConfig;
+  integrationsConfig = result.config;
+  if (!saveLocalIntegrations(app.getPath('userData'), integrationsConfig)) logStartup('local-integrations.json could not be written; this session follows the change');
+  applyListenerEffects(listenerEffects(before, integrationsConfig));
+  // A new token reaches the file at once; a start or a port change does when the listener binds.
+  updateDiscoveryFile();
+  pushIntegrationsStatus();
+  return { ok: true, view: currentIntegrationsView() };
+}
+
+ipcMain.handle('local-integrations:get', (event) => (isMainWindowSender(event.sender) ? currentIntegrationsView() : null));
+ipcMain.handle('local-integrations:transition', (event, action: unknown) =>
+  (isMainWindowSender(event.sender) ? runIntegrationsTransition(action) : { ok: false, error: 'invalid_action', view: null }));
+
+// The MCP write journal, for Settings: what assistants changed, and undo.
+ipcMain.handle('mcp-journal:get', (event) => (isMainWindowSender(event.sender) ? mcpJournal.snapshot() : null));
+ipcMain.handle('mcp-journal:undo', (event, groupKey: unknown) => {
+  if (!isMainWindowSender(event.sender)) return { ok: false, error: 'invalid_sender' };
+  return undoMcpWrites(typeof groupKey === 'string' ? groupKey : undefined);
 });
 
 // The smoke test opens the popup as a click on the icon would: a tray icon
@@ -902,6 +1100,10 @@ app.whenReady().then(() => {
   // globalShortcut throws before ready, and will-quit can fire then (dayGLANCE
   // issue #1352); before ready nothing is registered, so there is nothing to free.
   app.on('will-quit', () => { if (app.isReady()) globalShortcut.unregisterAll(); });
+
+  // The MCP server, when Settings turned it on.
+  startLocalIntegrations();
+  app.on('will-quit', () => { stopMcpListener(); });
 
   // Reminders due while the app was not running: within 12 hours fire once.
   reminders.rearm();

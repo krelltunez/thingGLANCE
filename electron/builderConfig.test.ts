@@ -151,7 +151,8 @@ describe('electron-builder.config.cjs', () => {
 
   it('gives the MAS app the sandbox, and nothing it does not use', () => {
     const plist = readFileSync(path.join(root, 'electron/entitlements.mas.plist'), 'utf-8');
-    for (const key of ['com.apple.security.app-sandbox', 'com.apple.security.network.client', 'com.apple.security.files.user-selected.read-write']) {
+    // The server entitlement is the MCP and Stream Deck listeners', on 127.0.0.1 only.
+    for (const key of ['com.apple.security.app-sandbox', 'com.apple.security.network.client', 'com.apple.security.network.server', 'com.apple.security.files.user-selected.read-write']) {
       expect(plist, key).toContain(key);
     }
     // No purchases inside the app (it is paid up front), and no iCloud.

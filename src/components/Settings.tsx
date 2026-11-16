@@ -11,6 +11,7 @@ import { CURRENCIES } from '@/core/money'
 import { listText } from '@/core/text'
 import { languages } from '@/locales'
 import { LanguagePicker } from './LanguagePicker'
+import { LocalIntegrations } from './LocalIntegrations'
 import { ownedSince } from '@/core/ownership'
 import { buildSnapshot } from '@/core/snapshot'
 import { downloadBackup, importBackup, wipeLocalData } from '@/db/backup'
@@ -646,6 +647,7 @@ function Integrations() {
 
   return (
     <div className="space-y-3">
+      <LocalIntegrations />
       <Block title="dayGLANCE" hint={t('settings.integrations.dayglanceHint')}>
         {vaultOn
           ? <>

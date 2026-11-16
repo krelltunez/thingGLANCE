@@ -23,11 +23,17 @@
 //   - a thingglance:// link handed to the app opens where it says;
 //   - the update check answers without throwing, and a direct build reports
 //     no purchase;
+//   - the MCP server: off until turned on through the same transition Settings
+//     sends; then the official client over real HTTP lists the tools and reads
+//     the overview from the page's database; with "Allow changes" a thing it
+//     adds lands in the database and in the journal, and Settings' undo takes
+//     it back out; the discovery file is there while it runs; turning it off
+//     frees the port;
 //   - the page's log lines reach the log file;
 //   - no uncaught page error.
 //
-// It runs on a profile of its own (THINGGLANCE_USER_DATA_DIR), never the one a
-// person's installed copy uses.
+// It runs on a profile of its own (THINGGLANCE_USER_DATA_DIR) and a mock
+// keychain, never the ones a person's installed copy uses.
 //
 // Usage: npm run build:electron:dir && npm run test:electron-smoke
 // Linux CI runs it under xvfb-run. SMOKE_SCREENSHOT=path saves a screenshot.
@@ -37,6 +43,8 @@ import os from 'node:os'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import net from 'node:net'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const { version } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf-8'))
@@ -52,6 +60,13 @@ if (!existsSync(executablePath)) {
   process.exit(2)
 }
 
+// --no-sandbox: CI runners (and root in containers) cannot use Chromium's
+// setuid sandbox. --use-mock-keychain: on macOS the keystore is the login
+// keychain, which is the person's own and asks them before a rebuilt copy may
+// read it; a test uses Chromium's stand-in and never touches it. The shipped
+// app uses neither switch.
+const LAUNCH_ARGS = ['--no-sandbox', '--use-mock-keychain']
+
 const failures = []
 const check = (ok, what) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`)
@@ -59,11 +74,9 @@ const check = (ok, what) => {
 }
 
 const profile = mkdtempSync(path.join(os.tmpdir(), 'thingglance-smoke-profile-'))
-// --no-sandbox: CI runners (and root in containers) cannot use Chromium's
-// setuid sandbox. The shipped app keeps it.
 const app = await electron.launch({
   executablePath,
-  args: ['--no-sandbox'],
+  args: LAUNCH_ARGS,
   env: { ...process.env, THINGGLANCE_USER_DATA_DIR: profile, THINGGLANCE_SMOKE_HOOKS: '1' },
   timeout: 60_000,
 })
@@ -301,6 +314,75 @@ try {
   await app.evaluate(({ app }) => { app.emit('open-url', { preventDefault() {} }, 'https://example.com/not-ours') })
   const stray = await page.evaluate(() => window.thingglanceDesktop.links.consume())
   check(stray.link === null, 'anything that is not a thingglance:// link is dropped')
+
+  // The MCP server (docs/mcp.md). On a port of its own, so a copy someone is
+  // running on the default one is left alone.
+  const mcpPort = await new Promise((resolve) => { const p = net.createServer(); p.listen(0, '127.0.0.1', () => { const { port } = p.address(); p.close(() => resolve(port)) }) })
+  const li = (action) => page.evaluate((a) => window.thingglanceDesktop.localIntegrations.transition(a), action)
+  const before = await page.evaluate(() => window.thingglanceDesktop.localIntegrations.get())
+  check(before?.mcp?.readTier === 'off' && before?.mcp?.token === null && before?.assistant === 'off', 'MCP is off until turned on, with no token')
+  const refusedOn = await li({ type: 'set-mcp-read-tier', tier: 'on' })
+  check(refusedOn?.ok === false && refusedOn?.error === 'consent_required', 'it cannot be turned on without the consent dialog')
+  await li({ type: 'set-mcp-port', port: mcpPort })
+  const mcpOn = await li({ type: 'set-mcp-read-tier', tier: 'on', consentConfirmed: true })
+  check(mcpOn?.ok === true && /^[0-9a-f]{64}$/.test(mcpOn.view?.mcp?.token ?? ''), 'MCP turns on through the bridge, with a token')
+  let mcpView = mcpOn?.view
+  for (let i = 0; i < 50 && !mcpView?.mcp?.status?.running && !mcpView?.mcp?.status?.error; i++) {
+    await new Promise((r) => setTimeout(r, 100))
+    mcpView = await page.evaluate(() => window.thingglanceDesktop.localIntegrations.get())
+  }
+  check(mcpView?.mcp?.status?.running === true && mcpView?.assistant === 'on', `the MCP listener runs, and the indicator is green (${JSON.stringify(mcpView?.mcp?.status)})`)
+  const discovery = path.join(userData, 'mcp.json')
+  const found = existsSync(discovery) ? JSON.parse(readFileSync(discovery, 'utf-8')) : null
+  check(found?.port === mcpPort && found?.token === mcpView?.mcp?.token, 'the discovery file carries the port and the token while it runs')
+
+  if (mcpView?.mcp?.status?.running) {
+    const client = new Client({ name: 'thingglance-smoke', version: '0.0.0' })
+    await client.connect(new StreamableHTTPClientTransport(new URL(mcpView.mcp.endpoint), { requestInit: { headers: { Authorization: `Bearer ${mcpView.mcp.token}` } } }))
+    const tool = async (name, args = {}) => { const r = await client.callTool({ name, arguments: args }); return { error: r.isError === true, body: JSON.parse(r.content[0].text) } }
+    try {
+      const tools = (await client.listTools()).tools.map((t) => t.name)
+      check(tools.includes('thingglance_get_overview') && tools.includes('thingglance_create_thing') && !tools.some((n) => /delete/.test(n)), `the official client lists the tools (${tools.length}), none of which deletes`)
+      const overview = await tool('thingglance_get_overview')
+      check(!overview.error && overview.body.counts?.things_in_service > 0 && typeof overview.body.timezone === 'string',
+        `the overview comes from the page's database (${overview.body.counts?.things_in_service} things in service, ${overview.body.counts?.needs_decision} waiting)`)
+      const things = await tool('thingglance_list_things', { limit: 3 })
+      check(!things.error && things.body.items?.length === 3 && typeof things.body.items[0].thing_id === 'string', 'a list is paginated')
+
+      const readOnly = await tool('thingglance_create_thing', { name: 'Smoke thing' })
+      check(readOnly.error && readOnly.body.error?.code === 'read_only_mode', 'a change is refused while "Allow changes" is off')
+      const writesOn = await li({ type: 'set-mcp-writes', enabled: true, writesConsentConfirmed: true })
+      check(writesOn?.ok === true && writesOn.view?.mcp?.writesEnabled === true, '"Allow changes" turns on with its own consent')
+      const countThings = (name) => page.evaluate((n) => new Promise((resolve) => {
+        const open = indexedDB.open('thingglance')
+        open.onsuccess = () => {
+          const all = open.result.transaction('things').objectStore('things').getAll()
+          all.onsuccess = () => { open.result.close(); resolve(all.result.filter((t) => t.name === n).length) }
+        }
+        open.onerror = () => resolve(-1)
+      }), name)
+      const created = await tool('thingglance_create_thing', { name: 'Smoke thing', price: 42, idempotency_key: 'smoke-1' })
+      check(!created.error && created.body.thing?.name === 'Smoke thing' && (await countThings('Smoke thing')) === 1, 'an assistant adds a thing, and it lands in the database')
+      const replayed = await tool('thingglance_create_thing', { name: 'Smoke thing', price: 42, idempotency_key: 'smoke-1' })
+      check(replayed.body.replayed === true && (await countThings('Smoke thing')) === 1, 'the same key again changes nothing')
+      const edited = await tool('thingglance_update_thing', { thing_id: created.body.thing.thing_id, price: 40 })
+      check(!edited.error && edited.body.thing?.price === 40, 'and edits it')
+      const journal = await page.evaluate(() => window.thingglanceDesktop.mcpJournal.get())
+      const afterWrite = await page.evaluate(() => window.thingglanceDesktop.localIntegrations.get())
+      check(journal?.total === 2 && journal.groups.length === 1 && afterWrite?.assistant === 'undo', `the journal holds both changes as one item, and the indicator turns blue (${journal?.total})`)
+      const undone = await page.evaluate(() => window.thingglanceDesktop.mcpJournal.undo(null))
+      check(undone?.ok === true && undone.undone === 2 && (await countThings('Smoke thing')) === 0, `undo takes it back out of the database (${JSON.stringify(undone)})`)
+    } finally {
+      await client.close().catch(() => {})
+    }
+    const mcpOff = await li({ type: 'set-mcp-read-tier', tier: 'off' })
+    const freed = await new Promise((resolve) => {
+      const probe = net.createConnection({ host: '127.0.0.1', port: mcpPort })
+      probe.once('connect', () => { probe.destroy(); resolve(false) })
+      probe.once('error', () => resolve(true))
+    })
+    check(mcpOff?.ok === true && freed && !existsSync(discovery), 'turning it off frees the port and removes the discovery file')
+  }
 
   // The page's lines reach the log file in userData (shell.log).
   const logLine = `smoke-log-${Date.now()}`

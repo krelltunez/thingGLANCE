@@ -2,24 +2,30 @@
 //
 // The dirty trackers used to drop a change when no engine was registered,
 // which is right when the vault is off (connecting later uploads everything)
-// and wrong in two cases a shell makes real:
+// and wrong in three cases a shell makes real:
 //
 //   - A write from outside (a widget tap, a notification action) lands before
 //     the app has mounted and started its engines.
 //   - The keystore could not be read at boot, so this session cannot tell that
 //     the device is connected. The next launch can, and by then the engine's
 //     "upload everything once" has long since run.
+//   - The keystore has not been read yet. A shell starts collecting writes
+//     from outside as soon as the page loads, and for a moment the app cannot
+//     tell whether it is connected: "not connected" then would drop a change
+//     that nothing ever uploads, because the first sync has long since run.
 //
 // So when a vault is expected, the ids wait here, on disk, until an engine
-// registers and takes them.
+// registers and takes them. On a device that turns out to have no vault they
+// wait for nothing and do no harm: connecting one clears them with the rest of
+// the stream state (resetVaultSyncState) and uploads everything.
 
-import { secretsUnreadable } from './secrets'
+import { secretsNotReadYet, secretsUnreadable } from './secrets'
 import { isVaultEnabled } from './vaultConfig'
 
 export const DIRTY_HOLD_KEYS = ['tg_dirty_waiting', 'tg_roster_dirty_waiting'] as const
 
 // Connected, or possibly connected: either way an engine will want these.
-export const vaultExpected = (): boolean => isVaultEnabled() || secretsUnreadable()
+export const vaultExpected = (): boolean => isVaultEnabled() || secretsUnreadable() || secretsNotReadYet()
 
 export interface DirtyHold {
   add(id: string): void

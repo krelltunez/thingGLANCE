@@ -47,7 +47,8 @@ function masBuildVersion() {
 }
 
 // Packages main imports at run time, with everything they import in turn: the
-// MCP host kit and the SDK it serves (docs/mcp.md). builderConfig.test.ts
+// MCP host kit and the SDK it serves (docs/mcp.md), and the Stream Deck
+// listener's WebSocket server (docs/stream-deck.md). builderConfig.test.ts
 // computes the closure from main's imports and holds this list to it.
 const MAIN_RUNTIME_PACKAGES = [
   '@glance-apps/mcp-host',
@@ -57,6 +58,9 @@ const MAIN_RUNTIME_PACKAGES = [
   '@hono/node-server',
   'hono',
   'zod',
+  // The Stream Deck listener (streamDeckServer.ts). Its two optional native
+  // peers (bufferutil, utf-8-validate) are not installed and not needed.
+  'ws',
 ];
 
 /** @type {import('electron-builder').Configuration} */

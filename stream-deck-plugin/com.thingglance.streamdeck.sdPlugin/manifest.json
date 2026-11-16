@@ -1,0 +1,152 @@
+{
+  "Name": "thingGLANCE",
+  "UUID": "com.thingglance.streamdeck",
+  "Version": "1.0.0.0",
+  "Author": "GLANCE Apps",
+  "Description": "What is next for your things, from thingGLANCE: warranties ending, plans renewing, support running out. See what is waiting and settle it with a press.",
+  "Category": "thingGLANCE",
+  "CategoryIcon": "imgs/plugin/category",
+  "Icon": "imgs/plugin/icon",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.5"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "disabled"
+  },
+  "Actions": [
+    {
+      "Name": "Queue",
+      "UUID": "com.thingglance.streamdeck.queue",
+      "Icon": "imgs/actions/queue/icon",
+      "Tooltip": "The dates waiting on a decision, most pressing first. Tap for the next, hold to mark it done.",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "layouts/strip.json",
+        "TriggerDescription": {
+          "Rotate": "Next or previous date",
+          "Push": "Done with this",
+          "Touch": "Done with this"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/queue/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    },
+    {
+      "Name": "Waiting",
+      "UUID": "com.thingglance.streamdeck.waiting",
+      "Icon": "imgs/actions/waiting/icon",
+      "Tooltip": "How many dates are waiting on a decision. Press to open them in thingGLANCE.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/waiting/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    },
+    {
+      "Name": "Coming up",
+      "UUID": "com.thingglance.streamdeck.coming-up",
+      "Icon": "imgs/actions/coming-up/icon",
+      "Tooltip": "The dates ahead, soonest first. Press to open the one shown.",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "layouts/strip.json",
+        "TriggerDescription": {
+          "Rotate": "Next or previous date",
+          "Push": "Open it",
+          "Touch": "Open it"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/coming-up/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    },
+    {
+      "Name": "Charges",
+      "UUID": "com.thingglance.streamdeck.charges",
+      "Icon": "imgs/actions/charges/icon",
+      "Tooltip": "What your plans will charge over the next 30 days. Press to open your plans.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/charges/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    },
+    {
+      "Name": "Thing",
+      "UUID": "com.thingglance.streamdeck.thing",
+      "Icon": "imgs/actions/thing/icon",
+      "Tooltip": "One thing: how long it has left. Press to open it.",
+      "PropertyInspectorPath": "ui/thing.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/thing/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    },
+    {
+      "Name": "Add a thing",
+      "UUID": "com.thingglance.streamdeck.add-thing",
+      "Icon": "imgs/actions/add-thing/icon",
+      "Tooltip": "Opens thingGLANCE at Add a thing.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/add-thing/key",
+          "TitleAlignment": "bottom",
+          "ShowTitle": false
+        }
+      ],
+      "SupportedInMultiActions": false
+    }
+  ]
+}

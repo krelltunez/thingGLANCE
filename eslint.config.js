@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint'
 // output, future native shells and generated assets are ignored.
 export default tseslint.config(
   {
-    ignores: ['dist', 'dev-dist', 'dist-electron', 'dist-app', 'android', 'ios', 'public', 'coverage', 'e2e/out'],
+    ignores: ['dist', 'dev-dist', 'dist-electron', 'dist-app', 'android', 'ios', 'public', 'coverage', 'e2e/out', 'stream-deck-plugin/node_modules', 'stream-deck-plugin/dist', 'stream-deck-plugin/com.thingglance.streamdeck.sdPlugin/bin'],
   },
   {
     files: ['**/*.{ts,tsx,cts}'],
@@ -51,7 +51,7 @@ export default tseslint.config(
   },
   {
     // Node-context config, build and test-driver files are not browser code.
-    files: ['*.{js,cjs,ts}', 'scripts/**/*.{js,cjs,mjs,ts}', 'electron/**/*.{ts,cts}', 'e2e/**/*.mjs'],
+    files: ['*.{js,cjs,ts}', 'scripts/**/*.{js,cjs,mjs,ts}', 'electron/**/*.{ts,cts}', 'e2e/**/*.mjs', 'stream-deck-plugin/**/*.{ts,mjs}'],
     languageOptions: { globals: globals.node },
   },
 )

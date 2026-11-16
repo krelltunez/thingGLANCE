@@ -42,6 +42,9 @@ import { bindErrorCode, startMcpServer } from './mcpServer.js';
 import { createRendererBridge } from './mcpRendererBridge.js';
 import { createJournal } from './mcpJournal.js';
 import { discoveryFilePath, syncDiscoveryFile } from './mcpDiscovery.js';
+import { startStreamDeckServer, type StreamDeckServer } from './streamDeckServer.js';
+import { deckDecision, deckOpenLink, deckState, prunePresses } from './deckModel.js';
+import { MSG_DECIDE, STREAM_DECK_PORT } from './deckProtocol.js';
 import { isClickAfterBlurHide, parseTrayPayload, popupPosition, settledHere, trayEvent, trayMenuItems, trayState, type TrayPayload } from './trayModel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -339,6 +342,8 @@ function refreshTray(): void {
   tray.setToolTip(state.waiting > 0 ? `thingGLANCE · ${label('trayWaiting', '{{n}} waiting on a decision').replace('{{n}}', String(state.waiting))}` : 'thingGLANCE');
   if (!USE_TRAY_POPUP) tray.setContextMenu(trayMenu(true));
   live(trayWindow)?.webContents.send('tray:state', state);
+  // The deck draws the same payload: a new one, or a tick made in the tray, reaches its keys too.
+  streamDeckServer?.broadcast();
 }
 
 /** "Done with this", from the tray or a reminder: hidden here at once, applied by the page. */
@@ -587,9 +592,66 @@ function applyMcpEffect(effect: McpEffect): void {
   else if (effect === 'restart') stopMcpListener(() => startMcpListener());
 }
 
-// The Stream Deck listener is not built yet: its switch is kept, and logged.
+// The Stream Deck listener (streamDeckServer.ts, docs/stream-deck.md). The
+// keys draw the payload the tray holds (deckModel.ts), with the days counted
+// again by a one-minute tick; a press goes through the command queue as the
+// tray's does, and is hidden here at once so the deck and the tray agree
+// before the page catches up.
+let streamDeckServer: StreamDeckServer | null = null;
+let streamDeckTick: ReturnType<typeof setInterval> | null = null;
+// The deck's own presses, kept the full minute (deckModel.ts, deckDecision).
+const deckPressed = new Map<string, number>();
+
+function setStreamDeckStatus(status: ListenerStatus): void {
+  integrationsStatus.streamDeck = status;
+  pushIntegrationsStatus();
+}
+
+function startStreamDeckListener(): void {
+  if (streamDeckServer || !integrationsConfig.streamDeck.enabled) return;
+  const srv = startStreamDeckServer({
+    port: STREAM_DECK_PORT,
+    getState: () => deckState(trayPayload, { decided: decidedHere, sent: sentHere }, Date.now()),
+    onCommand: (command) => {
+      if (command.type === MSG_DECIDE) {
+        const now = Date.now();
+        prunePresses(deckPressed, now);
+        const verdict = deckDecision(command.key, trayPayload, decidedHere, now, deckPressed);
+        if (verdict !== 'ok') return { ok: false, reason: verdict };
+        deckPressed.set(command.key, now);
+        decideFrom(command.key, 'streamdeck');
+        return { ok: true };
+      }
+      const link = deckOpenLink(command.target);
+      if (link === false) return { ok: false, reason: 'refused' };
+      openLink(link);
+      return { ok: true };
+    },
+    log: logStartup,
+  });
+  streamDeckServer = srv;
+  srv.wss.on('listening', () => { if (streamDeckServer === srv) setStreamDeckStatus({ running: true, error: null }); });
+  srv.wss.on('error', (err) => {
+    if (streamDeckServer !== srv) return;
+    logStartup(`stream deck listener failed: ${(err as NodeJS.ErrnoException).code ?? err.message}`);
+    stopStreamDeckListener();
+    setStreamDeckStatus({ running: false, error: bindErrorCode(err) });
+  });
+  // A countdown turns at midnight with nothing new from the app.
+  streamDeckTick = setInterval(() => streamDeckServer?.broadcast(), 60_000);
+}
+
+function stopStreamDeckListener(): void {
+  if (streamDeckTick) { clearInterval(streamDeckTick); streamDeckTick = null; }
+  const srv = streamDeckServer;
+  streamDeckServer = null;
+  integrationsStatus.streamDeck = { running: false, error: null };
+  srv?.close();
+}
+
 function applyStreamDeckEffect(effect: StreamDeckEffect): void {
-  if (effect !== 'none') logStartup(`stream deck: ${effect} (no listener in this build)`);
+  if (effect === 'start') startStreamDeckListener();
+  else if (effect === 'stop') { stopStreamDeckListener(); pushIntegrationsStatus(); }
 }
 
 function applyListenerEffects(effects: { mcp: McpEffect; streamDeck: StreamDeckEffect }): void {
@@ -1101,9 +1163,9 @@ app.whenReady().then(() => {
   // issue #1352); before ready nothing is registered, so there is nothing to free.
   app.on('will-quit', () => { if (app.isReady()) globalShortcut.unregisterAll(); });
 
-  // The MCP server, when Settings turned it on.
+  // The MCP server and the Stream Deck listener, when Settings turned them on.
   startLocalIntegrations();
-  app.on('will-quit', () => { stopMcpListener(); });
+  app.on('will-quit', () => { stopMcpListener(); stopStreamDeckListener(); });
 
   // Reminders due while the app was not running: within 12 hours fire once.
   reminders.rearm();

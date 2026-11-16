@@ -4,7 +4,7 @@
 
 thingGLANCE is the fourth GLANCE app (dayGLANCE is orange, lastGLANCE green, lifeGLANCE purple, this one sky blue). It is **not** a home inventory. It tracks the handful of things you own that carry dates: when the warranty lapses, when a plan renews, when security updates stop, and when you said you would replace it.
 
-> Status: v1.0, in testing on Google Play. Web app + PWA, an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)), and a desktop app for macOS, Windows and Linux with a tray popup and reminders ([docs/desktop.md](docs/desktop.md)). iOS and Stream Deck come later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
+> Status: v1.0, in testing on Google Play. Web app + PWA, an Android app with widgets, reminders, Quick Settings tiles, Tasker actions and a page in GLANCElauncher ([docs/android.md](docs/android.md)), and a desktop app for macOS, Windows and Linux with a tray popup and reminders ([docs/desktop.md](docs/desktop.md)). iOS comes later; the code is laid out for them (see [Built for what comes next](#built-for-what-comes-next)).
 
 ## What it does
 
@@ -49,6 +49,7 @@ The same app in a window of its own, on macOS, Windows and Linux.
 - **`thingglance://` links** open the app at a thing, a plan or a view.
 - **Your vault token and key are kept in the system's keystore** (the macOS Keychain, Windows DPAPI, the Linux secret service).
 - **An MCP server for an AI assistant**, off until you turn it on in Settings, Integrations: "what should I cancel?", "what is out of support?", "I just bought a Pixel 9, add it". It listens on this computer only, changes need a second switch, nothing can be deleted, and every change can be undone ([docs/mcp.md](docs/mcp.md)).
+- **A Stream Deck plugin**: the dates waiting on a decision on your keys, marked done with a hold, plus keys for what is coming up, your plan charges and any one thing ([docs/stream-deck.md](docs/stream-deck.md)). The packed plugin is attached to each release.
 
 The direct downloads are on the [releases page](https://github.com/krelltunez/thingGLANCE/releases). There is no auto-update: the app says when a newer release is out. On Linux the tray is a menu, and an AppImage handles `thingglance://` links only once it is integrated with the desktop.
 
@@ -131,6 +132,7 @@ src/
   views/       Glance, Horizon, Things, Plans
   components/  Kit (ui.tsx), domain parts, detail drawer, forms, settings
 electron/      The desktop app's main process and preload (docs/desktop.md)
+stream-deck-plugin/  The Stream Deck plugin, a package of its own (docs/stream-deck.md)
 android/       The Android app (docs/android.md)
 ```
 

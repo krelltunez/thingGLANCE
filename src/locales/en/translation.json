@@ -1020,7 +1020,7 @@
     },
     "local": {
       "title": "On this computer",
-      "intro": "Let an AI assistant on this computer use thingGLANCE. It listens on this computer only (127.0.0.1) and is never reachable from the network.",
+      "intro": "Let other apps on this computer use thingGLANCE. Both listen on this computer only (127.0.0.1) and are never reachable from the network.",
       "mcp": "AI assistants (MCP)",
       "mcpHint": "Lets an AI assistant that supports MCP, such as Claude, read your things, plans and dates.",
       "writes": "Allow changes",
@@ -1051,7 +1051,9 @@
       "undo": "Undo",
       "undoAll": "Undo all",
       "undoResult": "Undone: {{undone}}. Skipped: {{kept}}.",
-      "undoFailed": "Could not undo just now. Try again."
+      "undoFailed": "Could not undo just now. Try again.",
+      "streamDeck": "Stream Deck",
+      "streamDeckHint": "Lets the thingGLANCE Stream Deck plugin show what is waiting on a decision and settle it (port {{port}})."
     }
   },
   "householdFields": {

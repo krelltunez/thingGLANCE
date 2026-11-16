@@ -111,6 +111,10 @@
       focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20;
   }
   textarea.input { @apply h-auto py-2.5 leading-relaxed; }
+  /* iOS draws a date or time field as a centred button with a width of its
+     own, which spills out of a narrow form. Drawn like every other field. */
+  input[type='date'].input, input[type='time'].input { @apply min-w-0 appearance-none text-left; }
+  input.input::-webkit-date-and-time-value { text-align: left; }
 
   .chip { @apply inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium leading-none whitespace-nowrap; }
 }

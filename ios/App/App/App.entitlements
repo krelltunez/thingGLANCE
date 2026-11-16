@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The store the app shares with its extensions (GlanceKit's SharedStore):
+	     the app writes what the widgets show, and they write what was ticked
+	     there. It must also be on the App ID in the developer portal, and
+	     spelled the same in every extension's entitlements. A wrong name fails
+	     without a word. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.thingglance.app</string>
+	</array>
+</dict>
+</plist>

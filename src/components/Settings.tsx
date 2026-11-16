@@ -25,7 +25,7 @@ import { setupIntentsEncryption } from '@/intents/setup'
 import { automationEnabled, setAutomationEnabled } from '@/native/automation'
 import { desktopBridge, type DesktopBackgroundSettings, type DesktopHttpGrant, type DesktopShortcuts } from '@/native/desktop'
 import { recordShortcut } from '@/native/shortcutRecorder'
-import { describeDevice, promptInstall, shell } from '@/native/platform'
+import { describeDevice, nativePlatform, promptInstall, shell } from '@/native/platform'
 import { hasShellTransport } from '@/native/shell'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
 import { WidgetBridge, type TileKind, type WidgetKind } from '@/native/widgetBridge'
@@ -149,7 +149,7 @@ function General() {
       )}
       {shell() !== 'web' && <Reminders />}
       {shell() === 'desktop' && <DesktopApp />}
-      {shell() === 'native' && (
+      {nativePlatform() === 'android' && (
         <Block title={t('settings.general.widgets')} hint={t('settings.general.widgetsHint')}>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn" onClick={() => void addWidget('decide')}><LayoutGrid size={15} /> {t('widget.decide.title')}</button>
@@ -161,7 +161,7 @@ function General() {
           <BackgroundRefreshNote />
         </Block>
       )}
-      {shell() === 'native' && (
+      {nativePlatform() === 'android' && (
         <Block title={t('settings.general.tiles')} hint={t('settings.general.tilesHint')}>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn" onClick={() => void addTile('decide')}><PanelTop size={15} /> {t('widget.decide.title')}</button>
@@ -687,7 +687,7 @@ function Integrations() {
             )}
         </Block>
       )}
-      {shell() === 'native' && <AutomationApps />}
+      {nativePlatform() === 'android' && <AutomationApps />}
       <Block title={t('settings.integrations.otherSurfaces')} hint={t('settings.integrations.otherSurfacesHint')}>
         <SnapshotPeek />
       </Block>

@@ -2,8 +2,9 @@
 // keeps the answer where it will reach the vault.
 //
 // Only a store build knows. On Android the native side answers when the Play
-// Store installed the app (android: ownership/); on the desktop the main
-// process answers for the Mac App Store build (electron/ownership.ts). A
+// Store installed the app (android: ownership/); on iOS, when the App Store
+// did (ios: plugins/OwnershipPlugin.swift); on the desktop the main process
+// answers for the Mac App Store build (electron/ownership.ts). A
 // sideloaded or debug build, a direct desktop download, the web app and the
 // PWA have nothing to report, and nothing is recorded for them. Nothing here, or anywhere else, checks the record: it is kept so that
 // people who paid can be recognised later if the price model ever changes

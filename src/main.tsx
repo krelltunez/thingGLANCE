@@ -9,6 +9,7 @@ import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
 import { headlessBridge, headlessShell } from './headless/headlessMode'
 import { startCapacitorShell } from './native/capacitor'
+import { lockViewportScaleOnIPhone } from './native/viewportZoom'
 import { startDesktopShell } from './native/desktopShell'
 import { registerShell } from './native/shell'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
@@ -36,6 +37,8 @@ if (headless) registerShell(headlessShell(headless))
 // A native shell hands over its keystore and its network stack before
 // anything else looks for them. Does nothing in a browser.
 startCapacitorShell()
+// An iPhone zooms in on a focused field and, inside the app, cannot zoom back.
+lockViewportScaleOnIPhone()
 // The desktop app's tray popup is this same bundle in a window of its own
 // (?tray=1), showing what the main process holds. It is a widget: no
 // database, no sync, no credentials, so none of the shell is started for it.

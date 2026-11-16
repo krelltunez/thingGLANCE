@@ -60,10 +60,11 @@ node scripts/android-check.mjs emulator-5554
 
 **It wipes the app's data on its target, so it refuses anything that is not an emulator.** If a real phone is plugged in too, always pass the emulator's serial to `adb` (`-s emulator-5554`): a bare `adb install` with two devices attached fails, and with one attached it goes to the phone.
 
-Five things to know when writing checks like it:
+Six things to know when writing checks like it:
 
 - While DevTools is attached, the page is held "visible". It never hears that the app went to the background and came back, so the sync that runs on coming to the front does not run. Detach before sending the app to the background and attach again afterwards.
 - The first back press in a form goes to the on-screen keyboard, as in any Android app.
+- Wait for the keyboard before pressing a form's button (`press()` in the script). The keyboard resizes the page in steps: it leaves when a date field takes the focus, comes back for the next text field, and grows again when its row of suggestions appears. For about half a second the button is in one of three places, and a press aimed at one of them that arrives a step later lands beside it. The field loses its focus, the keyboard goes, nothing is saved and nothing reports an error. `press()` waits until the page has held one size for a second.
 - Do not use `force-stop` to stand in for a closed app. It puts the package in the "stopped" state, and Android 15 then disables its widgets until the user opens the app. The check ends the process from inside the app's own sandbox instead (`run-as`), which is what Android reclaiming memory looks like.
 - Start the emulator with a cold boot (`-no-snapshot-load`). Resumed from a quick-boot snapshot, the launcher can accept a widget and then never place it, and every widget check fails for no reason of the app's.
 - Attach with `connectOverCDP(url, { noDefaults: true })`. A WebView has one browser context and refuses the commands Playwright otherwise sends to set its own defaults on it. Where the launcher puts a widget is its own business too: the check looks on each home page.

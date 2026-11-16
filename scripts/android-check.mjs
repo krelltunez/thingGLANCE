@@ -130,6 +130,40 @@ async function closeForm() {
   if (keyboardUp()) await back()
   await back()
 }
+// Presses a button in a form, once the page has stopped moving.
+//
+// The on-screen keyboard resizes the page as it comes and goes, and it does so
+// in steps: it leaves when a date field takes the focus, comes back for the
+// next text field, and grows again when its row of suggestions appears. For
+// half a second the button is in one of three places. A press is aimed at
+// where the button was measured, so one that arrives a step later lands beside
+// it: the field loses its focus, the keyboard goes, and nothing is saved, with
+// no error anywhere. (Seen once in a run on 2026-11-16; seven later checks
+// failed with it.) A person does not press while the keyboard is still on its
+// way, and neither does this: it waits until the page has held one size for a
+// full second.
+async function still(page, quietMs = 1000, timeoutMs = 8000) {
+  await page.evaluate(({ quietMs, timeoutMs }) => new Promise((resolve) => {
+    const size = () => `${Math.round(window.visualViewport.height)}/${window.innerHeight}`
+    const start = performance.now()
+    let last = size()
+    let since = start
+    const tick = () => {
+      const now = performance.now()
+      const current = size()
+      if (current !== last) { last = current; since = now }
+      if (now - since >= quietMs || now - start >= timeoutMs) resolve(current)
+      else requestAnimationFrame(tick)
+    }
+    tick()
+  }), { quietMs, timeoutMs })
+}
+async function press(page, name, exact = false) {
+  await still(page)
+  await page.getByRole('button', { name, exact }).click()
+}
+// True while a form with that button is still open.
+const formOpen = (page, name) => page.evaluate((label) => [...document.querySelectorAll('[role=dialog] button')].some((b) => b.textContent.trim() === label), name).catch(() => false)
 const foreground = () => adb('shell', 'dumpsys', 'activity', 'activities').match(/topResumedActivity=.*?\s(\S+)\/\S+/)?.[1] ?? ''
 
 // ── A clean start ────────────────────────────────────────────────────────────
@@ -170,7 +204,7 @@ await P.getByPlaceholder('https://vault.example.com').fill(VAULT_FROM_DEVICE)
 await P.getByLabel('Account ID').fill(ACCOUNT)
 await P.getByLabel('Device token').fill(TOKEN)
 shot('connect')
-await P.getByRole('button', { name: 'Connect', exact: true }).click()
+await press(P, 'Connect', true)
 // The page reloads once the keystore has the connection.
 await sleep(5000)
 P = await attach()
@@ -179,7 +213,7 @@ await sleep(1500)
 const prompt = P.getByRole('textbox', { name: 'Passphrase' })
 check('connected over the native HTTP stack, and asks for the passphrase', await prompt.isVisible().catch(() => false))
 await prompt.fill(PASS)
-await P.getByRole('button', { name: 'Unlock' }).click()
+await press(P, 'Unlock')
 await sleep(4000)
 check('unlocked', !(await prompt.isVisible().catch(() => false)))
 
@@ -217,8 +251,10 @@ const nameField = P.getByLabel('Name', { exact: true })
 check('a link opens the add form with the name filled in', (await nameField.inputValue().catch(() => '')) === 'Android Check Phone')
 await P.getByLabel('Bought on').fill(dayjs().subtract(1, 'year').add(20, 'day').format('YYYY-MM-DD'))
 await P.getByLabel(/^Price/).fill('900')
-await P.getByRole('button', { name: 'Add thing' }).click()
+await press(P, 'Add thing')
 await sleep(1000)
+// Said here, where it happens: everything below needs this thing.
+check('the form saves the thing and closes', !(await formOpen(P, 'Add thing')) && await P.getByText('Android Check Phone').first().isVisible().catch(() => false))
 shot('added')
 await sleep(6000) // the debounced push
 
@@ -473,7 +509,7 @@ if (!QUICK) {
   await openLink('thingglance://action/add?name=Android%20Check%20Tablet')
   await sleep(800)
   await P.getByLabel('Bought on').fill(dayjs(deviceNow).subtract(1, 'year').add(7, 'day').format('YYYY-MM-DD'))
-  await P.getByRole('button', { name: 'Add thing' }).click()
+  await press(P, 'Add thing')
   await sleep(2500)
   const pending = await P.evaluate(async () => JSON.parse((await window.Capacitor.Plugins.Reminders.pending()).reminders))
   const mine = pending.find((n) => /Android Check Tablet/.test(n.body ?? ''))
@@ -516,7 +552,7 @@ await openLink('thingglance://action/add-plan?name=Android%20Check%20Plan')
 await sleep(800)
 await P.getByLabel(/^Amount/).fill('9.99')
 await P.getByLabel('Next renewal').fill(dayjs(Number(adb('shell', 'date', '+%s').trim()) * 1000).add(20, 'day').format('YYYY-MM-DD'))
-await P.getByRole('button', { name: 'Add plan' }).click()
+await press(P, 'Add plan')
 const told = await waitFor(() => /"charges":\{"days":30,"total":9\.99,"count":1,/.test(shared()) && shared().includes('Android Check Plan'), 10_000)
 check('the snapshot says what plans will charge in the next 30 days', told.ok)
 

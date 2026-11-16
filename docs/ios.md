@@ -35,7 +35,7 @@ xcrun simctl launch --console-pty booted com.thingglance.app   # every bridge ca
 ```
 
 - `npm run test:ios` runs the shared Swift package's tests on the Mac, with no simulator.
-- `scripts/ios-webview.py <device> com.thingglance.app '<expression>'` evaluates JavaScript in the running app's WebView (a debug build's is inspectable) and prints the result, awaiting a promise: `'Capacitor.Plugins.Reminders.pending()'`, for one. It speaks the Web Inspector's own protocol to the simulator, so it needs nothing installed.
+- `scripts/ios-webview.py <device> com.thingglance.app '<expression>'` evaluates JavaScript in the running app's WebView (a debug build's is inspectable) and prints the result, awaiting a promise: `'Capacitor.Plugins.Reminders.pending()'`, for one. It speaks the Web Inspector's own protocol to the simulator, so it needs nothing installed. Give it several expressions, or `-` to read one per line, to keep one connection open: a new connection that follows another waits about ten seconds.
 - A local vault over plain http works from the simulator (`http://localhost:8791`, as in the header of `e2e/vault-sync.mjs`).
 - `xcrun simctl openurl booted 'thingglance://queue'` opens a link.
 - A reminder can be shown without waiting for its day: `xcrun simctl push booted com.thingglance.app payload.apns`, where the payload carries `aps.alert`, `aps.category` (`tg.date` or `tg.date.send`) and, beside `aps`, the reminder's `id`, `eventKey` and `link`.
@@ -136,6 +136,8 @@ On the iPhone 17 simulator (iOS 27.2), with a throwaway local vault:
 Not checked: the share extension and the shortcuts by hand (Siri, Spotlight, the Shortcuts app), the Control Center button, the Lock Screen widgets and "Add a thing" by eye, the thing picker, a widget in dark mode, a real device, a signed build, TestFlight, the App Store record, a reminder arriving on its own day with the app closed, "Send to dayGLANCE" from a reminder, and an iPad.
 
 ## Before the first upload
+
+The whole checklist is [release-apple.md](release-apple.md). The two things the build itself depends on:
 
 - App IDs `com.thingglance.app`, `com.thingglance.app.widgets` and `com.thingglance.app.share`, each with the App Groups capability and the group `group.com.thingglance.app`, and a development team set on all three targets in Xcode (none is committed).
 - The annual encryption self-classification report: `ITSAppUsesNonExemptEncryption` is `false` because the app uses only standard algorithms for end-to-end sync, as the sibling apps declare.

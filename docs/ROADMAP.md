@@ -280,6 +280,8 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 
 ## Phase 7: store launch (M)
 
+> Prepared, 2026-11-15: the App Store listing text and placeholder iPhone screenshots (`store-assets/apple/`), the checklist for the Apple stores ([release-apple.md](release-apple.md)), and, as pull requests on `glance-apps-dotcom`, the product page and the privacy policy's update for the iPhone, iPad and desktop apps. The submissions themselves, the real screenshots and the review video are the publisher's.
+
 - Listings, screenshots and store assets. lastGLANCE's `store-assets/README.md` has the current required sizes.
 - Apple metadata must not mention Android.
 - Reviewer access, if there is a paywall.
@@ -299,7 +301,7 @@ This is an unusually good fit for an assistant: "what should I cancel?", "what i
 | `GLANCElauncher` | A `GlanceClient` for thingGLANCE and its card | Phase 3 |
 | `mcp-bridge` | A thingGLANCE app profile | Phase 6 |
 | `glance-billing` | Product IDs, only if paywalled | Phase 2 and 4 |
-| `glance-apps-dotcom` | Product page | Phase 7 |
+| `glance-apps-dotcom` | Product page (open as a pull request, 2026-11-15) | Phase 7 |
 
 ## Suggested order
 

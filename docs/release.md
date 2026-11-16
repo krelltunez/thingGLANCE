@@ -1,5 +1,7 @@
 # Releasing the Android app
 
+> The App Store and the Mac App Store are in [release-apple.md](release-apple.md); the desktop downloads are in [desktop.md](desktop.md#releasing).
+
 How a build gets from this repository to Google Play: the key, the build, what is in it, and what the Play Console will ask. The parts only the publisher can do are marked **(yours)**.
 
 Times in release notes are Mountain Time, and release notes contain no em dashes (the family's rules).

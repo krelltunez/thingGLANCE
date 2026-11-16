@@ -796,6 +796,7 @@
       "widgets": "Home screen widgets",
       "widgetsHint": "Your dates on the home screen, without opening the app. Your launcher will ask where to put it.",
       "widgetsByHand": "Long-press your home screen and choose Widgets to add one.",
+      "widgetsIos": "Your dates on the Home Screen and the Lock Screen, without opening the app. Touch and hold the Home Screen, tap Edit, then Add Widget, and look for thingGLANCE.",
       "tiles": "Quick Settings tiles",
       "tilesHint": "For the panel you pull down from the top of the screen: how many dates are waiting on you, and a shortcut to add a thing.",
       "tilesByHand": "Pull down Quick Settings, tap the pencil, and drag a thingGLANCE tile into place.",

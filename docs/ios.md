@@ -9,7 +9,7 @@ The iPhone and iPad app is the web app in a Capacitor 8 shell (`ios/`), as the A
 | Runs on | iOS 15 and later |
 | Origin | `capacitor://localhost`. The data is keyed by it |
 
-Built so far: the app itself, the shell seams (keychain, network, live sync, links), reminders with their buttons, and the App Group hand-off the widgets will read. Still to come: the widgets, the Control Center control, home-screen quick actions, App Shortcuts and the share extension.
+Built so far: the app itself, the shell seams (keychain, network, live sync, links), reminders with their buttons, and the widgets, Home Screen and Lock Screen. Still to come: the Control Center control, home-screen quick actions, App Shortcuts and the share extension.
 
 ## Build it
 
@@ -61,13 +61,36 @@ The seams are the ones in [shells.md](shells.md); `src/native/capacitor.ts` regi
 
 ## The App Group
 
-`ios/App/Packages/GlanceKit` is a small Swift package the app links and the extensions will: Foundation only, so its tests run on a Mac.
+`ios/App/Packages/GlanceKit` is a small Swift package the app and the widget extension both link: Foundation only, so its tests run on a Mac.
 
 - `SharedStore` is the App Group's defaults: the payload the app writes (`{ snapshot, labels, canSend, launcher }`, as `src/native/widgetBridge.ts` builds it for Android), and the queue of writes made outside the app.
 - `PendingWrites` is that queue: `{ action, payload, clientId }` entries, `decide` and `send`, the same objects Android queues. Nothing native applies one. The app collects them (`collectWidgetWrites`), puts each through `dispatchExternalWrite()`, hands over a snapshot that shows the result, and only then acknowledges.
 - `ReminderPlan` reads the reminders out of the payload and works out what to schedule and cancel.
+- `WidgetData` is what a widget draws: the dates, charges and things read out of the payload, less whatever was ticked outside the app since. `Countdown` is the days arithmetic and the `T-12d` notation.
 
 The group must be on the App ID in the developer portal and in every extension's entitlements, spelled the same. A wrong name fails without a word: `WidgetBridgePlugin.updateSnapshot` rejects when the group is missing, which is the one place it shows.
+
+## Widgets
+
+The extension is `ios/App/GlanceWidgets` (target `GlanceWidgetsExtension`, bundle ID `com.thingglance.app.widgets`, iOS 17 and later; the app itself still runs on 15). It is the Android set ([android.md](android.md#widgets)), drawn from the same payload:
+
+| Widget | Sizes | Shows |
+| --- | --- | --- |
+| Needs a decision | medium, large | The queue, most pressing first, each date with a tick and, where this device is connected to dayGLANCE, a send button |
+| Next up | small, medium | One date: the first in the queue, or with nothing waiting the next one ahead |
+| Plans, next 30 days | small, medium, large | What the plans will charge, and the total |
+| A single thing | small, medium | One thing's life-left ring, verdict and countdown. Edit Widget picks which; left alone it is the thing closest to the end of its window |
+| Add a thing | small | Opens the app on a new thing |
+| Waiting (Lock Screen) | circular, inline | How many dates are waiting |
+| Next up (Lock Screen) | rectangular | The next date, counted down |
+
+- **Nothing is baked in.** A widget is drawn hours after the app last ran, so it counts the days itself; each timeline is one entry and a refresh at midnight. The app reloads the timelines whenever it hands over a new payload.
+- **A tick runs in the extension**, with no app and no WebView (`EventIntents.swift`). It queues a `decide` or a `send` in the App Group and reloads the widgets, which leave the date out, or mark it sent, by reading the queue. The app applies the write when it next runs. The two intents are not offered in the Shortcuts app.
+- **Lists do not scroll** in WidgetKit, so the row count is measured: `ViewThatFits` takes the longest list that fits, and a last line says how many more there are.
+- **The words are the app's.** Titles, empty lines, verdict names and the countdown's units come from the payload's `labels`, in the app's language. What iOS shows before any payload exists, and in the widget gallery, is English in the Swift.
+- **A chosen thing that is gone** keeps the widget's choice and says "No longer tracked", where dropping the choice would quietly show another thing.
+- Settings says where the widgets are; iOS has no way for an app to offer one.
+- **Restart the device before believing a widget bug.** A stale WidgetKit cache survives a reinstall.
 
 ## Reminders
 
@@ -93,9 +116,11 @@ On the iPhone 17 simulator (iOS 27.2), with a throwaway local vault:
 - Connecting to the vault kept the connection in the Keychain; a restart was still connected and asked for no passphrase; deleting and reinstalling the app started signed out.
 - A thing added on the phone reached a browser on the same account, and one added in the browser reached the phone within seconds, with the native stream connected.
 
-Not checked: a real device, a signed build, TestFlight, the App Store record, a reminder arriving on its own day with the app closed, "Send to dayGLANCE" from a reminder, and an iPad.
+- The widgets drew from the sample data in the gallery in every Home Screen size. With "Needs a decision" on the Home Screen, a tick removed the date at once and queued the write; opening the app applied it (4 dates to 3) and emptied the queue.
+
+Not checked: the Lock Screen widgets and "Add a thing" by eye, the thing picker, a widget in dark mode, a real device, a signed build, TestFlight, the App Store record, a reminder arriving on its own day with the app closed, "Send to dayGLANCE" from a reminder, and an iPad.
 
 ## Before the first upload
 
-- An App ID `com.thingglance.app` with the App Groups capability, the group `group.com.thingglance.app`, and a development team set on the App target in Xcode (none is committed).
+- App IDs `com.thingglance.app` and `com.thingglance.app.widgets`, each with the App Groups capability and the group `group.com.thingglance.app`, and a development team set on both targets in Xcode (none is committed).
 - The annual encryption self-classification report: `ITSAppUsesNonExemptEncryption` is `false` because the app uses only standard algorithms for end-to-end sync, as the sibling apps declare.

@@ -25,6 +25,9 @@
 //   - "Could not read the keystore" is not "nothing is stored". That state is
 //     reported (secretsUnreadable) so the app can say so and hold local edits
 //     for the next launch, instead of behaving as if it was never connected.
+//   - "Not read yet" is not "nothing is stored" either. Between the page
+//     starting and hydrateSecrets() finishing, the answer is not known
+//     (secretsNotReadYet), and a change made then is held like any other.
 
 import { secureStore, type SecureStore } from '@/native/shell'
 
@@ -43,6 +46,8 @@ const held = new Map<string, string>()
 const revs = new Map<string, number>()
 const unreadable = new Set<string>()
 let hydrated = false
+// hydrateSecrets() has finished: from here on "nothing stored" is an answer.
+let read = false
 const pending = new Set<Promise<void>>()
 
 const plain = (): Storage | null => (typeof localStorage === 'undefined' ? null : localStorage)
@@ -138,6 +143,14 @@ async function readKept(key: string): Promise<Stamped | null> {
 
 export async function hydrateSecrets(): Promise<void> {
   hydrated = true
+  try {
+    await fillFromKeystore()
+  } finally {
+    read = true
+  }
+}
+
+async function fillFromKeystore(): Promise<void> {
   if (!secureStore()) return
   for (const key of SECRET_KEYS) {
     const local = plainCopy(key)
@@ -169,6 +182,12 @@ export async function hydrateSecrets(): Promise<void> {
 // True when the keystore could not be read at boot and nothing else says what
 // was stored. The device may well be connected; this session cannot tell.
 export const secretsUnreadable = (): boolean => unreadable.size > 0
+
+// True on a shell with a keystore until boot has finished reading it. Until
+// then readSecret() has nothing to answer with, and "not connected" would be a
+// guess: a widget's tick or a notification's button can be applied in that
+// moment (sync/dirtyHold.ts). Never true on the web, where there is no wait.
+export const secretsNotReadYet = (): boolean => !!secureStore() && !read
 
 // ── Read and write ───────────────────────────────────────────────────────────
 
@@ -226,4 +245,5 @@ export function resetSecretsForTests(): void {
   pending.clear()
   chain = Promise.resolve()
   hydrated = false
+  read = false
 }

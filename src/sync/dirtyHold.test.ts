@@ -57,6 +57,48 @@ describe('a change made before the sync engine is up', () => {
   })
 })
 
+describe('a change made before the keystore has been read', () => {
+  // A connected device: its keystore holds the connection, in its envelope.
+  const kept = JSON.stringify({ rev: 5, value: JSON.stringify(config) })
+  const held = () => JSON.parse(plain.m.get(HELD) ?? '[]') as string[]
+
+  it('waits: the app cannot yet tell whether a vault is connected', async () => {
+    registerShell({ secureStore: { get: async () => kept, set: async () => {}, remove: async () => {} } })
+    // A widget tick collected at launch, before boot has reached hydrateSecrets().
+    markDirty('ticked-at-launch')
+    expect(held()).toEqual(['ticked-at-launch'])
+    await hydrateSecrets()
+    const engine = fakeEngine()
+    registerDbEngine(engine)
+    expect(engine.markDirty).toHaveBeenCalledWith('ticked-at-launch')
+    expect(plain.m.has(HELD)).toBe(false)
+  })
+  it('waits while the keystore is still answering', async () => {
+    let answer!: (value: string | null) => void
+    const slow = new Promise<string | null>((resolve) => { answer = resolve })
+    registerShell({ secureStore: { get: () => slow, set: async () => {}, remove: async () => {} } })
+    const boot = hydrateSecrets()
+    markDirty('ticked-mid-read')
+    expect(held()).toEqual(['ticked-mid-read'])
+    answer(kept)
+    await boot
+    const engine = fakeEngine()
+    registerDbEngine(engine)
+    expect(engine.markDirty).toHaveBeenCalledWith('ticked-mid-read')
+  })
+  it('once the keystore has said there is no vault, changes are dropped again', async () => {
+    registerShell({ secureStore: { get: async () => null, set: async () => {}, remove: async () => {} } })
+    await hydrateSecrets()
+    markDirty('t1')
+    expect(plain.m.has(HELD)).toBe(false)
+  })
+  it('on the web nothing waits for a keystore that does not exist', () => {
+    // No shell, and hydrateSecrets() not yet run.
+    markDirty('t1')
+    expect(plain.m.has(HELD)).toBe(false)
+  })
+})
+
 describe('stream state belongs to one account', () => {
   const CURSOR = 'thingglance-db-sync-hwm'
   it('adopts the account on a device that has no owner recorded', async () => {

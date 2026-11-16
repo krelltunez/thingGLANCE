@@ -26,6 +26,11 @@ This page describes what is built. The phases still to come are at the end.
 | `vaultSse` | The vault's live stream, read by the main process | the shell's `eventStream` |
 | `secureStore` | `get`, `set`, `delete` over Electron's `safeStorage` | the shell's `secureStore` |
 | `files` | A backup through the save dialog; a silent copy into the data folder | `src/db/backup.ts` |
+| `widget` | The payload the tray draws and the reminders are scheduled from | `startDesktopFeed()` |
+| `commands` | Writes queued outside the window, for the page to apply | `collectWidgetWrites()` |
+| `links` | A `thingglance://` link waiting to be opened | `followDesktopLinks()` |
+| `reminders` | What the scheduler in main holds; read-only | Settings |
+| `tray` | The popup's own calls; answered only to the popup's window | `src/tray/TrayPopup.tsx` |
 
 `src/native/desktop.ts` is the contract: the interfaces, the allowlist (`DESKTOP_BRIDGE_METHODS`) and `desktopBridge()`. `src/native/desktopShell.ts` is what the app does with it, and it is the same thing `src/native/capacitor.ts` does on a phone: it calls `registerShell({ fetch, secureStore, eventStream })` before anything else runs, so the rest of the app goes on using the seams in [shells.md](shells.md) and never asks which shell it is in.
 
@@ -70,6 +75,61 @@ Everything in [shells.md](shells.md#credentials) applies unchanged: the app orde
 - Escape leaves fullscreen, when nothing in the app wanted the key.
 - A window that stays up across a sleep never sees `visibilitychange`, which is what sync and the intents poll kick on. The main process says when the machine woke, the screen unlocked or the window was shown, and the page replays the event.
 
+## Staying alive
+
+- **macOS:** closing the window hides it, as Mac apps do. It leaves fullscreen first, or the Space is left black.
+- **Windows and Linux:** with "Keep running in the background" on, closing hides the window to the tray, and the first time a notification says thingGLANCE is still running. With it off, closing quits. It defaults to on, because reminders depend on it.
+- **Open at login** is off by default. macOS and Windows use the system's login items; Linux gets an XDG autostart entry. Windows and Linux start hidden (`--hidden`), in the tray.
+- Both settings are in Settings, General, "Desktop app", and are kept by the main process in `desktop-settings.json` (`electron/backgroundMode.ts`).
+- The window is created with background throttling off, so a hidden one keeps syncing and keeps the snapshot current.
+
+## The feed: one payload for the tray and the reminders
+
+The main window hands the main process the same payload Android's widgets get (`desktopPayload()` in `src/native/desktopShell.ts`): the snapshot ([snapshot.md](snapshot.md)), the few words a surface adds of its own, and whether dayGLANCE can be sent to. It goes whenever the data, the household, the settings or the language change, and every 15 minutes regardless, because a date comes due with no event to say so. An unchanged payload is not sent again.
+
+Main never opens the database and never runs sync. Everything it shows or schedules comes from that payload.
+
+## Reminders
+
+Which dates notify, when and on whose device is decided in `src/core/reminders.ts` and travels in the snapshot as `reminders`. The scheduler in main (`electron/reminderScheduler.ts`) only makes the desktop match that plan, exactly as Android's does: each payload replaces the schedule. Nothing is scheduled from the page.
+
+- The plan is kept in `reminders.json`, with the words its buttons use, so a reminder still fires after a relaunch, before the page is up.
+- One timer waits for the next reminder, never more than an hour, so a clock change or a sleep is caught. The schedule is checked again on resume and unlock.
+- A reminder missed by less than 12 hours fires once when the app next runs. Older ones are dropped.
+- What was due under the old plan fires before a new plan replaces it, and a reminder that has fired is remembered for a day, so a late snapshot can neither swallow one nor fire it twice.
+- A click opens the date in the app. On macOS the notification has real buttons: "Done with this", and "Send to dayGLANCE" when dayGLANCE is connected. Windows and Linux get click-to-open only.
+
+The reminder switch and time are the same ones in Settings as on Android. There is no permission to ask for; on a system that cannot show notifications Settings says so.
+
+## Writes from outside the window
+
+The tray and a reminder's buttons change data the page owns. They do it the way a widget does on Android:
+
+1. Main appends a write to `commands.json`: an action from `handleIntent`'s vocabulary (`decide`, `send`), a payload, and a `clientId` it mints (`electron/commandQueue.ts`).
+2. Main nudges the page.
+3. The page takes the queue and applies each write through `dispatchExternalWrite()`, the one door every write from outside uses, with the same collector that drains Android's queue (`collectWidgetWrites()`).
+4. Only then, and only after main has been handed a snapshot that reflects it, is the write acknowledged and removed.
+
+A crash between taking and acknowledging replays the write, and the app's ledger makes the replay harmless. Meanwhile main hides a date that was ticked, or marks one sent, at once (`electron/trayModel.ts`), so the tray does not wait for the round trip. If the page has not confirmed within a minute, the date shows again.
+
+## Links
+
+`thingglance://` is registered with the system (`CFBundleURLTypes` on macOS, the registry on Windows, the `.desktop` file's MimeType on Linux, where an AppImage registers it only once integrated). A link arrives as `open-url` on macOS and as an argument on Windows and Linux, on a cold start or to the instance already running.
+
+Main does not read where a link goes. It checks that it is a `thingglance://` URL of a sane length (`electron/deepLink.ts`), keeps it, shows the window, and the page takes it and calls `openLink()`: the same door as a link from anywhere else, read by the same parser (`src/core/links.ts`). A link only navigates.
+
+## The tray
+
+- **macOS:** a menu bar icon. A click toggles a frameless popup under the icon, which hides when it loses focus. A right click gives Open and Quit.
+- **Windows:** the same popup, anchored to the tray icon.
+- **Linux:** a native menu only: Open, the dates waiting on a decision each with "Done with this" and Open, and Quit. AppIndicator does not deliver clicks reliably on many desktops, so a popup cannot be anchored there.
+
+The popup is the same bundle loaded with `?tray=1` in a window of its own (`src/tray/TrayPopup.tsx`). It is a widget: `main.tsx` starts none of the shell for it, and main answers the network, the keystore and the queue to the main window only. It draws what main holds of the payload with the app's own pieces: how many things want a decision, each of them with "Done with this" and "Send to dayGLANCE", the next few dates coming up, and the plan charges for the next 30 days. A search field looks through every thing by name and category; Enter opens the first result in the app, and Escape clears the search, then closes the popup.
+
+## Shortcuts
+
+Two global shortcuts, both off until one is recorded in Settings: open the popup (macOS and Windows) and show the window (everywhere). Main keeps them in `desktop-settings.json` and registers them at launch, so they work before the page has loaded. A shortcut another app already holds is reported in Settings, not silently dropped. A shortcut must include Ctrl, Alt or Cmd, or be a function key, so it cannot swallow ordinary typing (`src/native/shortcutRecorder.ts`).
+
 ## Hardening
 
 - Context isolation on, node integration off, a sandboxed preload.
@@ -90,7 +150,7 @@ Everything in [shells.md](shells.md#credentials) applies unchanged: the app orde
 
 `vite build --mode electron` is the same bundle without the PWA plugin. Main is compiled by `tsc` (`tsconfig.electron.json`, ES modules), and the preload separately as CommonJS (`tsconfig.electron.preload.json`), because a sandboxed preload cannot be a module. The package ships no `node_modules`: the page is one bundle and main needs only Electron and Node. `electron/builderConfig.test.ts` holds that, and the rest of `electron-builder.config.cjs`, without packaging anything.
 
-Both tests set `THINGGLANCE_USER_DATA_DIR`, which moves the data folder, so they never touch the profile of a copy someone actually uses.
+Both tests set `THINGGLANCE_USER_DATA_DIR`, which moves the data folder, so they never touch the profile of a copy someone actually uses. The smoke test also sets `THINGGLANCE_SMOKE_HOOKS`, which lets it open the tray popup as a click on the icon would.
 
 Icons come from the same artwork as the web app's: `node scripts/gen-desktop-icons.mjs` writes `electron/resources/`.
 
@@ -98,7 +158,5 @@ Without a signing certificate a macOS build is signed ad hoc (`scripts/codesign-
 
 ## Still to come
 
-1. **Background mode.** Staying alive with the window closed, opening at login, reminders scheduled by the main process from the snapshot's `reminders`, and a queue for writes that come from outside the window.
-2. **The tray popup and `thingglance://` links.** The popup is drawn from the snapshot and never opens the database.
-3. **Release.** The release workflow, the Mac App Store build, and the "update available" notice on direct builds.
-4. **MCP, then Stream Deck**, on the same queue and snapshot.
+1. **Release.** The release workflow, the Mac App Store build, and the "update available" notice on direct builds.
+2. **MCP, then Stream Deck**, on the same queue and snapshot.

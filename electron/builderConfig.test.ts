@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { DEEP_LINK_SCHEME } from './deepLink';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(__dirname, '..');
@@ -162,6 +163,17 @@ describe('electron-builder.config.cjs', () => {
 
   it('keeps the provisioning profile out of git', () => {
     expect(readFileSync(path.join(root, '.gitignore'), 'utf-8')).toContain('electron/*.provisionprofile');
+  });
+
+  it('ships the tray icons main loads', () => {
+    expect(config.extraResources).toEqual([{ from: 'electron/resources/tray', to: 'tray' }]);
+    for (const name of ['trayTemplate.png', 'trayTemplate@2x.png', 'tray.png', 'tray@2x.png']) {
+      expect(existsSync(path.join(root, 'electron/resources/tray', name)), name).toBe(true);
+    }
+  });
+
+  it('registers the thingglance:// scheme the app handles', () => {
+    expect(config.protocols).toEqual([{ name: 'thingGLANCE', schemes: [DEEP_LINK_SCHEME] }]);
   });
 
   it('uses one application id on every platform, the Mac App Store included', () => {

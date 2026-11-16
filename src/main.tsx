@@ -36,15 +36,21 @@ if (headless) registerShell(headlessShell(headless))
 // A native shell hands over its keystore and its network stack before
 // anything else looks for them. Does nothing in a browser.
 startCapacitorShell()
+// The desktop app's tray popup is this same bundle in a window of its own
+// (?tray=1), showing what the main process holds. It is a widget: no
+// database, no sync, no credentials, so none of the shell is started for it.
+const desktop = desktopBridge()
+const trayMode = desktop !== null && new URLSearchParams(window.location.search).get('tray') === '1'
+
 // The desktop app's main process carries every request, holds the keystore and
 // reads the live stream. Does nothing anywhere else.
-startDesktopShell()
+if (!trayMode) startDesktopShell()
 
 // Shell markers for platform-only styling (same class contract as lastGLANCE).
 const where = shell()
 if (where === 'native') document.documentElement.classList.add('native')
-const desktop = desktopBridge()
 if (desktop) document.documentElement.classList.add('desktop', `desktop-${desktop.info.platform}`)
+if (trayMode) document.documentElement.classList.add('tray')
 
 // Theme before the first paint, so there is no flash.
 applyTheme()
@@ -56,7 +62,18 @@ settleServiceWorker()
 // keeps in its keystore: the sync engines read the connection as they mount.
 // And the starting language, so nothing paints in English first. On the web,
 // in English, both resolve at once.
-if (headless) {
+if (trayMode && desktop) {
+  // The app's theme is set in the main window; this window hears of a change
+  // through the storage they share.
+  window.addEventListener('storage', applyTheme)
+  void Promise.all([import('./tray/TrayPopup'), i18nReady]).then(([{ TrayPopup }]) => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <TrayPopup tray={desktop.tray} />
+      </StrictMode>,
+    )
+  })
+} else if (headless) {
   void import('./headless/headlessRefresh').then(({ runHeadlessRefresh }) => runHeadlessRefresh({ bridge: headless }))
 } else void Promise.allSettled([hydrateSecrets().then(settleKeyStorage), i18nReady]).then(() => {
   createRoot(document.getElementById('root')!).render(

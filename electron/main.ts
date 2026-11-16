@@ -5,7 +5,8 @@
 // Direct Access and in-app purchases. Sync is GLANCEvault only, and every
 // request the page makes goes out from here.
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, powerMonitor, protocol, safeStorage, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, powerMonitor, protocol, safeStorage, screen, session, shell, Tray } from 'electron';
+import crypto from 'node:crypto';
 import dns from 'node:dns';
 import fs from 'node:fs';
 import nodeNet from 'node:net';
@@ -25,6 +26,11 @@ import { initStartupLog, logStartup } from './startupLog.js';
 import { shouldQuitOnAllWindowsClosed } from './startupQuit.js';
 import { DESKTOP_INFO_ARG, encodeDesktopInfo } from './desktopInfo.js';
 import { loadWindowState, onScreen, saveWindowState, saveWindowTheme, windowBackgroundColor } from './windowState.js';
+import { applyOpenAtLogin, closeAction, isAcceleratorText, launchedHidden, loadDesktopSettings, saveDesktopSettings, type DesktopSettings } from './backgroundMode.js';
+import { createCommandQueue, type CommandSource } from './commandQueue.js';
+import { DEEP_LINK_SCHEME, acceptDeepLink, deepLinkFromArgv } from './deepLink.js';
+import { createReminderScheduler, type PlannedReminder, type ReminderWords } from './reminderScheduler.js';
+import { isClickAfterBlurHide, parseTrayPayload, popupPosition, settledHere, trayEvent, trayMenuItems, trayState, type TrayPayload } from './trayModel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -65,6 +71,11 @@ let isQuitting = false;
 let didCreateMainWindow = false;
 let mainRecoveryAttempts: number[] = [];
 let applicationMenuSignature: string | null = null;
+// The page's translated strings for the shell's own text: the application
+// menu, the tray, the background notice. English until the page sends them.
+let shellLabels: Record<string, string> = {};
+const label = (key: string, fallback: string): string => shellLabels[key] || fallback;
+let desktopSettings: DesktopSettings = loadDesktopSettings(app.getPath('userData'));
 
 // Null for a destroyed window, so callers need no isDestroyed() checks.
 function live(win: BrowserWindow | null): BrowserWindow | null {
@@ -101,12 +112,384 @@ function updateApplicationMenu(labels: ApplicationMenuLabels): void {
 
 ipcMain.on('shell:set-menu-labels', (event, labels: unknown) => {
   if (!isMainWindowSender(event.sender) || !isApplicationMenuLabels(labels)) return;
+  shellLabels = { ...labels };
   updateApplicationMenu(labels);
+  refreshTray();
+});
+
+// ── Background mode (docs/desktop.md, "Staying alive") ──────────────────────
+// The settings the page shows: keep running (Windows and Linux) and open at login.
+function backgroundSettingsView() {
+  return { keepRunning: desktopSettings.keepRunning, openAtLogin: desktopSettings.openAtLogin };
+}
+
+ipcMain.handle('shell:get-background-settings', (event) => {
+  if (!isMainWindowSender(event.sender)) return null;
+  return backgroundSettingsView();
+});
+
+ipcMain.handle('shell:set-background-settings', (event, patch: unknown) => {
+  if (!isMainWindowSender(event.sender) || !patch || typeof patch !== 'object') return backgroundSettingsView();
+  const p = patch as Record<string, unknown>;
+  if (typeof p.keepRunning === 'boolean') desktopSettings = { ...desktopSettings, keepRunning: p.keepRunning };
+  if (typeof p.openAtLogin === 'boolean' && p.openAtLogin !== desktopSettings.openAtLogin) {
+    const applied = applyOpenAtLogin(p.openAtLogin, {
+      platform: process.platform,
+      setLoginItemSettings: (settings) => app.setLoginItemSettings(settings),
+      configHome: process.env.XDG_CONFIG_HOME || path.join(app.getPath('home'), '.config'),
+      exec: process.env.APPIMAGE || process.execPath,
+    });
+    if (applied) desktopSettings = { ...desktopSettings, openAtLogin: p.openAtLogin };
+    else logStartup('open at login: could not be changed');
+  }
+  saveDesktopSettings(app.getPath('userData'), desktopSettings);
+  return backgroundSettingsView();
+});
+
+// The first time closing hides the window on Windows or Linux, say so: the
+// app is still running in the tray.
+function noteFirstBackgroundHide(): void {
+  if (IS_MAC || desktopSettings.backgroundNoticeShown) return;
+  desktopSettings = { ...desktopSettings, backgroundNoticeShown: true };
+  saveDesktopSettings(app.getPath('userData'), desktopSettings);
+  if (!Notification.isSupported()) return;
+  new Notification({
+    title: label('backgroundTitle', 'thingGLANCE is still running'),
+    body: label('backgroundBody', 'Reminders keep coming while the window is closed. Open thingGLANCE from the tray.'),
+  }).show();
+}
+
+// ── Writes from outside the window (docs/desktop.md) ────────────────────────
+// The tray's and the notifications' writes, applied by the page through the
+// one door every outside write uses and acknowledged only once handled
+// (commandQueue.ts).
+const commands = createCommandQueue({
+  file: path.join(app.getPath('userData'), 'commands.json'),
+  newId: () => crypto.randomUUID(),
+});
+
+function queueCommand(action: string, payload: Record<string, unknown>, source: CommandSource): void {
+  const command = commands.enqueue(action, payload, source);
+  if (!command) return;
+  logStartup(`write queued: ${action} from ${source}`);
+  live(mainWindow)?.webContents.send('commands:queued');
+}
+
+// The queue as the page's collector reads Android's: a JSON array of
+// { action, payload, clientId }.
+ipcMain.handle('commands:take', (event) => (isMainWindowSender(event.sender) ? JSON.stringify(commands.take()) : '[]'));
+ipcMain.handle('commands:ack', (event, ids: unknown) => {
+  if (isMainWindowSender(event.sender)) commands.ack(ids);
+});
+
+// ── Links (docs/desktop.md, "Links") ────────────────────────────────────────
+// A thingglance:// URL, a reminder's click or a row in the tray: the link is
+// kept here until the page takes it, and the page opens it through openLink()
+// like one from anywhere else. Main does not read where it goes.
+let pendingLink: string | null = acceptDeepLink(deepLinkFromArgv(process.argv));
+
+/** Show the window and, with a link, have the page open it. */
+function openLink(link: string | null): void {
+  if (link) pendingLink = link;
+  if (!app.isReady()) return;
+  showMainWindow();
+  if (link) live(mainWindow)?.webContents.send('links:open');
+}
+
+function openDeepLinkUrl(url: unknown): void {
+  const link = acceptDeepLink(url);
+  if (!link) logStartup('link refused');
+  openLink(link);
+}
+
+// macOS hands URLs over as an event, possibly before the app is ready.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  openDeepLinkUrl(url);
+});
+
+ipcMain.handle('links:consume', (event) => {
+  if (!isMainWindowSender(event.sender)) return { link: null };
+  const link = pendingLink;
+  pendingLink = null;
+  return { link };
+});
+
+// ── Reminders (docs/desktop.md, "Reminders") ────────────────────────────────
+// The plan is the snapshot's (reminderScheduler.ts); main shows each one as a
+// system notification when it is due. A click opens the date; on macOS its
+// buttons are real: "Done" and "Send to dayGLANCE" queue the same writes a
+// widget's do. Windows and Linux get click-to-open only.
+const shownNotifications = new Set<Notification>();
+
+function showReminder(r: PlannedReminder, words: ReminderWords): void {
+  if (!Notification.isSupported()) return;
+  const actions = IS_MAC ? [{ kind: 'decide', text: words.done }, ...(words.canSend ? [{ kind: 'send', text: words.send }] : [])] : [];
+  const n = new Notification({ title: r.title, body: r.body, actions: actions.map((a) => ({ type: 'button' as const, text: a.text })) });
+  // Held until it is answered: a notification collected early loses its handlers.
+  shownNotifications.add(n);
+  const done = () => { shownNotifications.delete(n); };
+  n.on('click', () => { done(); openLink(r.link); });
+  n.on('action', (_event, index) => {
+    done();
+    const action = actions[index];
+    if (action?.kind === 'decide') decideFrom(r.eventKey, 'notification');
+    else if (action?.kind === 'send') sendFrom(r.eventKey, 'notification');
+  });
+  n.on('close', done);
+  n.show();
+  logStartup(`reminder ${r.id} shown`);
+}
+
+const reminders = createReminderScheduler({
+  file: path.join(app.getPath('userData'), 'reminders.json'),
+  fire: showReminder,
+  log: logStartup,
+});
+
+// What is scheduled, for Settings to show and the tests to check.
+ipcMain.handle('reminders:pending', (event) => (isMainWindowSender(event.sender) ? reminders.pending() : []));
+ipcMain.handle('reminders:supported', (event) => isMainWindowSender(event.sender) && Notification.isSupported());
+
+// ── The tray (docs/desktop.md, "The tray") ──────────────────────────────────
+// A widget: it shows the payload the main window pushes and never opens the
+// database (trayModel.ts). macOS gets a menu bar icon and Windows a tray icon,
+// each with a popup (app://thingglance/?tray=1, src/tray/); Linux gets a menu
+// only, since AppIndicator does not deliver clicks reliably there.
+let tray: Tray | null = null;
+let trayWindow: BrowserWindow | null = null;
+let trayPayload: TrayPayload | null = null;
+// Done from outside the window and not yet in a snapshot: a date's key, and when.
+const decidedHere = new Map<string, number>();
+const sentHere = new Map<string, number>();
+// When blur last hid the popup (the Windows click race, isClickAfterBlurHide).
+let lastTrayBlurHideAt: number | null = null;
+const TRAY_POPUP_SIZE = { width: 380, height: 560 };
+const USE_TRAY_POPUP = process.platform !== 'linux';
+
+function isTrayWindowSender(sender: Electron.WebContents): boolean {
+  return sender === live(trayWindow)?.webContents;
+}
+
+function currentTrayState() {
+  return trayState(trayPayload, { decided: decidedHere, sent: sentHere });
+}
+
+function trayIconPath(name: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'tray', name)
+    : path.join(__dirname, '..', 'electron', 'resources', 'tray', name);
+}
+
+function trayMenu(withEvents: boolean): Menu {
+  const items = trayMenuItems(currentTrayState(), {
+    open: label('trayOpen', 'Open thingGLANCE'),
+    quit: label('trayQuit', 'Quit thingGLANCE'),
+    done: label('trayDone', 'Done with this'),
+    nothingWaiting: label('trayNothingWaiting', 'Nothing waiting on a decision'),
+  }, withEvents);
+  return Menu.buildFromTemplate(items.map((item): Electron.MenuItemConstructorOptions => {
+    switch (item.kind) {
+      case 'open': return { label: item.label, click: () => showMainWindow() };
+      case 'quit': return { label: item.label, click: () => app.quit() };
+      case 'empty': return { label: item.label, enabled: false };
+      case 'event': return {
+        label: item.label,
+        submenu: [
+          { label: item.done, click: () => decideFrom(item.key, 'tray') },
+          { label: item.open, click: () => openLink(acceptDeepLink(item.link)) },
+        ],
+      };
+      default: return { type: 'separator' };
+    }
+  }));
+}
+
+function refreshTray(): void {
+  if (!tray || tray.isDestroyed()) return;
+  const state = currentTrayState();
+  tray.setToolTip(state.waiting > 0 ? `thingGLANCE · ${label('trayWaiting', '{{n}} waiting on a decision').replace('{{n}}', String(state.waiting))}` : 'thingGLANCE');
+  if (!USE_TRAY_POPUP) tray.setContextMenu(trayMenu(true));
+  live(trayWindow)?.webContents.send('tray:state', state);
+}
+
+/** "Done with this", from the tray or a reminder: hidden here at once, applied by the page. */
+function decideFrom(key: unknown, source: CommandSource): void {
+  // A reminder can outlive the snapshot that listed its date; the tray acts only on what it shows.
+  if (typeof key !== 'string' || !key || (source === 'tray' && !trayEvent(trayPayload, key))) return;
+  decidedHere.set(key, Date.now());
+  queueCommand('decide', { event_key: key, state: 'done' }, source);
+  refreshTray();
+}
+
+/** "Send to dayGLANCE": marked sent here at once, sent by the page. */
+function sendFrom(key: unknown, source: CommandSource): void {
+  if (typeof key !== 'string' || !key || (source === 'tray' && !trayEvent(trayPayload, key))) return;
+  if (!(trayPayload?.words.canSend ?? true)) return;
+  sentHere.set(key, Date.now());
+  queueCommand('send', { event_key: key }, source);
+  refreshTray();
+}
+
+function createTrayWindow(): BrowserWindow {
+  const w = new BrowserWindow({
+    ...TRAY_POPUP_SIZE,
+    show: false,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: windowBackgroundColor(app.getPath('userData'), nativeTheme.shouldUseDarkColors),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      devTools: DEV,
+      additionalArguments: [
+        `${DESKTOP_INFO_ARG}${encodeDesktopInfo({ version: app.getVersion(), isMAS: process.mas === true, secureStorage: isSecureStorageUsable() })}`,
+      ],
+    },
+  });
+  trayWindow = w;
+  w.on('blur', () => {
+    if (DEV && w.webContents.isDevToolsOpened()) return;
+    if (w.isVisible()) lastTrayBlurHideAt = Date.now();
+    w.hide();
+  });
+  w.webContents.setWindowOpenHandler(({ url }) => { openExternalSafe(url); return { action: 'deny' }; });
+  w.webContents.on('will-navigate', (event) => event.preventDefault());
+  w.webContents.on('render-process-gone', (_e, details) => {
+    logStartup(`tray render-process-gone: reason=${details.reason}`);
+    if (!isQuitting && live(trayWindow) === w) { w.destroy(); trayWindow = null; }
+  });
+  void w.loadURL(`${DEV ? VITE_DEV_SERVER_URL : APP_BASE_URL}?tray=1`);
+  return w;
+}
+
+function toggleTrayPopup(fromIconClick = false): void {
+  if (!tray) return;
+  const w = live(trayWindow) ?? createTrayWindow();
+  if (w.isVisible()) { w.hide(); return; }
+  // Windows: the click that just blurred the popup closed is this click.
+  if (fromIconClick && process.platform === 'win32' && isClickAfterBlurHide(Date.now(), lastTrayBlurHideAt)) return;
+  const icon = tray.getBounds();
+  const display = screen.getDisplayNearestPoint({ x: icon.x, y: icon.y });
+  const at = popupPosition(icon, TRAY_POPUP_SIZE, display.workArea);
+  w.setPosition(at.x, at.y);
+  w.webContents.send('tray:state', currentTrayState());
+  w.show();
+  w.focus();
+  // The popup puts the cursor in its search field (src/tray/TrayPopup.tsx).
+  w.webContents.send('tray:shown');
+}
+
+function createTray(): void {
+  const image = IS_MAC
+    ? nativeImage.createFromPath(trayIconPath('trayTemplate.png'))
+    : nativeImage.createFromPath(trayIconPath('tray@2x.png'));
+  if (IS_MAC) image.setTemplateImage(true);
+  tray = new Tray(image);
+  tray.setToolTip('thingGLANCE');
+  if (USE_TRAY_POPUP) {
+    tray.on('click', () => toggleTrayPopup(true));
+    tray.on('right-click', () => tray?.popUpContextMenu(trayMenu(false)));
+  }
+  refreshTray();
+}
+
+// The main window's payload (src/native/desktopShell.ts): what the tray shows,
+// and the reminder plan the scheduler is made to match.
+ipcMain.on('widget:update-snapshot', (event, json: unknown) => {
+  if (!isMainWindowSender(event.sender)) return;
+  const payload = parseTrayPayload(json);
+  if (!payload) return;
+  trayPayload = payload;
+  const now = Date.now();
+  for (const key of settledHere(decidedHere, payload, 'decided', now)) decidedHere.delete(key);
+  for (const key of settledHere(sentHere, payload, 'sent', now)) sentHere.delete(key);
+  reminders.sync(payload.reminders, payload.words);
+  refreshTray();
+});
+
+// The popup's calls: its state, Done, Send, open a link, close.
+ipcMain.handle('tray:state', (event) => (isTrayWindowSender(event.sender) ? currentTrayState() : null));
+ipcMain.on('tray:decide', (event, key: unknown) => {
+  if (isTrayWindowSender(event.sender)) decideFrom(key, 'tray');
+});
+ipcMain.on('tray:send', (event, key: unknown) => {
+  if (isTrayWindowSender(event.sender)) sendFrom(key, 'tray');
+});
+ipcMain.on('tray:open', (event, link: unknown) => {
+  if (!isTrayWindowSender(event.sender)) return;
+  live(trayWindow)?.hide();
+  openLink(acceptDeepLink(link));
+});
+ipcMain.on('tray:hide', (event) => {
+  if (isTrayWindowSender(event.sender)) live(trayWindow)?.hide();
+});
+
+// The smoke test opens the popup as a click on the icon would: a tray icon
+// cannot be clicked from a test. Only with the variable set, never in a
+// person's copy.
+if (process.env['THINGGLANCE_SMOKE_HOOKS'] === '1') {
+  (globalThis as Record<string, unknown>).__thingglanceSmoke = { toggleTrayPopup: () => toggleTrayPopup() };
+}
+
+// ── Global shortcuts (docs/desktop.md, "Shortcuts") ─────────────────────────
+// Two, both off until the user records one in Settings: open the popup and
+// show the window. Kept in desktop-settings.json and registered here at
+// launch, so they work before the page has loaded. The popup exists on macOS
+// and Windows; Linux has the window shortcut only. A shortcut another app
+// already holds cannot be registered, and the page says so.
+type ShortcutKind = 'popup' | 'window';
+const shortcutHandlers: Record<ShortcutKind, () => void> = {
+  popup: () => toggleTrayPopup(),
+  window: () => showMainWindow(),
+};
+const registeredShortcuts: Record<ShortcutKind, string> = { popup: '', window: '' };
+
+/** Register (or clear, with '') one shortcut. The old one stays if the new one cannot be had. */
+function applyShortcut(kind: ShortcutKind, accelerator: string): boolean {
+  if (kind === 'popup' && !USE_TRAY_POPUP && accelerator) return false;
+  if (accelerator === registeredShortcuts[kind]) return true;
+  if (accelerator) {
+    let ok = false;
+    try { ok = globalShortcut.register(accelerator, shortcutHandlers[kind]); } catch { ok = false; }
+    if (!ok) { logStartup(`global shortcut ${accelerator} (${kind}) could not be registered`); return false; }
+  }
+  if (registeredShortcuts[kind]) {
+    try { globalShortcut.unregister(registeredShortcuts[kind]); } catch { /* already gone */ }
+  }
+  registeredShortcuts[kind] = accelerator;
+  return true;
+}
+
+function shortcutsView() {
+  return { popup: registeredShortcuts.popup, window: registeredShortcuts.window, popupSupported: USE_TRAY_POPUP };
+}
+
+ipcMain.handle('shell:get-shortcuts', (event) => (isMainWindowSender(event.sender) ? shortcutsView() : null));
+ipcMain.handle('shell:set-shortcut', (event, kind: unknown, accelerator: unknown) => {
+  if (!isMainWindowSender(event.sender) || (kind !== 'popup' && kind !== 'window')) return { ok: false, ...shortcutsView() };
+  if (accelerator !== '' && !isAcceleratorText(accelerator)) return { ok: false, ...shortcutsView() };
+  const ok = applyShortcut(kind, accelerator as string);
+  if (ok) {
+    desktopSettings = { ...desktopSettings, [kind === 'popup' ? 'popupShortcut' : 'windowShortcut']: accelerator as string };
+    saveDesktopSettings(app.getPath('userData'), desktopSettings);
+  }
+  return { ok, ...shortcutsView() };
 });
 
 // The page's foreground kicks never fire for a hidden window, or on a resume
-// with the window already up: tell it the machine woke or the window came back.
+// with the window already up: tell it the machine woke or the window came
+// back. A reminder that came due during a sleep fires on the same signal.
 function sendWake(why: string): void {
+  if (why !== 'show') reminders.rearm();
   live(mainWindow)?.webContents.send('shell:wake', why);
 }
 
@@ -268,7 +651,7 @@ registerFilesHandlers({
   log: logStartup,
 });
 
-function createWindow(): BrowserWindow {
+function createWindow({ startHidden = false }: { startHidden?: boolean } = {}): BrowserWindow {
   const userData = app.getPath('userData');
   const saved = onScreen(loadWindowState(userData), screen.getAllDisplays().map((d) => d.workArea));
   didCreateMainWindow = true;
@@ -310,8 +693,22 @@ function createWindow(): BrowserWindow {
   };
   win.on('resize', trackBounds);
   win.on('move', trackBounds);
-  win.on('close', () => {
+  win.on('close', (event) => {
     saveWindowState(userData, { ...normalBounds, maximized: live(mainWindow)?.isMaximized() ?? false });
+    if (closeAction({ platform: process.platform, isQuitting, keepRunning: desktopSettings.keepRunning }) === 'hide') {
+      // Closing hides (backgroundMode.ts). Hiding a fullscreen window strands
+      // its Space as a black screen on macOS, so leave fullscreen first.
+      event.preventDefault();
+      const w = live(mainWindow);
+      if (!w) return;
+      if (w.isFullScreen()) {
+        w.once('leave-full-screen', () => live(mainWindow)?.hide());
+        w.setFullScreen(false);
+      } else {
+        w.hide();
+      }
+      noteFirstBackgroundHide();
+    }
   });
   win.on('show', () => sendWake('show'));
 
@@ -324,6 +721,8 @@ function createWindow(): BrowserWindow {
   const showOnce = (why: string) => {
     if (shown) return;
     shown = true;
+    // An open-at-login start on Windows or Linux stays in the tray.
+    if (startHidden) { logStartup(`main window kept hidden (${why}, started at login)`); return; }
     logStartup(`main window show (${why})`);
     live(mainWindow)?.show();
   };
@@ -397,7 +796,11 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMainWindow());
+  app.on('second-instance', (_event, argv) => {
+    const url = deepLinkFromArgv(argv);
+    if (url) openDeepLinkUrl(url);
+    else showMainWindow();
+  });
 }
 
 // Without it Windows attributes notifications to "electron.app.thingGLANCE".
@@ -427,7 +830,7 @@ app.whenReady().then(() => {
   });
 
   // The renderer asks for nothing beyond clipboard writes (copy to clipboard).
-  // Notifications are the main process's own (the reminder scheduler).
+  // Notifications are the main process's own (the reminder scheduler above).
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'clipboard-sanitized-write');
   });
@@ -454,7 +857,29 @@ app.whenReady().then(() => {
     }
   });
 
-  createWindow();
+  // thingglance:// opens this app. A dev run registers the Electron binary
+  // with the app's entry, as Windows and Linux need.
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+  }
+
+  // A link that launched the app opens the window even at login.
+  createWindow({ startHidden: !IS_MAC && launchedHidden(process.argv) && !pendingLink });
+
+  createTray();
+
+  // The global shortcuts saved last time.
+  if (desktopSettings.popupShortcut) applyShortcut('popup', desktopSettings.popupShortcut);
+  if (desktopSettings.windowShortcut) applyShortcut('window', desktopSettings.windowShortcut);
+  // globalShortcut throws before ready, and will-quit can fire then (dayGLANCE
+  // issue #1352); before ready nothing is registered, so there is nothing to free.
+  app.on('will-quit', () => { if (app.isReady()) globalShortcut.unregisterAll(); });
+
+  // Reminders due while the app was not running: within 12 hours fire once.
+  reminders.rearm();
+  app.on('will-quit', () => reminders.stop());
 
   // A woken machine or an unlocked screen: the page's foreground kicks.
   powerMonitor.on('resume', () => sendWake('resume'));

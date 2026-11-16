@@ -14,6 +14,13 @@
 //   - the vault's live stream is read by main and reaches the page;
 //   - the keystore round-trips where the OS has one;
 //   - a backup goes out through the save dialog;
+//   - background mode: the settings answer with their defaults, and a global
+//     shortcut registers where the popup exists;
+//   - with the sample data loaded, the reminder plan reaches the scheduler in
+//     main and the tray popup (the same bundle in its own window) draws the
+//     dates waiting on a decision; "Done" there is queued by main, applied by
+//     the page to its database, and the row leaves the popup;
+//   - a thingglance:// link handed to the app opens where it says;
 //   - the page's log lines reach the log file;
 //   - no uncaught page error.
 //
@@ -55,7 +62,7 @@ const profile = mkdtempSync(path.join(os.tmpdir(), 'thingglance-smoke-profile-')
 const app = await electron.launch({
   executablePath,
   args: ['--no-sandbox'],
-  env: { ...process.env, THINGGLANCE_USER_DATA_DIR: profile },
+  env: { ...process.env, THINGGLANCE_USER_DATA_DIR: profile, THINGGLANCE_SMOKE_HOOKS: '1' },
   timeout: 60_000,
 })
 const pageErrors = []
@@ -201,6 +208,88 @@ try {
   } finally {
     rmSync(exportDir, { recursive: true, force: true })
   }
+
+  // Background mode and shortcuts: the settings main keeps, as Settings reads them.
+  const bg = await page.evaluate(async () => {
+    const d = window.thingglanceDesktop
+    const settings = await d.shell.getBackgroundSettings()
+    const shortcuts = await d.shell.getShortcuts()
+    const windowSet = await d.shell.setShortcut('window', 'Ctrl+Alt+F11')
+    const cleared = await d.shell.setShortcut('window', '')
+    const nonsense = await d.shell.setShortcut('window', 'not a shortcut')
+    return { settings, shortcuts, windowSet, cleared, nonsense }
+  })
+  check(bg.settings?.keepRunning === true && bg.settings?.openAtLogin === false, `background settings default to keep running, not at login (${JSON.stringify(bg.settings)})`)
+  check(bg.shortcuts?.popup === '' && bg.shortcuts?.window === '' && bg.shortcuts?.popupSupported === (mainPlatform !== 'linux'),
+    `global shortcuts answer, none set (${JSON.stringify(bg.shortcuts)})`)
+  check(bg.cleared?.window === '' && bg.nonsense?.ok === false, `a shortcut can be set and cleared, and nonsense is refused (set: ${bg.windowSet?.ok})`)
+
+  // Sample data gives the app dates to show. From here the page feeds main:
+  // the reminder plan, and what the tray draws.
+  await page.getByRole('button', { name: /Explore with sample data/ }).click()
+  await page.getByRole('tab', { name: /^Glance/ }).first().waitFor({ timeout: 15_000 })
+  let planned = []
+  for (let i = 0; i < 100 && planned.length === 0; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 100))
+    planned = await page.evaluate(() => window.thingglanceDesktop.reminders.pending())
+  }
+  check(planned.length > 0 && planned.every((r) => r.at > Date.now() && r.link.startsWith('thingglance://event/') && r.title),
+    `the reminder plan reaches the scheduler in main (${planned.length} pending, next: ${planned[0]?.title})`)
+
+  // The tray popup: the same bundle in its own window, drawn from what main holds.
+  await app.evaluate(() => globalThis.__thingglanceSmoke.toggleTrayPopup())
+  let trayPage = null
+  for (let i = 0; i < 100 && !trayPage; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 100))
+    trayPage = app.windows().find((w) => w.url().includes('tray=1')) ?? null
+  }
+  check(trayPage !== null, 'the tray popup opens in a window of its own')
+  if (trayPage) {
+    trayPage.on('pageerror', (err) => pageErrors.push(`tray: ${err}`))
+    const done = trayPage.getByRole('button', { name: 'Done with this' })
+    await done.first().waitFor({ timeout: 15_000 }).catch(() => {})
+    const before = await done.count()
+    const headline = await trayPage.locator('main p').first().innerText().catch(() => '')
+    check(before > 0 && /want(s)? a decision/.test(headline), `the popup lists the dates waiting on a decision (${before} rows; "${headline}")`)
+    const decisions = () => page.evaluate(() => new Promise((resolve) => {
+      const open = indexedDB.open('thingglance')
+      open.onsuccess = () => {
+        const all = open.result.transaction('decisions').objectStore('decisions').getAll()
+        all.onsuccess = () => { open.result.close(); resolve(all.result.filter((d) => d.state === 'done').length) }
+      }
+      open.onerror = () => resolve(-1)
+    }))
+    const decidedBefore = await decisions()
+    await done.first().click()
+    let after = before
+    for (let i = 0; i < 100 && after >= before; i++) { await new Promise((r) => setTimeout(r, 100)); after = await done.count() }
+    check(after === before - 1, `"Done" takes the row out of the popup at once (${before} to ${after})`)
+    let decidedAfter = decidedBefore
+    for (let i = 0; i < 100 && decidedAfter <= decidedBefore; i++) { await new Promise((r) => setTimeout(r, 100)); decidedAfter = await decisions() }
+    check(decidedAfter === decidedBefore + 1, `the page applied it to its database (${decidedBefore} to ${decidedAfter} decided)`)
+    let queue = 'x'
+    for (let i = 0; i < 50 && queue !== '[]'; i++) { await new Promise((r) => setTimeout(r, 100)); queue = await page.evaluate(() => window.thingglanceDesktop.commands.take()) }
+    check(queue === '[]', 'and acknowledged it, so the queue is empty')
+    await new Promise((r) => setTimeout(r, 1500))
+    check((await done.count()) === before - 1, 'the row stays gone once the next snapshot arrives')
+    // The popup is a widget: main answers the keystore and the network to the main window only.
+    const reach = await trayPage.evaluate(async () => {
+      const d = window.thingglanceDesktop
+      const http = await d.http.request('GET', 'https://example.com/', {}, null)
+      const secret = await d.secureStore.get('thingglance-vault-config').then(() => 'answered', () => 'refused')
+      return { http: http.error ?? 'answered', secret }
+    })
+    check(reach.http === 'Not allowed from this window' && reach.secret === 'refused', `the popup's window gets no network and no keystore (${JSON.stringify(reach)})`)
+    if (process.env.SMOKE_SCREENSHOT) await trayPage.screenshot({ path: process.env.SMOKE_SCREENSHOT.replace(/\.png$/, '-tray.png') })
+  }
+
+  // A link from outside: main keeps it, the page opens it.
+  await app.evaluate(({ app }) => { app.emit('open-url', { preventDefault() {} }, 'thingglance://settings/about') })
+  const opened = await page.getByText(/^v\d+\.\d+\.\d+ · built/).waitFor({ timeout: 10_000 }).then(() => true, () => false)
+  check(opened, 'a thingglance:// link opens the app where it says (Settings, About)')
+  await app.evaluate(({ app }) => { app.emit('open-url', { preventDefault() {} }, 'https://example.com/not-ours') })
+  const stray = await page.evaluate(() => window.thingglanceDesktop.links.consume())
+  check(stray.link === null, 'anything that is not a thingglance:// link is dropped')
 
   // The page's lines reach the log file in userData (shell.log).
   const logLine = `smoke-log-${Date.now()}`

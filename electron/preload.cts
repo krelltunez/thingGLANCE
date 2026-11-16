@@ -46,6 +46,10 @@ contextBridge.exposeInMainWorld('thingglanceDesktop', {
     exitFullscreen: () => ipcRenderer.send('shell:exit-fullscreen'),
     log: (message: string) => ipcRenderer.send('shell:log', message),
     onWake: (listener: (payload: unknown) => void) => subscribe('shell:wake', listener),
+    getBackgroundSettings: () => ipcRenderer.invoke('shell:get-background-settings'),
+    setBackgroundSettings: (patch: { keepRunning?: boolean; openAtLogin?: boolean }) => ipcRenderer.invoke('shell:set-background-settings', patch),
+    getShortcuts: () => ipcRenderer.invoke('shell:get-shortcuts'),
+    setShortcut: (kind: string, accelerator: string) => ipcRenderer.invoke('shell:set-shortcut', kind, accelerator),
   },
   http: {
     request: (method: string, url: string, headers: Record<string, string>, body: string | null) => ipcRenderer.invoke('http:request', method, url, headers, body),
@@ -67,5 +71,30 @@ contextBridge.exposeInMainWorld('thingglanceDesktop', {
   files: {
     saveText: (options: { filename: string; text: string }) => ipcRenderer.invoke('files:save-text', options),
     stash: (options: { filename: string; text: string }) => ipcRenderer.invoke('files:stash', options),
+  },
+  widget: {
+    updateSnapshot: (json: string) => ipcRenderer.send('widget:update-snapshot', json),
+  },
+  commands: {
+    take: () => ipcRenderer.invoke('commands:take'),
+    ack: (ids: string[]) => ipcRenderer.invoke('commands:ack', ids),
+    onQueued: (listener: (payload: unknown) => void) => subscribe('commands:queued', listener),
+  },
+  links: {
+    consume: () => ipcRenderer.invoke('links:consume'),
+    onOpen: (listener: (payload: unknown) => void) => subscribe('links:open', listener),
+  },
+  reminders: {
+    pending: () => ipcRenderer.invoke('reminders:pending'),
+    supported: () => ipcRenderer.invoke('reminders:supported'),
+  },
+  tray: {
+    state: () => ipcRenderer.invoke('tray:state'),
+    decide: (key: string) => ipcRenderer.send('tray:decide', key),
+    send: (key: string) => ipcRenderer.send('tray:send', key),
+    open: (link: string | null) => ipcRenderer.send('tray:open', link),
+    hide: () => ipcRenderer.send('tray:hide'),
+    onState: (listener: (payload: unknown) => void) => subscribe('tray:state', listener),
+    onShown: (listener: (payload: unknown) => void) => subscribe('tray:shown', listener),
   },
 });

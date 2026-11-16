@@ -74,6 +74,10 @@ module.exports = {
   // dist/ and node_modules is left out. Main is compiled by tsc, not bundled,
   // so what main imports would ship beside it (MAIN_RUNTIME_PACKAGES).
   // Sourcemaps stay out of the package.
+  // thingglance:// (docs/desktop.md, "Links"): CFBundleURLTypes on macOS, the
+  // registry on Windows (NSIS), and the .desktop MimeType on Linux, which the
+  // deb registers on install and an AppImage only once integrated.
+  protocols: [{ name: 'thingGLANCE', schemes: ['thingglance'] }],
   files: [
     'dist/**/*',
     'dist-electron/**/*',
@@ -81,6 +85,9 @@ module.exports = {
     '!node_modules/**/*',
     ...MAIN_RUNTIME_PACKAGES.map((name) => `node_modules/${name}/**/*`),
   ],
+  // The tray icons, outside the asar so nativeImage reads them from
+  // process.resourcesPath/tray.
+  extraResources: [{ from: 'electron/resources/tray', to: 'tray' }],
   mac: {
     // null: ad-hoc (no certificate); undefined: electron-builder picks the
     // Developer ID identity when CSC_LINK is set.

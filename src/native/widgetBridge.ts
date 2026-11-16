@@ -145,7 +145,7 @@ export async function pushPayloadNow(surface: NativeSurface = pluginSurface): Pr
 // More dates than the app's own lists show: a tall widget scrolls. The
 // launcher's page takes more again.
 const WIDGET_EVENTS = 12
-const LAUNCHER_EVENTS = 40
+export const LAUNCHER_EVENTS = 40
 const HANDLED_SHOWN = 60
 const SETTLE_MS = 600
 
@@ -278,6 +278,20 @@ export function collectWidgetWrites(afterApplying: () => Promise<void>, surface:
   return collecting
 }
 
+// Everything a payload is built from: the data, made here or pulled from the
+// vault, and what the snapshot is built with (who this device is, the
+// currency, the reminder hour, the language). `onChange` is called on any of
+// them; the desktop's feed watches the same list (native/desktopShell.ts).
+export function watchPayloadInputs(onChange: () => void): void {
+  liveQuery(async () => {
+    await Promise.all([db.things.toArray(), db.coverages.toArray(), db.subscriptions.toArray(), db.decisions.toArray(), db.members.toArray(), db.devices.toArray()])
+    return Date.now()
+  }).subscribe({ next: onChange, error: () => { /* the next trigger tries again */ } })
+  subscribeHousehold(onChange)
+  subscribeSettings(onChange)
+  i18n.on('languageChanged', onChange)
+}
+
 // `onSnapshot` is handed every snapshot as it is made, changed or not.
 export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => void): void {
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -303,16 +317,7 @@ export function startWidgetBridge(onSnapshot?: (snapshot: GlanceSnapshot) => voi
   const now = async () => { if (timer) clearTimeout(timer); await push() }
   const collect = () => void collectWidgetWrites(now)
 
-  // Any write to the data, made here or pulled from the vault.
-  liveQuery(async () => {
-    await Promise.all([db.things.toArray(), db.coverages.toArray(), db.subscriptions.toArray(), db.decisions.toArray(), db.members.toArray(), db.devices.toArray()])
-    return Date.now()
-  }).subscribe({ next: soon, error: () => { /* the next trigger tries again */ } })
-  // What the snapshot is built with: who this device is, the currency, the
-  // reminder hour, the language.
-  subscribeHousehold(soon)
-  subscribeSettings(soon)
-  i18n.on('languageChanged', soon)
+  watchPayloadInputs(soon)
   // Ticks made on the home screen: collected at start, whenever the native
   // side says there is one (the app is running), and on coming to the front.
   collect()

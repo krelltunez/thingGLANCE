@@ -12,6 +12,9 @@
 FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json .npmrc ./
+# The desktop shell's Electron binary is a dev dependency this image never
+# runs: skip its download.
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN npm ci
 COPY . .
 RUN npm run build

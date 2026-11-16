@@ -2,7 +2,7 @@
 
 thingGLANCE is a web app. A shell (Capacitor on a phone, Electron on a desktop, a headless refresh with no window) wraps the same bundle and gives it things a browser lacks. This page lists every place a shell connects, so the first shell is a matter of supplying bridges and not of threading conditionals through the app.
 
-Nothing below is used by a shell yet. Each seam is built and tested in the web app, where it does nothing or falls back to the browser.
+Each seam is built and tested in the web app, where it does nothing or falls back to the browser. Two shells use them today: Android ([android.md](android.md)) and the desktop app ([desktop.md](desktop.md)).
 
 | A shell wants to | It uses | Where |
 | --- | --- | --- |
@@ -27,11 +27,11 @@ import { registerShell } from '@/native/shell'
 registerShell({ fetch: shellFetch, secureStore })
 ```
 
-or, from an Electron preload script, `window.thingglanceShell = { fetch, secureStore }`.
+or by setting `window.thingglanceShell = { fetch, secureStore }` before the bundle loads.
 
 It has to be in place before `src/main.tsx` runs, because boot reads the credentials from it before anything renders.
 
-The first real shell is Android: `src/native/capacitor.ts` registers the bridge, and [android.md](android.md) describes the native side of each seam. Android's background refresh is a second, smaller one: a page with no screen and no Capacitor, which registers a transport and a keystore from its own bridge (`src/headless/headlessMode.ts`) and then runs ordinary app code.
+The first real shell is Android: `src/native/capacitor.ts` registers the bridge, and [android.md](android.md) describes the native side of each seam. The desktop app is the second: its preload exposes `window.thingglanceDesktop`, and `src/native/desktopShell.ts` registers a transport, a keystore and a stream reader built on it ([desktop.md](desktop.md)). Android's background refresh is a second, smaller one: a page with no screen and no Capacitor, which registers a transport and a keystore from its own bridge (`src/headless/headlessMode.ts`) and then runs ordinary app code.
 
 ## The network
 
@@ -48,7 +48,7 @@ With no shell both are the browser's `fetch`. With one, every request goes out o
 
 **One exception:** the vault's live event stream on the web reads a response as it streams, which a transport that returns whole bodies cannot do. It runs only when there is no shell, and "no shell" means both that the platform says so (`shell()`) and that no bridge supplies a `fetch`. A shell brings its own stream reader, as the sibling apps do: `registerShell({ eventStream })`, three calls (`start(connection)`, `stop()`, `listen(listener)`) passing the sibling apps' message shapes (`open`, `frame` with a raw block, `closed`, `error` with an optional final `code`). The shell owns the socket, its reconnects and when it runs; the app only says the stream is wanted. Android's is `src/native/vaultSse.ts`. A shell without one has no live updates and polls.
 
-**Not covered:** images. A product photo is an `<img>`, so it loads on the WebView's own stack. That is fine on Android; a desktop renderer with no network of its own will need them fetched by the main process.
+**Not covered:** images. A product photo is an `<img>`, so it loads on the WebView's own stack. That is fine on Android. On the desktop the page's CSP allows images from the lookup's one image host and from nowhere else ([desktop.md](desktop.md#origin-storage-and-loading)).
 
 ## Credentials
 

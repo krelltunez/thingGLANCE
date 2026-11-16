@@ -224,6 +224,8 @@ Gotchas lastGLANCE documents:
 
 ## Phase 5: desktop (L)
 
+> Under way, 2026-11-15: the scaffold and network and sync (1 and 2 below) are built. [desktop.md](desktop.md) describes what exists.
+
 Plain Electron, not the Capacitor Electron wrapper, as lastGLANCE chose. Its five phases, minus iCloud:
 
 1. **Scaffold.** The `app://thingglance` protocol, window, strict CSP, a smoke test, unsigned builds. `vite build --mode electron` already builds without the PWA plugin.

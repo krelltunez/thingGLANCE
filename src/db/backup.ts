@@ -4,6 +4,7 @@ import { db } from './client'
 import type { Coverage, Decision, DeviceLink, Member, Ownership, Subscription, Thing } from '@/core/types'
 import { normalizeSubscription, normalizeThing, readOwnership } from '@/core/shape'
 import { tr } from '@/core/text'
+import { desktopBridge } from '@/native/desktop'
 import { markDirty } from '@/sync/dirtyTracker'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
 
@@ -46,11 +47,16 @@ export async function buildBackup(): Promise<Backup> {
 
 export async function downloadBackup(): Promise<void> {
   const backup = await buildBackup()
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+  const filename = `thingglance-backup-${backup.exportedAt.slice(0, 10)}.json`
+  const text = JSON.stringify(backup, null, 2)
+  // The desktop app saves through the system's own dialog (electron/files.ts).
+  const desktop = desktopBridge()
+  if (desktop) { await desktop.files.saveText({ filename, text }); return }
+  const blob = new Blob([text], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `thingglance-backup-${backup.exportedAt.slice(0, 10)}.json`
+  a.download = filename
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

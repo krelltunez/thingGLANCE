@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Mac App Store build (docs/desktop.md), after lastGLANCE's and
+     dayGLANCE's electron/entitlements.mas.plist. The app id and team come from
+     the provisioning profile, which electron-builder embeds. -->
+<plist version="1.0">
+  <dict>
+    <!-- Kept for parity with Electron's defaults; the sandbox governs execution.
+         allow-unsigned-executable-memory is a Hardened Runtime key and is left
+         out: App Review questions it and the sandboxed build does not need it. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- Outbound network: GLANCEvault and the product lookups. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- A backup saved where the user chooses, in the system's save dialog. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+  </dict>
+</plist>

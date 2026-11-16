@@ -8,15 +8,12 @@
 //             worker, tray popup rendered from the same bundle with ?tray=1
 
 import { tr } from '@/core/text'
+import { desktopBridge } from './desktop'
 import { shellBridge } from './shell'
 
+export { desktopBridge }
+
 export type Shell = 'web' | 'native' | 'desktop'
-
-interface DesktopBridge { info: { platform: string } }
-
-export function desktopBridge(): DesktopBridge | null {
-  return (window as unknown as { thingglanceDesktop?: DesktopBridge }).thingglanceDesktop ?? null
-}
 
 export function shell(): Shell {
   if (desktopBridge()) return 'desktop'

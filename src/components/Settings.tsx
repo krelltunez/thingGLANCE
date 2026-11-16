@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  Cloud, Copy, Database, Download, ExternalLink, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Palette, PanelTop, Pencil,
+  Cloud, Copy, Database, Download, ExternalLink, Info, KeyRound, LayoutGrid, LoaderCircle, Lock, MonitorCog, Moon, Network, Palette, PanelTop, Pencil,
   RefreshCw, Send, Sun, Trash2, Unplug, Upload, Users, Zap,
 } from 'lucide-react'
 import { DAY, fmtDay, fmtMoment } from '@/core/dates'
@@ -22,11 +22,14 @@ import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/conf
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { automationEnabled, setAutomationEnabled } from '@/native/automation'
+import { desktopBridge, type DesktopHttpGrant } from '@/native/desktop'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
+import { hasShellTransport } from '@/native/shell'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
 import { WidgetBridge, type TileKind, type WidgetKind } from '@/native/widgetBridge'
 import { getSyncPassphrase } from '@glance-apps/sync'
 import { recheckRoster, syncErrorText, syncNow } from '@/sync/manager'
+import { blockedMessage, checkPrivateAddress, grantPrivateAddress, type PrivateAddressBlock } from '@/sync/privateAddress'
 import { ProEnrollError, clearCachedVaultKeys, connectSelfHosted, connectVaultPro, disconnectVault, reloadAfterConfigChange, testVaultConnection } from '@/sync/vaultConnect'
 import { APP_ID, getVaultConfig } from '@/sync/vaultConfig'
 import { useData } from '@/state/data'
@@ -189,8 +192,12 @@ function Vault() {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ tone: Tone; text: string } | null>(null)
   const [confirm, setConfirm] = useState(false)
+  // The desktop app refuses a server on a private network until it is allowed.
+  const [blocked, setBlocked] = useState<PrivateAddressBlock | null>(null)
 
   const done = () => void reloadAfterConfigChange()
+  // A shell makes the requests itself, so the server has no origin to allow.
+  const noOrigin = hasShellTransport()
 
   const connectPro = async () => {
     setBusy(true); setNote(null)
@@ -203,11 +210,20 @@ function Vault() {
   const selfValid = /^https?:\/\//.test(self.vaultUrl) && !!self.vaultToken && !!self.accountId
 
   const test = async (): Promise<boolean> => {
-    setBusy(true); setNote(null)
+    setBusy(true); setNote(null); setBlocked(null)
+    // Asked first: a refused request never reaches the server, so a test of
+    // one would only ever say "could not reach".
+    const block = await checkPrivateAddress(self.vaultUrl)
+    if (block) {
+      setBusy(false)
+      setBlocked(block)
+      setNote({ tone: block.canGrant ? 'warn' : 'bad', text: blockedMessage(block) })
+      return false
+    }
     const r = await testVaultConnection(self)
     setBusy(false)
     if (!r.ok) {
-      setNote({ tone: 'bad', text: r.code === 'AUTH_FAILURE' ? t('settings.vault.tokenRejected') : r.code === 'FORBIDDEN' ? t('settings.vault.tokenForbidden') : t('settings.vault.unreachable') })
+      setNote({ tone: 'bad', text: r.code === 'AUTH_FAILURE' ? t('settings.vault.tokenRejected') : r.code === 'FORBIDDEN' ? t('settings.vault.tokenForbidden') : t(noOrigin ? 'settings.vault.unreachableShell' : 'settings.vault.unreachable') })
       return false
     }
     if (r.appAllowed === false) {
@@ -226,6 +242,17 @@ function Vault() {
     if (!(await test())) return
     await connectSelfHosted(self)
     done()
+  }
+
+  // The system's own dialog names the address; a yes is followed by the test
+  // the refusal stood in for.
+  const allow = async () => {
+    setBusy(true)
+    const refusal = await grantPrivateAddress(self.vaultUrl)
+    setBusy(false)
+    if (refusal) { setNote({ tone: 'bad', text: refusal }); return }
+    setBlocked(null)
+    void test()
   }
 
   if (connected && cfg) {
@@ -263,6 +290,7 @@ function Vault() {
           {confirm && <p className="mt-2 text-xs text-dim">{t('settings.vault.disconnectNote')}</p>}
         </Block>
         <Block title={t('settings.vault.encrypted')} hint={t('settings.vault.encryptedHint')}>{null}</Block>
+        <AllowedAddresses />
       </div>
     )
   }
@@ -299,13 +327,51 @@ function Vault() {
               <button type="button" className="btn-primary" disabled={!selfValid || busy} onClick={() => void connectSelf()}>{t('settings.vault.connect')}</button>
             </div>
             <p className="text-xs leading-relaxed text-faint">
-              <Trans i18nKey="settings.vault.serverNeeds" values={{ app: APP_ID, origin: window.location.origin }} components={{ id: <span className="num text-dim" /> }} />
+              {noOrigin
+                ? <Trans i18nKey="settings.vault.serverNeedsShell" values={{ app: APP_ID }} components={{ id: <span className="num text-dim" /> }} />
+                : <Trans i18nKey="settings.vault.serverNeeds" values={{ app: APP_ID, origin: window.location.origin }} components={{ id: <span className="num text-dim" /> }} />}
             </p>
           </div>
         )}
         {note && <p className={cx('mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed', TONES[note.tone].soft)}>{note.text}</p>}
+        {mode === 'self' && blocked?.canGrant && (
+          <div className="mt-3">
+            <button type="button" className="btn" disabled={busy} onClick={() => void allow()}><Network size={15} /> {t('settings.vault.private.allow')}</button>
+            <p className="mt-1.5 text-xs leading-relaxed text-faint">{t('settings.vault.private.allowHint')}</p>
+          </div>
+        )}
       </Block>
+      <AllowedAddresses />
     </div>
+  )
+}
+
+// The private-network servers this computer may reach (desktop app only):
+// each was allowed in the system's own dialog, and can be taken back here.
+function AllowedAddresses() {
+  const { t } = useTranslation()
+  const [grants, setGrants] = useState<DesktopHttpGrant[]>([])
+  const http = desktopBridge()?.http
+  useEffect(() => { void http?.grants().then(setGrants).catch(() => {}) }, [http])
+  if (!http || grants.length === 0) return null
+  const remove = async (origin: string) => {
+    await http.revoke(origin).catch(() => {})
+    setGrants(await http.grants().catch(() => []))
+  }
+  return (
+    <Block title={t('settings.vault.private.allowedTitle')} hint={t('settings.vault.private.allowedHint')}>
+      <ul className="space-y-1.5">
+        {grants.map((g) => (
+          <li key={g.origin} className="flex items-center justify-between gap-3 rounded-lg border border-line/10 bg-bg/40 px-3 py-2">
+            <div className="min-w-0">
+              <p className="num truncate text-sm">{g.origin}</p>
+              <p className="num truncate text-xs text-faint">{g.addresses.join(', ')}</p>
+            </div>
+            <button type="button" className="btn-ghost shrink-0 text-bad" onClick={() => void remove(g.origin)}>{t('common.remove')}</button>
+          </li>
+        ))}
+      </ul>
+    </Block>
   )
 }
 

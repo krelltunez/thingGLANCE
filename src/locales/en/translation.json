@@ -807,7 +807,8 @@
       "remindersBlocked": "Notifications are turned off for thingGLANCE in Android's settings.",
       "refreshNever": "Widgets and reminders are also kept up to date a few times a day while the app is closed.",
       "refreshRan": "Kept up to date while the app is closed. Last done {{when}}.",
-      "refreshFailed": "The last update made while the app was closed did not finish ({{when}}). Opening the app catches up."
+      "refreshFailed": "The last update made while the app was closed did not finish ({{when}}). Opening the app catches up.",
+      "remindersUnavailable": "This system cannot show notifications, so reminders stay in the app."
     },
     "vault": {
       "rosterRefused": "Your vault is refusing the shared household roster: \"glance-users\" is not in its GLANCEVAULT_ALLOWED_APPS. Until it is added and the vault's container recreated, no GLANCE app can sync members through this vault, and each keeps only its own copy. Restart dayGLANCE and lastGLANCE afterwards: they stop trying until relaunched.",
@@ -1001,6 +1002,20 @@
       "sharedRoster": "Shared roster",
       "webData": "Where the web data comes from",
       "webDataHint": "Product facts: Wikipedia (CC BY-SA). Support windows: endoflife.date (MIT). Dates marked as estimates are projections from a maker's usual support window, not promises."
+    },
+    "desktop": {
+      "title": "Desktop app",
+      "keepRunning": "Keep running in the background",
+      "keepRunningHint": "Closing the window leaves thingGLANCE in the tray, so reminders keep coming.",
+      "openAtLogin": "Open at login",
+      "openAtLoginHint": "Start thingGLANCE when you sign in to this computer.",
+      "shortcuts": "Global shortcuts",
+      "shortcutPopup": "Open the tray popup from anywhere.",
+      "shortcutWindow": "Show the thingGLANCE window from anywhere.",
+      "shortcutPlaceholder": "Click, then press a shortcut…",
+      "shortcutClear": "Clear",
+      "shortcutNeedsModifier": "Include Ctrl, Alt or Cmd, so the shortcut does not get in the way of typing.",
+      "shortcutTaken": "That shortcut could not be set. Another app may already use it."
     }
   },
   "householdFields": {
@@ -1075,5 +1090,23 @@
     "toggleFullScreen": "Toggle Full Screen",
     "minimize": "Minimize",
     "zoom": "Zoom"
+  },
+  "desktop": {
+    "background": {
+      "title": "thingGLANCE is still running",
+      "body": "Reminders keep coming while the window is closed. Open thingGLANCE from the tray."
+    },
+    "tray": {
+      "open": "Open thingGLANCE",
+      "quit": "Quit thingGLANCE",
+      "waiting": "{{n}} waiting on a decision",
+      "notReady": "Open thingGLANCE once to see what is coming up.",
+      "search": "Search your things",
+      "clearSearch": "Clear search",
+      "noMatches": "Nothing matches.",
+      "allClear": "All clear. Nothing needs you right now.",
+      "comingUp": "Coming up",
+      "charges": "{{amount}} in plan charges over the next {{days}} days"
+    }
   }
 }

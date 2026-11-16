@@ -32,6 +32,24 @@ export interface DesktopShell {
   log(message: string): void
   /** The machine woke, the screen unlocked, or the window was shown; returns the unsubscribe. */
   onWake(listener: (why: unknown) => void): () => void
+  /** Background mode. keepRunning applies on Windows and Linux. */
+  getBackgroundSettings(): Promise<DesktopBackgroundSettings | null>
+  setBackgroundSettings(patch: Partial<DesktopBackgroundSettings>): Promise<DesktopBackgroundSettings>
+  /** The global shortcuts ('' for none); the popup one exists on macOS and Windows only. */
+  getShortcuts(): Promise<DesktopShortcuts | null>
+  /** Register (or clear, with '') one; `ok` is false when another app holds it. */
+  setShortcut(kind: 'popup' | 'window', accelerator: string): Promise<DesktopShortcuts & { ok: boolean }>
+}
+
+export interface DesktopShortcuts {
+  popup: string
+  window: string
+  popupSupported: boolean
+}
+
+export interface DesktopBackgroundSettings {
+  keepRunning: boolean
+  openAtLogin: boolean
 }
 
 /** A response from the main process, or why no response came (refused, timeout, network). */
@@ -88,6 +106,71 @@ export interface DesktopFiles {
   stash(options: { filename: string; text: string }): Promise<void>
 }
 
+/** What the tray shows and the reminders are scheduled from: the payload Android's widgets get. */
+export interface DesktopWidget {
+  /** A WidgetPayload as JSON (native/widgetBridge.ts). */
+  updateSnapshot(json: string): void
+}
+
+/**
+ * Writes made outside the window (the tray, a reminder's button), queued by
+ * the main process until the page has applied them (electron/commandQueue.ts).
+ */
+export interface DesktopCommands {
+  /** A JSON array of { action, payload, clientId }, oldest first. Nothing leaves until acknowledged. */
+  take(): Promise<string>
+  ack(ids: string[]): Promise<void>
+  /** One was just queued; returns the unsubscribe. */
+  onQueued(listener: () => void): () => void
+}
+
+/** A thingglance:// link the app was opened with, a reminder's click, a row in the tray. */
+export interface DesktopLinks {
+  consume(): Promise<{ link: string | null }>
+  /** A link is waiting; returns the unsubscribe. */
+  onOpen(listener: () => void): () => void
+}
+
+/** A reminder as the main process holds it (electron/reminderScheduler.ts). */
+export interface DesktopReminder {
+  id: string
+  at: number
+  title: string
+  body: string
+  link: string
+  eventKey: string
+}
+
+/** The reminder scheduler in main. It schedules from the snapshot; the page only looks. */
+export interface DesktopReminders {
+  pending(): Promise<DesktopReminder[]>
+  /** Whether this system can show a notification at all. */
+  supported(): Promise<boolean>
+}
+
+/** What the tray popup draws (electron/trayModel.ts, TrayState). */
+export interface DesktopTrayState {
+  ready: boolean
+  waiting: number
+  payload: { snapshot: unknown; labels: unknown; canSend: boolean } | null
+}
+
+/** The tray popup's calls. Main answers them only from the popup's window. */
+export interface DesktopTray {
+  state(): Promise<DesktopTrayState | null>
+  /** "Done with this" on a date, by its key. */
+  decide(key: string): void
+  /** "Send to dayGLANCE". */
+  send(key: string): void
+  /** Show the app, at a link or (null) as it is. */
+  open(link: string | null): void
+  hide(): void
+  /** Returns the unsubscribe. */
+  onState(listener: (state: unknown) => void): () => void
+  /** The popup was just opened; returns the unsubscribe. */
+  onShown(listener: () => void): () => void
+}
+
 export interface DesktopBridge {
   info: DesktopInfo
   shell: DesktopShell
@@ -95,6 +178,11 @@ export interface DesktopBridge {
   vaultSse: DesktopVaultSse
   secureStore: DesktopSecureStore
   files: DesktopFiles
+  widget: DesktopWidget
+  commands: DesktopCommands
+  links: DesktopLinks
+  reminders: DesktopReminders
+  tray: DesktopTray
 }
 
 /**
@@ -109,6 +197,10 @@ export const DESKTOP_BRIDGE_METHODS = [
   'shell.exitFullscreen',
   'shell.log',
   'shell.onWake',
+  'shell.getBackgroundSettings',
+  'shell.setBackgroundSettings',
+  'shell.getShortcuts',
+  'shell.setShortcut',
   'http.request',
   'http.inspect',
   'http.grant',
@@ -122,6 +214,21 @@ export const DESKTOP_BRIDGE_METHODS = [
   'secureStore.delete',
   'files.saveText',
   'files.stash',
+  'widget.updateSnapshot',
+  'commands.take',
+  'commands.ack',
+  'commands.onQueued',
+  'links.consume',
+  'links.onOpen',
+  'reminders.pending',
+  'reminders.supported',
+  'tray.state',
+  'tray.decide',
+  'tray.send',
+  'tray.open',
+  'tray.hide',
+  'tray.onState',
+  'tray.onShown',
 ] as const
 
 const PLATFORMS: readonly string[] = ['darwin', 'win32', 'linux']

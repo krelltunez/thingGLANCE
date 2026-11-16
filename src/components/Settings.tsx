@@ -22,7 +22,8 @@ import { getActivity, getIntentsConfig, saveIntentsConfig } from '@/intents/conf
 import { loadIntentsRootKey } from '@/intents/keyStore'
 import { setupIntentsEncryption } from '@/intents/setup'
 import { automationEnabled, setAutomationEnabled } from '@/native/automation'
-import { desktopBridge, type DesktopHttpGrant } from '@/native/desktop'
+import { desktopBridge, type DesktopBackgroundSettings, type DesktopHttpGrant, type DesktopShortcuts } from '@/native/desktop'
+import { recordShortcut } from '@/native/shortcutRecorder'
 import { describeDevice, promptInstall, shell } from '@/native/platform'
 import { hasShellTransport } from '@/native/shell'
 import { notifyPermission, requestNotifyPermission, type NotifyPermission } from '@/native/notifications'
@@ -82,6 +83,7 @@ function BackgroundRefreshNote() {
 function Reminders() {
   const { t } = useTranslation()
   const { reminders } = useSettings()
+  const onDesktop = shell() === 'desktop'
   const [permission, setPermission] = useState<NotifyPermission | null>(null)
   useEffect(() => { void notifyPermission().then(setPermission) }, [])
   const on = reminders.enabled && permission === 'granted'
@@ -97,7 +99,7 @@ function Reminders() {
   return (
     <Block title={t('settings.general.reminders')} hint={t('settings.general.remindersHint')}>
       <Toggle checked={on} onChange={(v) => void toggle(v)} label={t('settings.general.remindersOn')} />
-      {reminders.enabled && permission === 'denied' && <p className="mt-2 text-xs text-warn">{t('settings.general.remindersBlocked')}</p>}
+      {reminders.enabled && permission === 'denied' && <p className="mt-2 text-xs text-warn">{t(onDesktop ? 'settings.general.remindersUnavailable' : 'settings.general.remindersBlocked')}</p>}
       {on && (
         <label className="mt-3 flex items-center gap-3 text-sm text-dim">
           {t('settings.general.remindersTime')}
@@ -144,7 +146,8 @@ function General() {
           <LanguagePicker className="input w-56" />
         </Block>
       )}
-      {shell() === 'native' && <Reminders />}
+      {shell() !== 'web' && <Reminders />}
+      {shell() === 'desktop' && <DesktopApp />}
       {shell() === 'native' && (
         <Block title={t('settings.general.widgets')} hint={t('settings.general.widgetsHint')}>
           <div className="flex flex-wrap gap-2">
@@ -175,6 +178,76 @@ function General() {
         </Block>
       )}
     </div>
+  )
+}
+
+// A global shortcut, recorded from the next key press (native/shortcutRecorder.ts):
+// click the field, press the keys.
+function ShortcutField({ hint, value, failed, platform, onChange }: { hint: string; value: string; failed: boolean; platform: string; onChange: (accelerator: string) => void }) {
+  const { t } = useTranslation()
+  const [needsModifier, setNeedsModifier] = useState(false)
+  return (
+    <div className="mt-3 first:mt-0">
+      <p className="mb-1.5 text-xs text-dim">{hint}</p>
+      <div className="flex items-center gap-2">
+        <input
+          readOnly className="input num flex-1 cursor-pointer" value={value} placeholder={t('settings.desktop.shortcutPlaceholder')} aria-label={hint}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') return
+            e.preventDefault()
+            e.stopPropagation()
+            const r = recordShortcut(e.nativeEvent, platform)
+            if (r.kind === 'needs-modifier') { setNeedsModifier(true); return }
+            if (r.kind !== 'accelerator') return
+            setNeedsModifier(false)
+            onChange(r.accelerator)
+            e.currentTarget.blur()
+          }}
+          onBlur={() => setNeedsModifier(false)}
+        />
+        {value && <button type="button" className="btn-ghost shrink-0" onClick={() => onChange('')}>{t('settings.desktop.shortcutClear')}</button>}
+      </div>
+      {needsModifier && <p className="mt-1 text-xs text-warn">{t('settings.desktop.shortcutNeedsModifier')}</p>}
+      {failed && <p className="mt-1 text-xs text-bad">{t('settings.desktop.shortcutTaken')}</p>}
+    </div>
+  )
+}
+
+// What only the desktop app has: staying in the tray with the window closed,
+// starting at login, and two shortcuts that work from any app. The main
+// process keeps all of it (electron/backgroundMode.ts); this only shows it.
+function DesktopApp() {
+  const { t } = useTranslation()
+  const bridge = desktopBridge()
+  const [bg, setBg] = useState<DesktopBackgroundSettings | null>(null)
+  const [keys, setKeys] = useState<DesktopShortcuts | null>(null)
+  const [failed, setFailed] = useState<'popup' | 'window' | null>(null)
+  useEffect(() => {
+    void bridge?.shell.getBackgroundSettings().then(setBg).catch(() => {})
+    void bridge?.shell.getShortcuts().then(setKeys).catch(() => {})
+  }, [bridge])
+  if (!bridge || !bg) return null
+  const set = (patch: Partial<DesktopBackgroundSettings>) => void bridge.shell.setBackgroundSettings(patch).then(setBg).catch(() => {})
+  const record = (kind: 'popup' | 'window') => (accelerator: string) => void bridge.shell.setShortcut(kind, accelerator).then((r) => {
+    setKeys({ popup: r.popup, window: r.window, popupSupported: r.popupSupported })
+    setFailed(r.ok ? null : kind)
+  }).catch(() => setFailed(kind))
+  const platform = bridge.info.platform
+  return (
+    <Block title={t('settings.desktop.title')}>
+      <div className="space-y-3">
+        {/* On a Mac closing the window always leaves the app running, as Mac apps do. */}
+        {platform !== 'darwin' && <Toggle checked={bg.keepRunning} onChange={(keepRunning) => set({ keepRunning })} label={t('settings.desktop.keepRunning')} hint={t('settings.desktop.keepRunningHint')} />}
+        <Toggle checked={bg.openAtLogin} onChange={(openAtLogin) => set({ openAtLogin })} label={t('settings.desktop.openAtLogin')} hint={t('settings.desktop.openAtLoginHint')} />
+      </div>
+      {keys && (
+        <div className="mt-4 border-t border-line/10 pt-4">
+          <p className="mb-2 text-sm font-medium text-ink">{t('settings.desktop.shortcuts')}</p>
+          {keys.popupSupported && <ShortcutField hint={t('settings.desktop.shortcutPopup')} value={keys.popup} failed={failed === 'popup'} platform={platform} onChange={record('popup')} />}
+          <ShortcutField hint={t('settings.desktop.shortcutWindow')} value={keys.window} failed={failed === 'window'} platform={platform} onChange={record('window')} />
+        </div>
+      )}
+    </Block>
   )
 }
 

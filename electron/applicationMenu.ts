@@ -33,19 +33,18 @@ export const APPLICATION_MENU_LABEL_KEYS = [
 ] as const;
 
 /**
- * The shell's own text that rides in the same `menu` block (section 7): the
- * background notice, the tray and its menu. Optional: main falls back to
- * English for any that has not arrived.
+ * The shell's own text that rides with the menu's: the background notice, the
+ * tray and its menu. Optional: main falls back to English for any that has
+ * not arrived.
  */
 export const SHELL_LABEL_KEYS = [
   'backgroundTitle',
   'backgroundBody',
   'trayOpen',
   'trayQuit',
-  'trayMarkDone',
-  'trayNothingDue',
-  'trayMcpUndo',
-  'trayMcpOff',
+  'trayDone',
+  'trayNothingWaiting',
+  'trayWaiting',
 ] as const;
 
 export type ApplicationMenuLabelKey = typeof APPLICATION_MENU_LABEL_KEYS[number];

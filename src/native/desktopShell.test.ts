@@ -65,3 +65,35 @@ describe('the bridge', () => {
     expect(labels.quit).toBe('Quit')
   })
 })
+
+describe('what main is handed', () => {
+  const payload = (generatedAt: string, attention: number) => ({
+    snapshot: { generatedAt, counts: { attention } } as never,
+    labels: {} as never,
+    canSend: false,
+  })
+
+  it('counts as unchanged when only the moment it was made differs', async () => {
+    const { payloadPrint } = await import('./desktopShell')
+    expect(payloadPrint(payload('2026-11-16T09:00:00Z', 2))).toBe(payloadPrint(payload('2026-11-16T09:15:00Z', 2)))
+    expect(payloadPrint(payload('2026-11-16T09:00:00Z', 2))).not.toBe(payloadPrint(payload('2026-11-16T09:00:00Z', 1)))
+  })
+})
+
+describe('a link from outside', () => {
+  it('is taken from main at start and whenever main says one is waiting, and opened through the app\'s one door', async () => {
+    const { followDesktopLinks } = await import('./desktopShell')
+    const { takeWaitingLink } = await import('./links')
+    const waiting: (string | null)[] = ['thingglance://thing/abc', 'thingglance://queue', null]
+    let onOpen: () => void = () => {}
+    followDesktopLinks({ links: { consume: async () => ({ link: waiting.shift() ?? null }), onOpen: (l) => { onOpen = l; return () => {} } } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(takeWaitingLink()).toBe('thingglance://thing/abc')
+    onOpen()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(takeWaitingLink()).toBe('thingglance://queue')
+    onOpen()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(takeWaitingLink()).toBeNull()
+  })
+})

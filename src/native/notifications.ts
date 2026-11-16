@@ -12,6 +12,7 @@
 
 import { registerPlugin } from '@capacitor/core'
 import type { Reminder } from '@/core/reminders'
+import { desktopBridge } from './desktop'
 
 export type NotifyPermission = 'granted' | 'denied' | 'prompt'
 
@@ -28,6 +29,11 @@ export const Reminders = registerPlugin<RemindersPlugin>('Reminders')
 const ASKED_KEY = 'tg_notify_asked'
 
 export async function notifyPermission(): Promise<NotifyPermission> {
+  // The desktop app's reminders are the main process's own notifications
+  // (electron/reminderScheduler.ts): there is nothing to grant, only a system
+  // that can show one or cannot.
+  const desktop = desktopBridge()
+  if (desktop) return (await desktop.reminders.supported().catch(() => false)) ? 'granted' : 'denied'
   try {
     return (await Reminders.permission()).state
   } catch {
@@ -37,6 +43,7 @@ export async function notifyPermission(): Promise<NotifyPermission> {
 
 // Shows the system's own prompt (Android 13+; older versions need none).
 export async function requestNotifyPermission(): Promise<boolean> {
+  if (desktopBridge()) return (await notifyPermission()) === 'granted'
   try { localStorage.setItem(ASKED_KEY, '1') } catch { /* asked this session */ }
   try {
     return (await Reminders.requestPermission()).state === 'granted'

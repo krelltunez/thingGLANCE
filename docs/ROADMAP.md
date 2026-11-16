@@ -224,7 +224,7 @@ Gotchas lastGLANCE documents:
 
 ## Phase 5: desktop (L)
 
-> Under way, 2026-11-15: the scaffold and network and sync (1 and 2 below) are built. [desktop.md](desktop.md) describes what exists.
+> Under way, 2026-11-15: everything but the release (1 to 4 below) is built. [desktop.md](desktop.md) describes what exists.
 
 Plain Electron, not the Capacitor Electron wrapper, as lastGLANCE chose. Its five phases, minus iCloud:
 

@@ -51,7 +51,7 @@ export default tseslint.config(
   },
   {
     // Node-context config, build and test-driver files are not browser code.
-    files: ['*.{js,cjs,ts}', 'scripts/**/*.{js,cjs,mjs,ts}', 'e2e/**/*.mjs'],
+    files: ['*.{js,cjs,ts}', 'scripts/**/*.{js,cjs,mjs,ts}', 'electron/**/*.{ts,cts}', 'e2e/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
 )

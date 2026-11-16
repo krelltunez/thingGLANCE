@@ -14,6 +14,7 @@ android/keystore.properties
 *.jks
 dist-electron
 dist-app
+electron/*.provisionprofile
 
 # End-to-end screenshots
 e2e/out

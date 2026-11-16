@@ -9,6 +9,7 @@ import App from './App'
 import { applyTheme, watchSystemTheme } from './state/settings'
 import { headlessBridge, headlessShell } from './headless/headlessMode'
 import { startCapacitorShell } from './native/capacitor'
+import { startDesktopShell } from './native/desktopShell'
 import { registerShell } from './native/shell'
 import { desktopBridge, settleServiceWorker, shell, watchInstallPrompt } from './native/platform'
 import { settleKeyStorage } from './sync/keyHooks'
@@ -35,6 +36,9 @@ if (headless) registerShell(headlessShell(headless))
 // A native shell hands over its keystore and its network stack before
 // anything else looks for them. Does nothing in a browser.
 startCapacitorShell()
+// The desktop app's main process carries every request, holds the keystore and
+// reads the live stream. Does nothing anywhere else.
+startDesktopShell()
 
 // Shell markers for platform-only styling (same class contract as lastGLANCE).
 const where = shell()

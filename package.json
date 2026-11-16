@@ -16,7 +16,15 @@
     "test:e2e": "node e2e/vault-sync.mjs",
     "gen:icons": "node scripts/gen-icons.mjs",
     "android:sync": "npm run build && cap sync android",
-    "android:debug": "./build-android.sh"
+    "android:debug": "./build-android.sh",
+    "dev:electron": "npm run build:electron:main && concurrently -k -n renderer,main,preload,electron -c cyan,yellow,magenta,green \"vite --mode electron --port 5193 --strictPort\" \"tsc -p tsconfig.electron.json -w --preserveWatchOutput\" \"tsc -p tsconfig.electron.preload.json -w --preserveWatchOutput\" \"electronmon .\"",
+    "build:electron:renderer": "tsc -b && vite build --mode electron",
+    "build:electron:main": "tsc -p tsconfig.electron.json && tsc -p tsconfig.electron.preload.json",
+    "build:electron": "npm run build:electron:renderer && npm run build:electron:main && electron-builder --config electron-builder.config.cjs",
+    "build:electron:release": "npm run build:electron -- --publish never",
+    "build:electron:dir": "npm run build:electron:renderer && npm run build:electron:main && electron-builder --config electron-builder.config.cjs --dir --publish never",
+    "test:electron-smoke": "node e2e/electron-smoke.mjs",
+    "test:electron-vault": "node e2e/electron-vault.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
@@ -38,12 +46,17 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
+    "@electron/notarize": "^3.1.2",
     "@eslint/js": "^9.39.5",
     "@types/node": "^25.6.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "electron": "^43.8.10",
+    "electron-builder": "^26.18.0",
+    "electronmon": "^2.0.4",
     "eslint": "^9.39.5",
     "eslint-plugin-i18next": "^6.1.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -58,5 +71,18 @@
     "vite": "^6.3.4",
     "vite-plugin-pwa": "^0.21.1",
     "vitest": "^4.1.7"
+  },
+  "main": "dist-electron/main.js",
+  "electronmon": {
+    "patterns": [
+      "!src/**",
+      "!public/**",
+      "!dist/**",
+      "!docs/**",
+      "!e2e/**",
+      "!electron/**",
+      "!android/**",
+      "!store-assets/**"
+    ]
   }
 }

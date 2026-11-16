@@ -94,10 +94,11 @@ Built 2026-11-15, before the first production release, so that every buyer has o
 A paid app on Play can become free once, and Play does not tell an app whether its user once bought it. If thingGLANCE ever moved to free with a paywall, the people who had paid would need telling apart from the people who had not. So a copy that was bought keeps a record of it. **Nothing reads the record to allow or refuse anything.** There is no paywall and no check.
 
 - **What counts as bought:** an install made by the Play Store. A build put on the phone any other way (adb, the APK from `outputs/`, a debug build) records nothing, and neither does the web app or the PWA.
+- **On a Mac:** the Mac App Store build records itself the same way, with `store: "mas"` and the day it first ran on that Mac ([desktop.md](desktop.md#owned-since-on-the-mac)). The direct desktop downloads are free and record nothing.
 - **What is recorded:** the store (`play`), when Android first installed the app on that phone, and the app version that noticed. No account, no order number, nothing about the user.
 - **Where it is kept, on the phone:** a preferences file of its own, `thingglance_owned.xml` (`android/.../ownership/`). Unlike the app's other files it is left in Android's cloud backup and in a phone-to-phone transfer, so it follows the buyer to a new phone.
 - **Where it is kept, in the vault:** one row per device, kind `owned`, id `owned:<deviceId>` (`src/core/ownership.ts`). It syncs like everything else, encrypted like everything else, and is in the in-app backup file. A device's date only ever moves earlier.
-- **Where it shows:** Settings, About: "Bought on Google Play" and the date, the earliest among the household's devices.
+- **Where it shows:** Settings, About: "Bought on Google Play" (or "the Mac App Store") and the date, the earliest among the household's devices.
 
 What it is not:
 

@@ -39,6 +39,8 @@ export interface DesktopShell {
   getShortcuts(): Promise<DesktopShortcuts | null>
   /** Register (or clear, with '') one; `ok` is false when another app holds it. */
   setShortcut(kind: 'popup' | 'window', accelerator: string): Promise<DesktopShortcuts & { ok: boolean }>
+  /** A newer release with a download for this OS, or null (always null on the Mac App Store build). */
+  latestRelease(): Promise<{ version: string; url: string } | null>
 }
 
 export interface DesktopShortcuts {
@@ -148,6 +150,12 @@ export interface DesktopReminders {
   supported(): Promise<boolean>
 }
 
+/** "Owned since" (electron/ownership.ts): what the Mac App Store build reports, and nothing from any other. */
+export interface DesktopOwnership {
+  /** { since: epoch milliseconds, store, version }, or {} when not bought. */
+  get(): Promise<{ since?: number; store?: string; version?: string }>
+}
+
 /** What the tray popup draws (electron/trayModel.ts, TrayState). */
 export interface DesktopTrayState {
   ready: boolean
@@ -182,6 +190,7 @@ export interface DesktopBridge {
   commands: DesktopCommands
   links: DesktopLinks
   reminders: DesktopReminders
+  ownership: DesktopOwnership
   tray: DesktopTray
 }
 
@@ -201,6 +210,7 @@ export const DESKTOP_BRIDGE_METHODS = [
   'shell.setBackgroundSettings',
   'shell.getShortcuts',
   'shell.setShortcut',
+  'shell.latestRelease',
   'http.request',
   'http.inspect',
   'http.grant',
@@ -222,6 +232,7 @@ export const DESKTOP_BRIDGE_METHODS = [
   'links.onOpen',
   'reminders.pending',
   'reminders.supported',
+  'ownership.get',
   'tray.state',
   'tray.decide',
   'tray.send',

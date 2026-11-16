@@ -24,7 +24,8 @@
     "build:electron:release": "npm run build:electron -- --publish never",
     "build:electron:dir": "npm run build:electron:renderer && npm run build:electron:main && electron-builder --config electron-builder.config.cjs --dir --publish never",
     "test:electron-smoke": "node e2e/electron-smoke.mjs",
-    "test:electron-vault": "node e2e/electron-vault.mjs"
+    "test:electron-vault": "node e2e/electron-vault.mjs",
+    "build:electron:mas": "npm run build:electron:renderer && npm run build:electron:main && THINGGLANCE_MAS_BUILD=1 electron-builder --config electron-builder.config.cjs --mac mas --universal --publish never"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",

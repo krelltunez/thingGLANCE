@@ -790,7 +790,7 @@ function About() {
         <p className="mt-1 text-sm text-dim">{t('settings.about.tagline')}</p>
         <p className="num mt-4 text-xs text-faint">{t('settings.about.version', { version: __APP_VERSION__, when: fmtMoment(__BUILD_TIME__, 'date-time') })}</p>
         {/* A store this build has not heard of is shown by its code. */}
-        {first && <p className="mt-1 text-xs text-faint">{t('settings.about.owned', { store: first.store === 'play' ? t('settings.about.store.play') : first.store, when: fmtDay(dayjs(first.since).format(DAY)) })}</p>}
+        {first && <p className="mt-1 text-xs text-faint">{t('settings.about.owned', { store: first.store === 'play' ? t('settings.about.store.play') : first.store === 'mas' ? t('settings.about.store.mas') : first.store, when: fmtDay(dayjs(first.since).format(DAY)) })}</p>}
       </div>
       <Block title={t('settings.about.contact')}>
         <LinkRow href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</LinkRow>

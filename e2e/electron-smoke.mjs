@@ -21,6 +21,8 @@
 //     dates waiting on a decision; "Done" there is queued by main, applied by
 //     the page to its database, and the row leaves the popup;
 //   - a thingglance:// link handed to the app opens where it says;
+//   - the update check answers without throwing, and a direct build reports
+//     no purchase;
 //   - the page's log lines reach the log file;
 //   - no uncaught page error.
 //
@@ -223,6 +225,15 @@ try {
   check(bg.shortcuts?.popup === '' && bg.shortcuts?.window === '' && bg.shortcuts?.popupSupported === (mainPlatform !== 'linux'),
     `global shortcuts answer, none set (${JSON.stringify(bg.shortcuts)})`)
   check(bg.cleared?.window === '' && bg.nonsense?.ok === false, `a shortcut can be set and cleared, and nonsense is refused (set: ${bg.windowSet?.ok})`)
+
+  // A direct build: it may hear of a newer release, and it was not bought.
+  const direct = await page.evaluate(async () => ({
+    update: await window.thingglanceDesktop.shell.latestRelease().then((r) => r, (e) => `threw: ${e}`),
+    owned: await window.thingglanceDesktop.ownership.get(),
+  }))
+  // No network assumption: the check answers null or a release, never throws.
+  check(direct.update === null || typeof direct.update?.version === 'string', `the update check answers (${JSON.stringify(direct.update)})`)
+  check(JSON.stringify(direct.owned) === '{}' && !existsSync(path.join(userData, 'owned.json')), 'a direct build reports no purchase, and records none')
 
   // Sample data gives the app dates to show. From here the page feeds main:
   // the reminder plan, and what the tray draws.

@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('thingglanceDesktop', {
     setBackgroundSettings: (patch: { keepRunning?: boolean; openAtLogin?: boolean }) => ipcRenderer.invoke('shell:set-background-settings', patch),
     getShortcuts: () => ipcRenderer.invoke('shell:get-shortcuts'),
     setShortcut: (kind: string, accelerator: string) => ipcRenderer.invoke('shell:set-shortcut', kind, accelerator),
+    latestRelease: () => ipcRenderer.invoke('shell:latest-release'),
   },
   http: {
     request: (method: string, url: string, headers: Record<string, string>, body: string | null) => ipcRenderer.invoke('http:request', method, url, headers, body),
@@ -87,6 +88,9 @@ contextBridge.exposeInMainWorld('thingglanceDesktop', {
   reminders: {
     pending: () => ipcRenderer.invoke('reminders:pending'),
     supported: () => ipcRenderer.invoke('reminders:supported'),
+  },
+  ownership: {
+    get: () => ipcRenderer.invoke('ownership:get'),
   },
   tray: {
     state: () => ipcRenderer.invoke('tray:state'),

@@ -224,7 +224,7 @@ Gotchas lastGLANCE documents:
 
 ## Phase 5: desktop (L)
 
-> Under way, 2026-11-15: everything but the release (1 to 4 below) is built. [desktop.md](desktop.md) describes what exists.
+> Built, 2026-11-15: all five. [desktop.md](desktop.md) describes it, and its "Releasing" section has the steps. The first tagged release, the signing secrets and the Mac App Store submission are still to do, and are the publisher's.
 
 Plain Electron, not the Capacitor Electron wrapper, as lastGLANCE chose. Its five phases, minus iCloud:
 

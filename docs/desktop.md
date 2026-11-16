@@ -30,6 +30,7 @@ This page describes what is built. The phases still to come are at the end.
 | `commands` | Writes queued outside the window, for the page to apply | `collectWidgetWrites()` |
 | `links` | A `thingglance://` link waiting to be opened | `followDesktopLinks()` |
 | `reminders` | What the scheduler in main holds; read-only | Settings |
+| `ownership` | What the Mac App Store build reports about being bought | `src/native/ownership.ts` |
 | `tray` | The popup's own calls; answered only to the popup's window | `src/tray/TrayPopup.tsx` |
 
 `src/native/desktop.ts` is the contract: the interfaces, the allowlist (`DESKTOP_BRIDGE_METHODS`) and `desktopBridge()`. `src/native/desktopShell.ts` is what the app does with it, and it is the same thing `src/native/capacitor.ts` does on a phone: it calls `registerShell({ fetch, secureStore, eventStream })` before anything else runs, so the rest of the app goes on using the seams in [shells.md](shells.md) and never asks which shell it is in.
@@ -156,7 +157,65 @@ Icons come from the same artwork as the web app's: `node scripts/gen-desktop-ico
 
 Without a signing certificate a macOS build is signed ad hoc (`scripts/codesign-ad-hoc.cjs`), which turns "damaged" into "unidentified developer". With `CSC_LINK` set it is signed with the Developer ID and notarized (`scripts/notarize.cjs`).
 
+## Releasing
+
+`package.json` is the one version, shared with Android ([release.md](release.md)). There are two kinds of desktop build:
+
+| Build | How it ships | Price |
+| --- | --- | --- |
+| **Direct**: macOS (Developer ID), Windows, Linux | CI, attached to the GitHub release for a `v*` tag | Free |
+| **Mac App Store** | Built on a Mac, uploaded with Transporter | Paid up front, as on Google Play; no purchases inside the app |
+
+The parts only the publisher can do are marked **(yours)**. Release notes contain no em dashes, and their times are Mountain Time.
+
+### Once: signing **(yours)**
+
+**Direct macOS build.** Under the repository's Settings, Secrets and variables, Actions. Without them the macOS build is still produced, but signed ad hoc: it opens only after right-click, Open, and Gatekeeper warns. They can be the same team's values the sibling apps' workflows use.
+
+| Secret | What it is |
+| --- | --- |
+| `CSC_LINK` | The Developer ID Application certificate and key, exported from Keychain Access as a `.p12`, then base64-encoded |
+| `CSC_KEY_PASSWORD` | The password chosen when exporting the `.p12` |
+| `APPLE_ID` | The Apple ID email of the developer account |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password from appleid.apple.com, for the notary service |
+| `APPLE_TEAM_ID` | The 10-character Team ID |
+
+**Mac App Store build.**
+
+- Apple Developer: an App ID `com.thingglance.app` with macOS enabled, and a Mac App Store provisioning profile for it, saved as `electron/thingglance.mas.provisionprofile`. That path is ignored by git; `MAC_PROVISIONING_PROFILE` can point elsewhere.
+- In the Mac's login keychain: "Apple Distribution" (or "3rd Party Mac Developer Application") to sign the app, and "Mac Installer Distribution" (or "3rd Party Mac Developer Installer") to sign the `.pkg`.
+- App Store Connect: an app record for `com.thingglance.app` with the macOS platform, priced as a paid app. When the iOS app exists under the same id, one purchase covers both.
+
+Windows is not code-signed, so SmartScreen warns on first run, as it does for the sibling apps.
+
+### Each release
+
+1. Set the version in `package.json`, as for any release.
+2. Run the checks: `npm run lint`, `npm test`, `npx tsc -b`, then `npm run build:electron:dir`, `npm run test:electron-smoke` and `npm run test:electron-vault`.
+3. To try a packaging change first, run **Release desktop** from the Actions tab. A manual run builds all three platforms and uploads the files to the run, without touching any release.
+4. Push the version tag. `release-desktop.yml` builds macOS (`dmg` and `zip`, Apple silicon and Intel), Windows (the NSIS installer) and Linux (`AppImage` and `deb`, x64 and arm64), and adds the files to the GitHub release for the tag: uploaded to it if it exists, else a new draft. A published release stays published. **(yours)** Finish the notes and publish.
+5. **Mac App Store (yours)**, on a Mac with the certificates and the profile:
+
+   ```bash
+   npm run build:electron:mas
+   ```
+
+   This builds the universal `.pkg` in `dist-app/mas-universal/`, sandboxed. Its build number is `YYYYMMDD.HHMM`, so every upload is higher than the last (`BUILD_NUMBER` overrides). Upload it with Transporter, add the build to the macOS version in App Store Connect with the notes, and submit it. TestFlight for Mac takes the same build.
+
+### No auto-update
+
+A direct build updates by downloading the new release. It shows a small "thingGLANCE x.y.z is available" notice: the page asks every 6 hours and on return, the main process reads the GitHub releases API, and the notice links to the release page. Main reports only a published release that is newer and has a download for this OS, so an Android-only release is never announced on the desktop (`electron/updateCheck.ts`). The notice is never shown on the Mac App Store build, which the App Store updates.
+
+### "Owned since" on the Mac
+
+The Mac App Store build records that it was bought, once, the first time it runs: `store: "mas"`, in `owned.json` in the data folder and, through the page, in the vault (`electron/ownership.ts`). The direct builds are free downloads and record nothing. Nothing checks the record; [release.md](release.md#owned-since) says what it is for.
+
+### After a release
+
+- Download the macOS `dmg` on a Mac that has never run the app. A signed build opens without a Gatekeeper warning.
+- On an install of the previous version, check that the update notice appears.
+- Check the menu bar icon, a reminder and its buttons, and `open thingglance://queue` from a terminal.
+
 ## Still to come
 
-1. **Release.** The release workflow, the Mac App Store build, and the "update available" notice on direct builds.
-2. **MCP, then Stream Deck**, on the same queue and snapshot.
+**MCP, then Stream Deck**, on the same queue and snapshot. They need the sandbox's network server entitlement on the Mac App Store build, which is not there yet.

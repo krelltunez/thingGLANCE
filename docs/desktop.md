@@ -31,6 +31,9 @@ This page describes what is built. The phases still to come are at the end.
 | `links` | A `thingglance://` link waiting to be opened | `followDesktopLinks()` |
 | `reminders` | What the scheduler in main holds; read-only | Settings |
 | `ownership` | What the Mac App Store build reports about being bought | `src/native/ownership.ts` |
+| `localIntegrations` | The MCP server's switches and state ([mcp.md](mcp.md)) | `src/components/LocalIntegrations.tsx` |
+| `mcp` | The MCP server's questions, and the page's answers | `src/mcp/mcpBridge.ts` |
+| `mcpJournal` | What assistants changed this session, and undo | `src/components/LocalIntegrations.tsx` |
 | `tray` | The popup's own calls; answered only to the popup's window | `src/tray/TrayPopup.tsx` |
 
 `src/native/desktop.ts` is the contract: the interfaces, the allowlist (`DESKTOP_BRIDGE_METHODS`) and `desktopBridge()`. `src/native/desktopShell.ts` is what the app does with it, and it is the same thing `src/native/capacitor.ts` does on a phone: it calls `registerShell({ fetch, secureStore, eventStream })` before anything else runs, so the rest of the app goes on using the seams in [shells.md](shells.md) and never asks which shell it is in.
@@ -151,7 +154,7 @@ Two global shortcuts, both off until one is recorded in Settings: open the popup
 
 `vite build --mode electron` is the same bundle without the PWA plugin. Main is compiled by `tsc` (`tsconfig.electron.json`, ES modules), and the preload separately as CommonJS (`tsconfig.electron.preload.json`), because a sandboxed preload cannot be a module. The package ships no `node_modules`: the page is one bundle and main needs only Electron and Node. `electron/builderConfig.test.ts` holds that, and the rest of `electron-builder.config.cjs`, without packaging anything.
 
-Both tests set `THINGGLANCE_USER_DATA_DIR`, which moves the data folder, so they never touch the profile of a copy someone actually uses. The smoke test also sets `THINGGLANCE_SMOKE_HOOKS`, which lets it open the tray popup as a click on the icon would.
+Both tests set `THINGGLANCE_USER_DATA_DIR`, which moves the data folder, and pass `--use-mock-keychain`, so they never touch the profile or the login keychain of a copy someone actually uses. (On macOS a rebuilt, ad-hoc signed copy that reads the real keychain item stops at a system prompt, and the test hangs behind it.) The smoke test also sets `THINGGLANCE_SMOKE_HOOKS`, which lets it open the tray popup as a click on the icon would.
 
 Icons come from the same artwork as the web app's: `node scripts/gen-desktop-icons.mjs` writes `electron/resources/`.
 
@@ -216,6 +219,10 @@ The Mac App Store build records that it was bought, once, the first time it runs
 - On an install of the previous version, check that the update notice appears.
 - Check the menu bar icon, a reminder and its buttons, and `open thingglance://queue` from a terminal.
 
+## MCP
+
+The desktop app can run an MCP server for an AI assistant: off by default, on 127.0.0.1 only, reading and changing behind separate consents, with undo and no deletes. It has a page of its own: [mcp.md](mcp.md).
+
 ## Still to come
 
-**MCP, then Stream Deck**, on the same queue and snapshot. They need the sandbox's network server entitlement on the Mac App Store build, which is not there yet.
+**Stream Deck**, on the same queue and snapshot, and the "Set up Claude Desktop" button once the family's stdio bridge has a thingGLANCE profile.

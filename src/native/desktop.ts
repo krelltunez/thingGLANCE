@@ -156,10 +156,68 @@ export interface DesktopOwnership {
   get(): Promise<{ since?: number; store?: string; version?: string }>
 }
 
+/** A listener (the MCP server, the Stream Deck socket): whether it is up, and why not. */
+export interface DesktopListenerStatus {
+  running: boolean
+  error: string | null
+}
+
+/** green while the server runs, blue while there are changes to undo, red while changes are paused. */
+export type DesktopAssistantIndicator = 'off' | 'on' | 'undo' | 'paused'
+
+/** What Settings shows of the local integrations (electron/localIntegrations.ts, LocalIntegrationsView). */
+export interface DesktopIntegrationsView {
+  streamDeck: { enabled: boolean; port: number; status: DesktopListenerStatus }
+  mcp: {
+    readTier: 'off' | 'on'
+    writesEnabled: boolean
+    token: string | null
+    port: number
+    portOverride: number | null
+    endpoint: string
+    status: DesktopListenerStatus
+    writesPaused: boolean
+  }
+  assistant: DesktopAssistantIndicator
+}
+
+/** The MCP server and the Stream Deck listener: both off until turned on here (docs/mcp.md). */
+export interface DesktopLocalIntegrations {
+  get(): Promise<DesktopIntegrationsView | null>
+  /** One Settings change; refused with a reason when its consent is missing. */
+  transition(action: Record<string, unknown>): Promise<{ ok: boolean; error?: string; view: DesktopIntegrationsView | null }>
+  /** Returns the unsubscribe. */
+  onStatus(listener: (view: unknown) => void): () => void
+}
+
+/** The MCP request bridge: main asks, the page answers from the database (src/mcp/mcpBridge.ts). */
+export interface DesktopMcp {
+  /** Returns the unsubscribe. */
+  onRequest(listener: (request: unknown) => void): () => void
+  respond(response: Record<string, unknown>): void
+}
+
+/** What assistants changed this session (electron/mcpJournal.ts): one group per item. */
+export interface DesktopMcpJournalSnapshot {
+  total: number
+  groups: { key: string; label: string; count: number; latestSeq: number }[]
+  entries: { seq: number; at: string; tool: string; summary: string; groupKey: string }[]
+}
+
+/** The MCP write journal, and undo. Main answers the main window only. */
+export interface DesktopMcpJournal {
+  get(): Promise<DesktopMcpJournalSnapshot | null>
+  /** Undo one item's changes (a group key), or every change with null. */
+  undo(groupKey: string | null): Promise<{ ok: boolean; undone?: number; skipped?: { kind: string; reason: string }[]; error?: string }>
+  /** Returns the unsubscribe. */
+  onChanged(listener: (snapshot: unknown) => void): () => void
+}
+
 /** What the tray popup draws (electron/trayModel.ts, TrayState). */
 export interface DesktopTrayState {
   ready: boolean
   waiting: number
+  assistant?: DesktopAssistantIndicator
   payload: { snapshot: unknown; labels: unknown; canSend: boolean } | null
 }
 
@@ -191,6 +249,9 @@ export interface DesktopBridge {
   links: DesktopLinks
   reminders: DesktopReminders
   ownership: DesktopOwnership
+  localIntegrations: DesktopLocalIntegrations
+  mcp: DesktopMcp
+  mcpJournal: DesktopMcpJournal
   tray: DesktopTray
 }
 
@@ -233,6 +294,14 @@ export const DESKTOP_BRIDGE_METHODS = [
   'reminders.pending',
   'reminders.supported',
   'ownership.get',
+  'localIntegrations.get',
+  'localIntegrations.transition',
+  'localIntegrations.onStatus',
+  'mcp.onRequest',
+  'mcp.respond',
+  'mcpJournal.get',
+  'mcpJournal.undo',
+  'mcpJournal.onChanged',
   'tray.state',
   'tray.decide',
   'tray.send',

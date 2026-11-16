@@ -27,6 +27,7 @@ import i18n from 'i18next'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import { tr } from '@/core/text'
 import { isIntentsEnabled } from '@/intents/config'
+import { startMcpBridge } from '@/mcp/mcpBridge'
 import { currentSnapshot } from '@/intents/inbound'
 import { desktopBridge, type DesktopBridge, type DesktopHttp } from './desktop'
 import { openLink } from './links'
@@ -106,6 +107,8 @@ export function menuLabels(): Record<string, string> {
     trayNothingWaiting: tr('widget.decide.empty'),
     // The slot is filled by main, which knows the number.
     trayWaiting: tr('desktop.tray.waiting', { n: '{{n}}' }),
+    trayMcpUndo: tr('desktop.tray.mcpUndo'),
+    trayMcpOff: tr('desktop.tray.mcpOff'),
   }
 }
 
@@ -229,6 +232,8 @@ export function startDesktopShell(): void {
   escapeLeavesFullscreen(bridge)
   followDesktopLinks(bridge)
   startDesktopFeed(bridge)
+  // The MCP server in main asks this page for everything it tells an assistant.
+  startMcpBridge(bridge)
   // A copy from the Mac App Store says so, once, for the record.
   void recordOwnershipFromShell()
 }

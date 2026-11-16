@@ -40,6 +40,13 @@ if (!existsSync(executablePath)) {
   process.exit(2)
 }
 
+// --no-sandbox: CI runners (and root in containers) cannot use Chromium's
+// setuid sandbox. --use-mock-keychain: on macOS the keystore is the login
+// keychain, which is the person's own and asks them before a rebuilt copy may
+// read it; a test uses Chromium's stand-in and never touches it. The shipped
+// app uses neither switch.
+const LAUNCH_ARGS = ['--no-sandbox', '--use-mock-keychain']
+
 const failures = []
 const check = (what, ok, extra = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${what} ${extra}`)
@@ -51,7 +58,7 @@ const apps = []
 async function desktop(label) {
   const profile = mkdtempSync(path.join(os.tmpdir(), `thingglance-e2e-${label}-`))
   profiles.push(profile)
-  const app = await electron.launch({ executablePath, args: ['--no-sandbox'], env: { ...process.env, THINGGLANCE_USER_DATA_DIR: profile }, timeout: 60_000 })
+  const app = await electron.launch({ executablePath, args: LAUNCH_ARGS, env: { ...process.env, THINGGLANCE_USER_DATA_DIR: profile }, timeout: 60_000 })
   apps.push(app)
   // The system's "allow this address?" dialog, answered yes.
   await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }) })

@@ -15,6 +15,11 @@
     <!-- Outbound network: GLANCEvault and the product lookups. -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <!-- Inbound, on 127.0.0.1 only: the MCP server (7910) and the Stream Deck
+         listener (7911), both off until turned on in Settings (docs/mcp.md).
+         The sibling apps ship the same. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
     <!-- A backup saved where the user chooses, in the system's save dialog. -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>

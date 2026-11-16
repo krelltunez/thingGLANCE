@@ -245,6 +245,8 @@ Gotchas lastGLANCE documents:
 
 ## Phase 6: MCP, then Stream Deck (M each)
 
+> MCP is built, 2026-11-15: [mcp.md](mcp.md) is its design and its tools' contract. Still to do for it: a thingGLANCE profile in `../mcp-bridge`, then the bundled bridge and the "Set up Claude Desktop" button. Stream Deck is not started.
+
 **MCP.** The reference is dayGLANCE (`../day-planner/docs/mcp-server-spec.md`, `mcp-tools-reference.md`) and the shared `@glance-apps/mcp-host` package.
 
 - The server runs in Electron main over Streamable HTTP on `127.0.0.1`, checking path, Host, Origin and a bearer token.

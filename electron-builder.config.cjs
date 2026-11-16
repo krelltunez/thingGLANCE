@@ -46,10 +46,18 @@ function masBuildVersion() {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
-// Packages main imports at run time, with everything they import in turn.
-// None yet: main needs only Electron and Node. builderConfig.test.ts computes
-// the closure from main's imports and holds this list to it.
-const MAIN_RUNTIME_PACKAGES = [];
+// Packages main imports at run time, with everything they import in turn: the
+// MCP host kit and the SDK it serves (docs/mcp.md). builderConfig.test.ts
+// computes the closure from main's imports and holds this list to it.
+const MAIN_RUNTIME_PACKAGES = [
+  '@glance-apps/mcp-host',
+  '@modelcontextprotocol/server',
+  '@modelcontextprotocol/node',
+  '@modelcontextprotocol/core',
+  '@hono/node-server',
+  'hono',
+  'zod',
+];
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {

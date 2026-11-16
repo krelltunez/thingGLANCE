@@ -6,8 +6,9 @@ import { toast } from '@/state/toast'
 import { TONES, cx } from './kit'
 import { Sheet, Toggle } from './ui'
 
-// Settings, Integrations, "On this computer" (desktop app only): the MCP
-// server an AI assistant connects to (docs/mcp.md). Everything is off until
+// Settings, Integrations, "On this computer" (desktop app only): the listener
+// the Stream Deck plugin connects to (docs/stream-deck.md) and the MCP server
+// an AI assistant connects to (docs/mcp.md). Everything is off until
 // turned on here, each switch behind its own consent, and the main process
 // keeps the settings and decides what is allowed
 // (electron/localIntegrations.ts): this only asks and shows.
@@ -64,6 +65,9 @@ export function LocalIntegrations() {
       <p className="mt-0.5 text-xs leading-relaxed text-dim">{t('settings.local.intro')}</p>
 
       <div className="mt-3 space-y-3">
+        <Toggle checked={view.streamDeck.enabled} label={t('settings.local.streamDeck')}
+          hint={view.streamDeck.status.error ? t('settings.local.errorPortInUse', { port: view.streamDeck.port }) : t('settings.local.streamDeckHint', { port: view.streamDeck.port })}
+          onChange={(enabled) => void send({ type: 'set-stream-deck', enabled })} />
         <Toggle checked={on} label={t('settings.local.mcp')} hint={t('settings.local.mcpHint')}
           onChange={(v) => (v ? setConsent('read') : void send({ type: 'set-mcp-read-tier', tier: 'off' }))} />
         {on && (

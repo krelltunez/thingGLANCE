@@ -31,7 +31,7 @@ This page describes what is built. The phases still to come are at the end.
 | `links` | A `thingglance://` link waiting to be opened | `followDesktopLinks()` |
 | `reminders` | What the scheduler in main holds; read-only | Settings |
 | `ownership` | What the Mac App Store build reports about being bought | `src/native/ownership.ts` |
-| `localIntegrations` | The MCP server's switches and state ([mcp.md](mcp.md)) | `src/components/LocalIntegrations.tsx` |
+| `localIntegrations` | The MCP server's and the Stream Deck listener's switches and state ([mcp.md](mcp.md), [stream-deck.md](stream-deck.md)) | `src/components/LocalIntegrations.tsx` |
 | `mcp` | The MCP server's questions, and the page's answers | `src/mcp/mcpBridge.ts` |
 | `mcpJournal` | What assistants changed this session, and undo | `src/components/LocalIntegrations.tsx` |
 | `tray` | The popup's own calls; answered only to the popup's window | `src/tray/TrayPopup.tsx` |
@@ -223,6 +223,10 @@ The Mac App Store build records that it was bought, once, the first time it runs
 
 The desktop app can run an MCP server for an AI assistant: off by default, on 127.0.0.1 only, reading and changing behind separate consents, with undo and no deletes. It has a page of its own: [mcp.md](mcp.md).
 
+## Stream Deck
+
+A listener for the thingGLANCE Stream Deck plugin, off by default, and the plugin itself in `stream-deck-plugin/`. The keys draw the payload the tray holds, and a press goes through the command queue. It has a page of its own: [stream-deck.md](stream-deck.md).
+
 ## Still to come
 
-**Stream Deck**, on the same queue and snapshot, and the "Set up Claude Desktop" button once the family's stdio bridge has a thingGLANCE profile.
+The "Set up Claude Desktop" button, once the family's stdio bridge has a thingGLANCE profile.

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Built by npm run build (rollup, scripts/gen-assets.mjs).
+com.thingglance.streamdeck.sdPlugin/bin/
+com.thingglance.streamdeck.sdPlugin/imgs/
+src/generated/

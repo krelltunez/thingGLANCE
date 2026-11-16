@@ -29,6 +29,11 @@
 //     adds lands in the database and in the journal, and Settings' undo takes
 //     it back out; the discovery file is there while it runs; turning it off
 //     frees the port;
+//   - Stream Deck: off until turned on; then the listener hands a client with
+//     no Origin a token and the state the keys draw; a press settles a date in
+//     the page's database, once, and a second press is answered too_soon; a
+//     page (a client with an Origin) is not let in; turning it off frees the
+//     port;
 //   - the page's log lines reach the log file;
 //   - no uncaught page error.
 //
@@ -45,6 +50,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import net from 'node:net'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { WebSocket } from 'ws'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const { version } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf-8'))
@@ -382,6 +388,73 @@ try {
       probe.once('error', () => resolve(true))
     })
     check(mcpOff?.ok === true && freed && !existsSync(discovery), 'turning it off frees the port and removes the discovery file')
+  }
+
+  // Stream Deck (docs/stream-deck.md): the listener the plugin connects to.
+  const deckOn = await li({ type: 'set-stream-deck', enabled: true })
+  let deckView = deckOn?.view
+  for (let i = 0; i < 50 && !deckView?.streamDeck?.status?.running && !deckView?.streamDeck?.status?.error; i++) {
+    await new Promise((r) => setTimeout(r, 100))
+    deckView = await page.evaluate(() => window.thingglanceDesktop.localIntegrations.get())
+  }
+  // Another copy holding the port (someone's own, with Stream Deck on) is not this build's failure.
+  if (deckView?.streamDeck?.status?.error === 'port_in_use') {
+    console.log(`skip Stream Deck: port ${deckView.streamDeck.port} is in use on this machine`)
+  } else {
+    check(deckView?.streamDeck?.status?.running === true, `the Stream Deck listener runs on port ${deckView?.streamDeck?.port} (${JSON.stringify(deckView?.streamDeck?.status)})`)
+    const deckUrl = `ws://127.0.0.1:${deckView.streamDeck.port}`
+    const messages = []
+    const ws = new WebSocket(deckUrl)
+    ws.on('message', (d) => messages.push(JSON.parse(String(d))))
+    await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
+    const until = async (find) => { for (let i = 0; i < 80; i++) { const m = messages.find(find); if (m) return m; await new Promise((r) => setTimeout(r, 100)) } return null }
+    const token = await until((m) => m.type === 'tg:token')
+    const first = await until((m) => m.type === 'tg:state' && m.ready)
+    check(/^[0-9a-f]{32}$/.test(token?.token ?? '') && first?.queue?.length > 0 && first.waiting === first.queue.length,
+      `the plugin's client is let in and handed the queue (${first?.queue?.length} waiting, ${first?.things?.length} things)`)
+    const target = first?.queue?.[0]
+    const doneCount = () => page.evaluate(() => new Promise((resolve) => {
+      const open = indexedDB.open('thingglance')
+      open.onsuccess = () => {
+        const all = open.result.transaction('decisions').objectStore('decisions').getAll()
+        all.onsuccess = () => { open.result.close(); resolve(all.result.filter((d) => d.state === 'done').length) }
+      }
+      open.onerror = () => resolve(-1)
+    }))
+    const doneBefore = await doneCount()
+    ws.send(JSON.stringify({ v: 1, type: 'tg:event:decide', key: target?.key, clientId: 'smoke-1' }))
+    const pressed = await until((m) => m.type === 'tg:result' && m.clientId === 'smoke-1')
+    let doneAfter = doneBefore
+    for (let i = 0; i < 100 && doneAfter <= doneBefore; i++) { await new Promise((r) => setTimeout(r, 100)); doneAfter = await doneCount() }
+    check(pressed?.ok === true && doneAfter === doneBefore + 1, `a press settles the date in the page's database (${doneBefore} to ${doneAfter} done)`)
+    const shorter = await until((m) => m.type === 'tg:state' && !m.queue.some((e) => e.key === target?.key))
+    check(shorter !== null, 'and the keys are told it is gone')
+    ws.send(JSON.stringify({ v: 1, type: 'tg:event:decide', key: target?.key, clientId: 'smoke-2' }))
+    const again = await until((m) => m.type === 'tg:result' && m.clientId === 'smoke-2')
+    await new Promise((r) => setTimeout(r, 500))
+    check(again?.ok === false && again.reason === 'too_soon' && (await doneCount()) === doneAfter, `a second press is answered ${again?.reason}, and writes nothing`)
+    ws.send(JSON.stringify({ v: 1, type: 'tg:open', target: 'https://example.com/', clientId: 'smoke-3' }))
+    const stray = await until((m) => m.type === 'tg:result' && m.clientId === 'smoke-3')
+    check(stray?.ok === false && stray.reason === 'refused', 'a key cannot open anything but a thingglance:// link')
+    // A web page is a client with an Origin: it has to prove itself, and cannot.
+    const pageClosed = await new Promise((resolve) => {
+      const intruder = new WebSocket(deckUrl, { headers: { Origin: 'https://example.com' } })
+      const seen = []
+      intruder.on('message', (d) => seen.push(String(d)))
+      intruder.once('open', () => intruder.send(JSON.stringify({ v: 1, type: 'tg:auth', token: 'f'.repeat(32) })))
+      intruder.once('close', () => resolve(seen.length === 0))
+      intruder.once('error', () => resolve(true))
+      setTimeout(() => resolve(false), 8000)
+    })
+    check(pageClosed, 'a web page is dropped without being told anything')
+    ws.close()
+    await li({ type: 'set-stream-deck', enabled: false })
+    const deckFreed = await new Promise((resolve) => {
+      const probe = net.createConnection({ host: '127.0.0.1', port: deckView.streamDeck.port })
+      probe.once('connect', () => { probe.destroy(); resolve(false) })
+      probe.once('error', () => resolve(true))
+    })
+    check(deckFreed, 'turning Stream Deck off frees the port')
   }
 
   // The page's lines reach the log file in userData (shell.log).

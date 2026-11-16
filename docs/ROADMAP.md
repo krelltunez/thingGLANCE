@@ -203,7 +203,7 @@ This is where keeping `src/core` and `src/sync` free of React pays off: the head
 
 ## Phase 4: iOS (L)
 
-> Built so far, 2026-11-15: the app, the shell seams, the App Group hand-off and notifications (steps 1, 2 and 5). [ios.md](ios.md) describes it and says what was checked. Widgets and the entry points are next.
+> Built so far, 2026-11-15: the app, the shell seams, the App Group hand-off, notifications and the widgets (steps 1, 2, 3 and 5, less the Control Center control). [ios.md](ios.md) describes it and says what was checked. The entry points are next.
 
 Order, again from lastGLANCE's plan:
 

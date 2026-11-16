@@ -52,12 +52,12 @@ const SECTIONS: { id: SettingsSection; icon: typeof Cloud }[] = [
   { id: 'about', icon: Info },
 ]
 
-function Block({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+function Block({ title, hint, children }: { title: string; hint?: ReactNode; children?: ReactNode }) {
   return (
     <section className="rounded-xl border border-line/10 bg-bg/40 p-4">
       <h3 className="text-sm font-semibold text-ink">{title}</h3>
       {hint && <p className="mt-0.5 text-xs leading-relaxed text-dim">{hint}</p>}
-      <div className="mt-3">{children}</div>
+      {children && <div className="mt-3">{children}</div>}
     </section>
   )
 }
@@ -160,6 +160,10 @@ function General() {
           </div>
           <BackgroundRefreshNote />
         </Block>
+      )}
+      {nativePlatform() === 'ios' && (
+        // iOS has no way for an app to offer its widget: it can only say where they are.
+        <Block title={t('settings.general.widgets')} hint={t('settings.general.widgetsIos')} />
       )}
       {nativePlatform() === 'android' && (
         <Block title={t('settings.general.tiles')} hint={t('settings.general.tilesHint')}>

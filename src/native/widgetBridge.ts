@@ -114,7 +114,12 @@ interface WidgetBridgePlugin {
   heartbeat(options: { syncedAt: string | null }): Promise<void>
   // How a refresh the launcher asked for went.
   recordLauncherRefresh(options: { clientId: string; outcome: 'ran' | 'failed'; reason?: string; durationMs: number }): Promise<void>
-  addListener(eventName: 'pendingWrites' | 'refreshRequested', listener: () => void): Promise<PluginListenerHandle>
+  // iOS only. A place the app was asked to open at from outside it (a quick
+  // action on the icon, a shortcut, the Control Center button), or something
+  // shared into it: taken off the native store, one per call. Android hands
+  // those over as an ordinary link itself.
+  takeLink(): Promise<{ link: string | null }>
+  addListener(eventName: 'pendingWrites' | 'refreshRequested' | 'pendingLink', listener: () => void): Promise<PluginListenerHandle>
   addListener(eventName: 'launcherRefresh', listener: (request: { clientId: string }) => void): Promise<PluginListenerHandle>
   // The last few background refreshes, newest last: a JSON array.
   refreshLog(): Promise<{ log: string }>

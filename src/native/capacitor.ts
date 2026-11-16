@@ -10,7 +10,9 @@
 //              deadlines on it (it ignores AbortSignal by itself).
 //   live sync  the vault's event stream is read natively and passed in
 //              (native/vaultSse.ts)
-//   links      thingglance:// URLs the system hands the app go to openLink()
+//   links      thingglance:// URLs the system hands the app go to openLink().
+//              On iOS a link made outside the app (a quick action, a
+//              shortcut, a share) is written down natively and taken here
 //   back       Android's back button closes what is on top, then leaves
 //   status bar follows the app's theme
 //   reminders  scheduled natively from the reminder plan in the snapshot
@@ -28,7 +30,7 @@ import { askOnceIfNeeded } from './notifications'
 import { registerShell, type SecureStore } from './shell'
 import { nativeEventStream } from './vaultSse'
 import { recordOwnershipFromShell } from './ownership'
-import { startWidgetBridge } from './widgetBridge'
+import { startWidgetBridge, WidgetBridge } from './widgetBridge'
 
 interface SecureStorePlugin {
   // Resolves null when nothing is stored; rejects when the keystore could not
@@ -70,6 +72,19 @@ function followLinks(): void {
   }).catch(() => {})
 }
 
+// iOS cannot hand a running page a link from an extension or an intent, so the
+// native side writes it down (ios: GlanceKit's OutsideLinks) and this takes
+// it: at the start, when told one is waiting, and each time the app comes to
+// the front. One link per visit, so one form opens at a time. A link only
+// navigates, like any other.
+function followQueuedLinks(): void {
+  if (Capacitor.getPlatform() !== 'ios') return
+  const take = () => { void WidgetBridge.takeLink().then(({ link }) => { if (link) openLink(link) }).catch(() => {}) }
+  take()
+  void WidgetBridge.addListener('pendingLink', take)
+  void CapacitorApp.addListener('appStateChange', ({ isActive }) => { if (isActive) take() })
+}
+
 // Adding @capacitor/app takes over the back button and, with no listener, does
 // nothing at all with it. This puts back what the system did, after first
 // giving the app the chance to close whatever is open.
@@ -103,6 +118,7 @@ export function startCapacitorShell(): void {
     eventStream: nativeEventStream() ?? undefined,
   })
   followLinks()
+  followQueuedLinks()
   handleBackButton()
   followTheme()
   // One snapshot feeds both: what the widgets show, and the reminder plan the

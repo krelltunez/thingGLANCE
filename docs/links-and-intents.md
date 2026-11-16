@@ -61,7 +61,7 @@ A failure answers `success: false` with a `code` (`invalid`, `not_found`, `unava
 
 There is no delete, on purpose.
 
-The first real caller is the Android home-screen widget: its tick queues `decide` natively and the app applies it on its next run ([android.md](android.md#widgets)). A notification's "Done with this" is the second, through the same queue, and both also offer `send` when the app is connected to dayGLANCE. A background refresh applies any of them with the app closed. Automation apps on Android (Tasker) are the third: their broadcasts join the same queue, and each is answered ([tasker.md](tasker.md)). One rule is the caller's, not the handler's: a `send` answered `failed` (the vault could not be reached) is kept and tried again, where every other refusal is final.
+The first real caller is the Android home-screen widget: its tick queues `decide` natively and the app applies it on its next run ([android.md](android.md#widgets)). A notification's "Done with this" is the second, through the same queue, and both also offer `send` when the app is connected to dayGLANCE. A background refresh applies any of them with the app closed. Automation apps on Android (Tasker) are the third: their broadcasts join the same queue, and each is answered ([tasker.md](tasker.md)). On iOS the widgets, a reminder's buttons and the "Settle a date" shortcut queue the same two writes in the App Group ([ios.md](ios.md)). One rule is the caller's, not the handler's: a `send` answered `failed` (the vault could not be reached) is kept and tried again, where every other refusal is final.
 
 ### Rules every caller gets
 

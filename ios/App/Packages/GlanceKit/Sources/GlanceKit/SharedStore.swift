@@ -26,6 +26,12 @@ public struct SharedStore {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName) != nil
     }
 
+    // For the extensions of this type in other files.
+    func string(forKey key: String) -> String? { defaults?.string(forKey: key) }
+    func strings(forKey key: String) -> [String] { defaults?.stringArray(forKey: key) ?? [] }
+    func store(_ value: Any, forKey key: String) { defaults?.set(value, forKey: key) }
+    func remove(forKey key: String) { defaults?.removeObject(forKey: key) }
+
     // MARK: - What the surfaces show
 
     // The widgets' payload: `{ snapshot, labels, canSend, launcher }`, as

@@ -10,6 +10,7 @@
 		0A4DB5FA71EBD3B7BDDA7EB9 /* GlanceKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0FBD5BC4E9E9D49923602B22 /* GlanceKit */; };
 		15962E2E23F9B383B6D4C654 /* SnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3663426597C9033A0D871DA2 /* SnapshotProvider.swift */; };
 		1C790016FEE72CEBC221814D /* WidgetParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51460749BB0AD45B0C85681F /* WidgetParts.swift */; };
+		1D9716465657F6A8ADD45364 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D2FCF073EF783FA65FCBBF /* ShareViewController.swift */; };
 		237A13CBE19531403A05FE89 /* GlanceWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073053DC4D688713BB08E6D8 /* GlanceWidgetsBundle.swift */; };
 		239436E77C74D89C64EAA8F2 /* OwnershipPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696DE49550641082D384D4CF /* OwnershipPlugin.swift */; };
 		27733E804966E97DCA2811B2 /* SecureStorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDE33729071669527EABDF7 /* SecureStorePlugin.swift */; };
@@ -25,6 +26,7 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		54A8ABD60C5D3FFD3DAFF907 /* WidgetBridgePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67B21019A0F0A2BFB9287DA /* WidgetBridgePlugin.swift */; };
+		57B65E26590BCE0A3BE6F254 /* GlanceKit in Frameworks */ = {isa = PBXBuildFile; productRef = E30066151496BE418311EB75 /* GlanceKit */; };
 		5B53A939BE4DF963222A6412 /* GlanceKit in Frameworks */ = {isa = PBXBuildFile; productRef = 839ABC92CA7B89EF96233574 /* GlanceKit */; };
 		5E71A25902A14239C0A80D0F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D4AAA76B6A77ED0C9C72E312 /* PrivacyInfo.xcprivacy */; };
 		709360EDF901A0DB1E4972E1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9798D0932ECC2807E143D942 /* Foundation.framework */; };
@@ -36,11 +38,17 @@
 		97570A6EB94CD6F3BE082596 /* ReminderResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2B826F95121EEB9D1B5E4E /* ReminderResponder.swift */; };
 		98AAF9AE97E9F784B33B66A2 /* AddThingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E0FBD2C6A3096B6B560AEF /* AddThingWidget.swift */; };
 		A1A061D62623F83DB5CFB3FD /* ThingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B7B053B51DE775216A162B /* ThingWidget.swift */; };
+		AD729419BD1FA8D5C8481971 /* AddThingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFC2A6B34970E4CEC16823B /* AddThingControl.swift */; };
+		B07B5488C638D5A64D115C21 /* ThingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C4E983EDA907450AC3A73CD /* ThingShortcuts.swift */; };
 		BB5A299CFEB0C3B74E789BA4 /* AccessoryWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5FF186C2FA7C35070072FB /* AccessoryWidgets.swift */; };
 		BD962790F7D1621B51DFA2F0 /* ChargesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1369AE27866658721D34F2DC /* ChargesWidget.swift */; };
 		D7886F486A73F6199A5C3C91 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 88C731B053ED9698440CDF84 /* PrivacyInfo.xcprivacy */; };
 		E1E99E83F4B8FFE490D089F2 /* GlanceWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A6E9586B8301CF3FDB1B8B71 /* GlanceWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E715D6AA38F6631F26407C24 /* VaultSsePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C9A2F775EF7D2338C997157 /* VaultSsePlugin.swift */; };
+		EC6E674D20DF02386531B639 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9798D0932ECC2807E143D942 /* Foundation.framework */; };
+		F4BE078FD4E21B395EAA8DA3 /* AddThingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFC2A6B34970E4CEC16823B /* AddThingControl.swift */; };
+		F6D2419DA51F62FB493E3B64 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 885C23F6EC6FBF3B5B906979 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FF999EE9954BE55513515A8E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 104FE6F79B47AA760FD03621 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +58,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 860724B56DCEA53C47B2A4E7;
 			remoteInfo = GlanceWidgetsExtension;
+		};
+		CD40F1E7F6BA4EEFE66D036F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D73F28EA1AC4E56B8A6B17A4;
+			remoteInfo = ShareExtension;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -61,6 +76,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				E1E99E83F4B8FFE490D089F2 /* GlanceWidgetsExtension.appex in Embed Foundation Extensions */,
+				F6D2419DA51F62FB493E3B64 /* ShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -69,10 +85,13 @@
 
 /* Begin PBXFileReference section */
 		073053DC4D688713BB08E6D8 /* GlanceWidgetsBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlanceWidgetsBundle.swift; sourceTree = "<group>"; };
+		104FE6F79B47AA760FD03621 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		1369AE27866658721D34F2DC /* ChargesWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChargesWidget.swift; sourceTree = "<group>"; };
+		1601C4488491A2035620E0B2 /* ShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		2D5FF186C2FA7C35070072FB /* AccessoryWidgets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessoryWidgets.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		3663426597C9033A0D871DA2 /* SnapshotProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SnapshotProvider.swift; sourceTree = "<group>"; };
+		4D403458FAE8662CB8AD3819 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4DA6E9CF0CDD882777ACB4C4 /* GlanceWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = GlanceWidgets.entitlements; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -86,16 +105,20 @@
 		54E5071FA7A4F42F4E62F601 /* EventIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EventIntents.swift; sourceTree = "<group>"; };
 		55FE7B4E94A8939773230186 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5D7B7D07D4362B9AA269CBE0 /* RemindersPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RemindersPlugin.swift; sourceTree = "<group>"; };
+		62D2FCF073EF783FA65FCBBF /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		64051A6B699EDCF123DA9A56 /* release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = release.xcconfig; path = ../release.xcconfig; sourceTree = SOURCE_ROOT; };
 		696DE49550641082D384D4CF /* OwnershipPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OwnershipPlugin.swift; sourceTree = "<group>"; };
 		6A099588A40D1DB1A0DBB7C3 /* ReminderScheduler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
+		885C23F6EC6FBF3B5B906979 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		88C731B053ED9698440CDF84 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		8C4E983EDA907450AC3A73CD /* ThingShortcuts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ThingShortcuts.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		9798D0932ECC2807E143D942 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		9C9A2F775EF7D2338C997157 /* VaultSsePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VaultSsePlugin.swift; sourceTree = "<group>"; };
 		A5B7B053B51DE775216A162B /* ThingWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ThingWidget.swift; sourceTree = "<group>"; };
 		A6E9586B8301CF3FDB1B8B71 /* GlanceWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GlanceWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFFC2A6B34970E4CEC16823B /* AddThingControl.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AddThingControl.swift; sourceTree = "<group>"; };
 		B5E0FBD2C6A3096B6B560AEF /* AddThingWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AddThingWidget.swift; sourceTree = "<group>"; };
 		BC2B826F95121EEB9D1B5E4E /* ReminderResponder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderResponder.swift; sourceTree = "<group>"; };
 		BDDE33729071669527EABDF7 /* SecureStorePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SecureStorePlugin.swift; sourceTree = "<group>"; };
@@ -127,15 +150,42 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9AC20C555FE11A2E55119B60 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EC6E674D20DF02386531B639 /* Foundation.framework in Frameworks */,
+				57B65E26590BCE0A3BE6F254 /* GlanceKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0A8E38B93658061E85F80F24 /* Shortcuts */ = {
+			isa = PBXGroup;
+			children = (
+				8C4E983EDA907450AC3A73CD /* ThingShortcuts.swift */,
+			);
+			name = Shortcuts;
+			path = Shortcuts;
+			sourceTree = "<group>";
+		};
 		2A79919F1A18AD3E664F4796 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
 				9798D0932ECC2807E143D942 /* Foundation.framework */,
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		484EFFE293BF53C378AB1F25 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				AFFC2A6B34970E4CEC16823B /* AddThingControl.swift */,
+			);
+			name = Shared;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		504EC2FB1FED79650016851F = {
@@ -147,6 +197,8 @@
 				64051A6B699EDCF123DA9A56 /* release.xcconfig */,
 				D014FD030970A6746B4079B7 /* Frameworks */,
 				808441F06A0C4D2A105B17EB /* GlanceWidgets */,
+				484EFFE293BF53C378AB1F25 /* Shared */,
+				8F48A8BC8035E8F9F29EE9E8 /* ShareExtension */,
 			);
 			sourceTree = "<group>";
 		};
@@ -155,6 +207,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				A6E9586B8301CF3FDB1B8B71 /* GlanceWidgetsExtension.appex */,
+				885C23F6EC6FBF3B5B906979 /* ShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -176,6 +229,7 @@
 				A86F7FA8DE60EB15955E2D7A /* Reminders */,
 				D00E32E66693CAA43840A03B /* App.entitlements */,
 				D4AAA76B6A77ED0C9C72E312 /* PrivacyInfo.xcprivacy */,
+				0A8E38B93658061E85F80F24 /* Shortcuts */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -199,6 +253,18 @@
 			);
 			name = GlanceWidgets;
 			path = GlanceWidgets;
+			sourceTree = "<group>";
+		};
+		8F48A8BC8035E8F9F29EE9E8 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				4D403458FAE8662CB8AD3819 /* Info.plist */,
+				104FE6F79B47AA760FD03621 /* PrivacyInfo.xcprivacy */,
+				1601C4488491A2035620E0B2 /* ShareExtension.entitlements */,
+				62D2FCF073EF783FA65FCBBF /* ShareViewController.swift */,
+			);
+			name = ShareExtension;
+			path = ShareExtension;
 			sourceTree = "<group>";
 		};
 		A86F7FA8DE60EB15955E2D7A /* Reminders */ = {
@@ -249,6 +315,7 @@
 			);
 			dependencies = (
 				050DA3C461AF3A02E7CFF3E4 /* PBXTargetDependency */,
+				5887A9B08BF48ABC185697E2 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -277,6 +344,26 @@
 			);
 			productName = GlanceWidgetsExtension;
 			productReference = A6E9586B8301CF3FDB1B8B71 /* GlanceWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		D73F28EA1AC4E56B8A6B17A4 /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 22BD8965CC6FCE684858C71C /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				1E6D1B70D72020694AA4ED0F /* Sources */,
+				9AC20C555FE11A2E55119B60 /* Frameworks */,
+				9AAB135D25D929E423FC6C18 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			packageProductDependencies = (
+				E30066151496BE418311EB75 /* GlanceKit */,
+			);
+			productName = ShareExtension;
+			productReference = 885C23F6EC6FBF3B5B906979 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -314,6 +401,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				860724B56DCEA53C47B2A4E7 /* GlanceWidgetsExtension */,
+				D73F28EA1AC4E56B8A6B17A4 /* ShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -341,9 +429,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9AAB135D25D929E423FC6C18 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF999EE9954BE55513515A8E /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		1E6D1B70D72020694AA4ED0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D9716465657F6A8ADD45364 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -359,6 +463,8 @@
 				239436E77C74D89C64EAA8F2 /* OwnershipPlugin.swift in Sources */,
 				2E9C965F716D8B9FE10F237C /* ReminderScheduler.swift in Sources */,
 				97570A6EB94CD6F3BE082596 /* ReminderResponder.swift in Sources */,
+				B07B5488C638D5A64D115C21 /* ThingShortcuts.swift in Sources */,
+				F4BE078FD4E21B395EAA8DA3 /* AddThingControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,6 +482,7 @@
 				15962E2E23F9B383B6D4C654 /* SnapshotProvider.swift in Sources */,
 				A1A061D62623F83DB5CFB3FD /* ThingWidget.swift in Sources */,
 				1C790016FEE72CEBC221814D /* WidgetParts.swift in Sources */,
+				AD729419BD1FA8D5C8481971 /* AddThingControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,6 +494,12 @@
 			name = GlanceWidgetsExtension;
 			target = 860724B56DCEA53C47B2A4E7 /* GlanceWidgetsExtension */;
 			targetProxy = 60025442ED445FFB9EA8814F /* PBXContainerItemProxy */;
+		};
+		5887A9B08BF48ABC185697E2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShareExtension;
+			target = D73F28EA1AC4E56B8A6B17A4 /* ShareExtension */;
+			targetProxy = CD40F1E7F6BA4EEFE66D036F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -410,6 +523,28 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		488BAD34B7B32D7700FFD3CD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.thingglance.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -607,9 +742,42 @@
 			};
 			name = Debug;
 		};
+		E9A2C50152E2244746CC0A38 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.thingglance.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		22BD8965CC6FCE684858C71C /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				488BAD34B7B32D7700FFD3CD /* Release */,
+				E9A2C50152E2244746CC0A38 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -662,6 +830,11 @@
 			productName = "CapApp-SPM";
 		};
 		839ABC92CA7B89EF96233574 /* GlanceKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0BC3C007EC340AAD7223489F /* XCLocalSwiftPackageReference "GlanceKit" */;
+			productName = GlanceKit;
+		};
+		E30066151496BE418311EB75 /* GlanceKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0BC3C007EC340AAD7223489F /* XCLocalSwiftPackageReference "GlanceKit" */;
 			productName = GlanceKit;

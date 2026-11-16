@@ -9,7 +9,7 @@ The iPhone and iPad app is the web app in a Capacitor 8 shell (`ios/`), as the A
 | Runs on | iOS 15 and later |
 | Origin | `capacitor://localhost`. The data is keyed by it |
 
-Built so far: the app itself, the shell seams (keychain, network, live sync, links), reminders with their buttons, and the widgets, Home Screen and Lock Screen. Still to come: the Control Center control, home-screen quick actions, App Shortcuts and the share extension.
+Built: the app itself, the shell seams (keychain, network, live sync, links), reminders with their buttons, the widgets (Home Screen, Lock Screen and a Control Center button), quick actions on the icon, shortcuts for Siri and Spotlight, and sharing into the app.
 
 ## Build it
 
@@ -66,6 +66,7 @@ The seams are the ones in [shells.md](shells.md); `src/native/capacitor.ts` regi
 - `SharedStore` is the App Group's defaults: the payload the app writes (`{ snapshot, labels, canSend, launcher }`, as `src/native/widgetBridge.ts` builds it for Android), and the queue of writes made outside the app.
 - `PendingWrites` is that queue: `{ action, payload, clientId }` entries, `decide` and `send`, the same objects Android queues. Nothing native applies one. The app collects them (`collectWidgetWrites`), puts each through `dispatchExternalWrite()`, hands over a snapshot that shows the result, and only then acknowledges.
 - `ReminderPlan` reads the reminders out of the payload and works out what to schedule and cancel.
+- `OutsideLinks` is the links made outside the app: one place the app was asked to open at, and a queue of things shared into it. See [Other ways in](#other-ways-in).
 - `WidgetData` is what a widget draws: the dates, charges and things read out of the payload, less whatever was ticked outside the app since. `Countdown` is the days arithmetic and the `T-12d` notation.
 
 The group must be on the App ID in the developer portal and in every extension's entitlements, spelled the same. A wrong name fails without a word: `WidgetBridgePlugin.updateSnapshot` rejects when the group is missing, which is the one place it shows.
@@ -91,6 +92,17 @@ The extension is `ios/App/GlanceWidgets` (target `GlanceWidgetsExtension`, bundl
 - **A chosen thing that is gone** keeps the widget's choice and says "No longer tracked", where dropping the choice would quietly show another thing.
 - Settings says where the widgets are; iOS has no way for an app to offer one.
 - **Restart the device before believing a widget bug.** A stale WidgetKit cache survives a reinstall.
+
+## Other ways in
+
+Every one of these ends in a link or in the widgets' queue, the two doors in [links-and-intents.md](links-and-intents.md). None changes data by itself.
+
+- **Quick actions on the icon** (long-press): Add a thing, Add a plan, Needs a decision, as on Android. They are in `Info.plist`, and an item's type is the link it opens.
+- **Shortcuts for Siri, Spotlight and the Shortcuts app** (`App/Shortcuts/ThingShortcuts.swift`, iOS 17 and later). "What's next" answers with how many dates are waiting and which comes first, and "Settle a date" marks one in the queue as done with; both run with the app closed, from what the app last wrote to the App Group, and settling queues a `decide` like a widget's tick. "Add a thing" and "Show what needs a decision" open the app. Every phrase carries the app's name, or iOS drops it without a word.
+- **The Control Center button** (iOS 18): Add a thing. Its file (`ios/App/Shared/AddThingControl.swift`) is in both the app and the widget extension: the extension shows the control, and the app has to hold the intent too or a tap does nothing. That intent is hidden from the Shortcuts app, where one vended by two targets would appear twice.
+- **Sharing into the app** (`ios/App/ShareExtension`, `com.thingglance.app.share`). Share a product page or a name from any app. The page's title wins; failing that, the shared text without its links; a bare address names nothing, so the form opens empty: Android's rule, and the same `thingglance://action/add?name=` link. A share extension can never open its app, so the link waits and the form opens the next time thingGLANCE comes to the front. Several shares queue, and open one per visit.
+
+**How a link made outside reaches the page.** An extension cannot hand the app a link, and an intent that opens the app runs before the page exists. So the native side writes the link down in the App Group (`SharedStore.setPendingLink`, `queueShare`) and the web side takes it (`WidgetBridge.takeLink()`, `followQueuedLinks()` in `src/native/capacitor.ts`): at the start, when told one is waiting, and each time the app comes to the front. Only a `thingglance://` link is ever handed on, and it goes to `openLink()` like any other. A tap on a reminder and a `thingglance://` URL from another app still arrive through Capacitor.
 
 ## Reminders
 
@@ -118,9 +130,12 @@ On the iPhone 17 simulator (iOS 27.2), with a throwaway local vault:
 
 - The widgets drew from the sample data in the gallery in every Home Screen size. With "Needs a decision" on the Home Screen, a tick removed the date at once and queued the write; opening the app applied it (4 dates to 3) and emptied the queue.
 
-Not checked: the Lock Screen widgets and "Add a thing" by eye, the thing picker, a widget in dark mode, a real device, a signed build, TestFlight, the App Store record, a reminder arriving on its own day with the app closed, "Send to dayGLANCE" from a reminder, and an iPad.
+- The icon's three quick actions: "Add a plan" opened its form in the running app, and "Add a thing" did from a cold start.
+- The four shortcuts and their eight phrases are in the app's App Intents metadata, and both extensions are embedded.
+
+Not checked: the share extension and the shortcuts by hand (Siri, Spotlight, the Shortcuts app), the Control Center button, the Lock Screen widgets and "Add a thing" by eye, the thing picker, a widget in dark mode, a real device, a signed build, TestFlight, the App Store record, a reminder arriving on its own day with the app closed, "Send to dayGLANCE" from a reminder, and an iPad.
 
 ## Before the first upload
 
-- App IDs `com.thingglance.app` and `com.thingglance.app.widgets`, each with the App Groups capability and the group `group.com.thingglance.app`, and a development team set on both targets in Xcode (none is committed).
+- App IDs `com.thingglance.app`, `com.thingglance.app.widgets` and `com.thingglance.app.share`, each with the App Groups capability and the group `group.com.thingglance.app`, and a development team set on all three targets in Xcode (none is committed).
 - The annual encryption self-classification report: `ITSAppUsesNonExemptEncryption` is `false` because the app uses only standard algorithms for end-to-end sync, as the sibling apps declare.

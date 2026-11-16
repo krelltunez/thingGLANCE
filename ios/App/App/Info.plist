@@ -65,6 +65,35 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Long-press the app's icon. Each item's type is the link it opens
+	     (SceneDelegate), the same three as Android's res/xml/shortcuts.xml. -->
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>thingglance://action/add</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Add a thing</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>plus</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>thingglance://action/add-plan</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Add a plan</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>arrow.triangle.2.circlepath</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>thingglance://queue</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Needs a decision</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>checklist</string>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

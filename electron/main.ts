@@ -688,6 +688,34 @@ ipcMain.handle('local-integrations:get', (event) => (isMainWindowSender(event.se
 ipcMain.handle('local-integrations:transition', (event, action: unknown) =>
   (isMainWindowSender(event.sender) ? runIntegrationsTransition(action) : { ok: false, error: 'invalid_action', view: null }));
 
+// "Set up Claude Desktop" (docs/mcp.md, "Connecting an assistant"). Direct
+// builds only: the Mac App Store package does not carry the module
+// (electron-builder.config.cjs), so it is loaded when asked for and nothing
+// listens there at all. A run on a profile of its own (the tests) writes a
+// stand-in config in that profile, never the one a person's Claude reads.
+if (!process.mas) {
+  ipcMain.handle('mcp-setup:claude-desktop', async (event) => {
+    if (!isMainWindowSender(event.sender)) return { ok: false, reason: 'invalid_sender' };
+    try {
+      const { setUpClaudeDesktop } = await import('./mcpDesktopSetup.js');
+      const result = setUpClaudeDesktop({
+        platform: process.platform,
+        env: process.env,
+        home: app.getPath('home'),
+        execPath: process.execPath,
+        resourcesPath: process.resourcesPath,
+        connection: () => (mcpGates(integrationsConfig).bound ? { port: mcpPort(integrationsConfig), token: integrationsConfig.mcp.token ?? '' } : null),
+        configPath: process.env['THINGGLANCE_USER_DATA_DIR'] ? path.join(app.getPath('userData'), 'claude_desktop_config.json') : null,
+      });
+      logStartup(`claude desktop setup: ${result.ok ? result.action : result.reason}`);
+      return result;
+    } catch (err) {
+      logStartup(`claude desktop setup not available: ${err instanceof Error ? err.message : err}`);
+      return { ok: false, reason: 'bridge_missing' };
+    }
+  });
+}
+
 // The MCP write journal, for Settings: what assistants changed, and undo.
 ipcMain.handle('mcp-journal:get', (event) => (isMainWindowSender(event.sender) ? mcpJournal.snapshot() : null));
 ipcMain.handle('mcp-journal:undo', (event, groupKey: unknown) => {

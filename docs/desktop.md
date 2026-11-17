@@ -34,6 +34,7 @@ This page describes what is built. The phases still to come are at the end.
 | `localIntegrations` | The MCP server's and the Stream Deck listener's switches and state ([mcp.md](mcp.md), [stream-deck.md](stream-deck.md)) | `src/components/LocalIntegrations.tsx` |
 | `mcp` | The MCP server's questions, and the page's answers | `src/mcp/mcpBridge.ts` |
 | `mcpJournal` | What assistants changed this session, and undo | `src/components/LocalIntegrations.tsx` |
+| `mcpSetup` | "Set up Claude Desktop": adds thingGLANCE to Claude Desktop's config (direct builds on macOS and Windows) | `src/components/LocalIntegrations.tsx` |
 | `tray` | The popup's own calls; answered only to the popup's window | `src/tray/TrayPopup.tsx` |
 
 `src/native/desktop.ts` is the contract: the interfaces, the allowlist (`DESKTOP_BRIDGE_METHODS`) and `desktopBridge()`. `src/native/desktopShell.ts` is what the app does with it, and it is the same thing `src/native/capacitor.ts` does on a phone: it calls `registerShell({ fetch, secureStore, eventStream })` before anything else runs, so the rest of the app goes on using the seams in [shells.md](shells.md) and never asks which shell it is in.
@@ -223,10 +224,8 @@ The Mac App Store build records that it was bought, once, the first time it runs
 
 The desktop app can run an MCP server for an AI assistant: off by default, on 127.0.0.1 only, reading and changing behind separate consents, with undo and no deletes. It has a page of its own: [mcp.md](mcp.md).
 
+Direct builds for macOS and Windows also carry the family's stdio bridge and a "Set up Claude Desktop" button that points Claude Desktop at it. The Mac App Store build carries neither; after building one, `node scripts/verify-mas-compileout.mjs --mas <the .app>` checks that.
+
 ## Stream Deck
 
 A listener for the thingGLANCE Stream Deck plugin, off by default, and the plugin itself in `stream-deck-plugin/`. The keys draw the payload the tray holds, and a press goes through the command queue. It has a page of its own: [stream-deck.md](stream-deck.md).
-
-## Still to come
-
-The "Set up Claude Desktop" button, once the family's stdio bridge has a thingGLANCE profile.

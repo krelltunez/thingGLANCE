@@ -28,7 +28,7 @@
     "build:electron:dir": "npm run build:electron:renderer && npm run build:electron:main && electron-builder --config electron-builder.config.cjs --dir --publish never",
     "test:electron-smoke": "node e2e/electron-smoke.mjs",
     "test:electron-vault": "node e2e/electron-vault.mjs",
-    "build:electron:mas": "npm run build:electron:renderer && npm run build:electron:main && THINGGLANCE_MAS_BUILD=1 electron-builder --config electron-builder.config.cjs --mac mas --universal --publish never"
+    "build:electron:mas": "THINGGLANCE_MAS_BUILD=1 npm run build:electron:renderer && npm run build:electron:main && THINGGLANCE_MAS_BUILD=1 electron-builder --config electron-builder.config.cjs --mac mas --universal --publish never"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
@@ -59,6 +59,7 @@
     "@capacitor/cli": "^8.6.2",
     "@electron/notarize": "^3.1.2",
     "@eslint/js": "^9.39.5",
+    "@glance-apps/mcp-bridge": "0.3.0",
     "@modelcontextprotocol/client": "2.3.1",
     "@types/node": "^25.6.0",
     "@types/react": "^19.1.2",

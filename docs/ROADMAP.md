@@ -247,7 +247,7 @@ Gotchas lastGLANCE documents:
 
 ## Phase 6: MCP, then Stream Deck (M each)
 
-> Both are built, 2026-11-15. MCP: [mcp.md](mcp.md) is its design and its tools' contract; still to do for it is a thingGLANCE profile in `../mcp-bridge`, then the bundled bridge and the "Set up Claude Desktop" button. Stream Deck: [stream-deck.md](stream-deck.md); it has not run on a real device yet.
+> Both are built, 2026-11-15. MCP: [mcp.md](mcp.md) is its design and its tools' contract; the bridge's thingGLANCE profile (`@glance-apps/mcp-bridge` 0.3.0), the bundled bridge and the "Set up Claude Desktop" button followed on 2026-11-16. Stream Deck: [stream-deck.md](stream-deck.md); it has not run on a real device yet.
 
 **MCP.** The reference is dayGLANCE (`../day-planner/docs/mcp-server-spec.md`, `mcp-tools-reference.md`) and the shared `@glance-apps/mcp-host` package.
 
@@ -255,7 +255,7 @@ Gotchas lastGLANCE documents:
 - Reads and writes both go over a request bridge to the main window, which answers from live data. A missing window answers `renderer_unavailable`, never an empty list.
 - Everything is off by default. Reads and writes need separate consent.
 - Every write needs an idempotency key, is rate-limited, returns an undo operation, and can be stopped by a kill switch. No delete tools.
-- `../mcp-bridge` connects stdio clients to the app. It hard-codes dayGLANCE today and needs a thingGLANCE profile.
+- `../mcp-bridge` connects stdio clients to the app, through a profile per app. thingGLANCE's is in 0.3.0.
 
 A first tool set, following the `<app>_<verb>_<noun>` convention:
 

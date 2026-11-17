@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __BUILD_TIME__: JSON.stringify(buildTime),
+    // True only in the Mac App Store build's bundle (npm run build:electron:mas):
+    // what that build may not carry is compiled out, not just hidden.
+    __MAS_BUILD__: JSON.stringify(process.env.THINGGLANCE_MAS_BUILD === '1'),
   },
   server: { port: 5190, strictPort: true },
   preview: { port: 5191, strictPort: true },

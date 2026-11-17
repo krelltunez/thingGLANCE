@@ -173,6 +173,46 @@ describe('electron-builder.config.cjs', () => {
     }
   });
 
+  it('ships the MCP bridge on direct macOS and Windows builds, where the setup points Claude at it', () => {
+    const bridge = { from: 'node_modules/@glance-apps/mcp-bridge', to: 'mcp-bridge' };
+    expect(config.mac.extraResources).toEqual([bridge]);
+    expect(config.win.extraResources).toEqual([bridge]);
+    expect(config.linux.extraResources).toBeUndefined();
+    // The version shipped knows thingGLANCE: --app thingglance, which the entry passes.
+    const pkg = JSON.parse(readFileSync(path.join(root, bridge.from, 'package.json'), 'utf-8'));
+    expect(pkg.version).toBe('0.3.0');
+    expect(readFileSync(path.join(root, bridge.from, 'src/apps.js'), 'utf-8')).toContain("id: 'thingglance'");
+    expect(existsSync(path.join(root, bridge.from, 'bridge.js'))).toBe(true);
+    // The bridge is a pipe with no dependencies: what is copied is all it needs.
+    expect(pkg.dependencies).toBeUndefined();
+    // Direct builds carry the setup modules.
+    expect(config.files.some((f: string) => f.includes('mcpDesktop'))).toBe(false);
+  });
+
+  it('leaves the Claude Desktop setup and the bridge out of the MAS build', () => {
+    process.env.THINGGLANCE_MAS_BUILD = '1';
+    try {
+      const mas = loadConfig();
+      // No bridge on MAS: the mac options it merges over carry none.
+      expect(mas.mac.extraResources).toEqual([]);
+      expect(mas.mas.extraResources).toBeUndefined();
+      // At the top level, where negations compose.
+      expect(mas.files).toEqual(expect.arrayContaining(['!dist-electron/mcpDesktopSetup*', '!dist-electron/mcpDesktopConfig*']));
+      expect(mas.mas.files).toBeUndefined();
+    } finally {
+      delete process.env.THINGGLANCE_MAS_BUILD;
+    }
+  });
+
+  it('loads the setup only when asked, so a build without the module still starts', () => {
+    const sources = readdirSync(path.join(root, 'electron')).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.startsWith('mcpDesktop'));
+    for (const f of sources) {
+      const text = readFileSync(path.join(root, 'electron', f), 'utf-8');
+      expect(/^import [^\n]*from '\.\/mcpDesktop(Setup|Config)\.js'/m.test(text), `${f} imports the setup statically`).toBe(false);
+    }
+    expect(readFileSync(path.join(root, 'electron/main.ts'), 'utf-8')).toContain("await import('./mcpDesktopSetup.js')");
+  });
+
   it('registers the thingglance:// scheme the app handles', () => {
     expect(config.protocols).toEqual([{ name: 'thingGLANCE', schemes: [DEEP_LINK_SCHEME] }]);
   });

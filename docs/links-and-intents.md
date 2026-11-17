@@ -43,7 +43,7 @@ A link to something this device cannot see (removed, or private to another membe
 | --- | --- | --- |
 | `create_thing` | `name`, and optionally `category`, `brand`, `model`, `retailer`, `purchase_date`, `price`, `lifespan_months`, `support_end`, `owner_member_id`, `notes` | `thing_id` |
 | `add_coverage` | `thing_id`, `name`, `end_date`, and optionally `type` (`warranty`, `extended`, `insurance`), `start_date`, `provider`, `cost`, `notes` | `coverage_id` |
-| `create_plan` | `name`, `amount`, and optionally `cycle`, `anchor_date`, `provider`, `thing_ids`, `payer_member_id`, `auto_renew`, `status`, `trial_end`, `review`, `notes` | `plan_id` |
+| `create_plan` | `name`, `amount`, and optionally `cycle`, `anchor_date`, `start_date`, `end_date`, `provider`, `thing_ids`, `payer_member_id`, `auto_renew`, `status`, `trial_end`, `review`, `notes` | `plan_id` |
 | `decide` | `event_key`, and optionally `state`: `done` (the default), `dismissed` or `restore` | `event_key`, `state` |
 | `send` | `event_key` | `event_key`. Hands the date to dayGLANCE as a task |
 | `open` | `link` | Nothing. The link goes through the router above |

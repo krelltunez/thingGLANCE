@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { Telescope } from 'lucide-react'
 import type { Coverage, HorizonEvent, Subscription, Thing } from '@/core/types'
 import { DAY, daysBetween, fmtDay, fmtMonth, packRows, today } from '@/core/dates'
-import { cycleShort, isBilling, money, renewalsBetween } from '@/core/money'
+import { cycleShort, isBilling, isOver, money, renewalsBetween, termEnd } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
@@ -76,7 +76,7 @@ export function HorizonView() {
   }, [things, d, startDay])
   const laneHeight = (thing: Thing) => ROW + Math.max(0, (coverRows.get(thing.id)?.length ?? 1) - 1) * COVER_STEP
 
-  const loose = d.visibleSubs.filter((s) => s.status !== 'cancelled' && !s.coversThingIds.some((id) => d.thingById.get(id)))
+  const loose = d.visibleSubs.filter((s) => !isOver(s) && !s.coversThingIds.some((id) => d.thingById.get(id)))
     .sort((a, b) => b.amount * (b.cycle === 'yearly' ? 1 : 12) - a.amount * (a.cycle === 'yearly' ? 1 : 12))
 
   const agenda = useMemo(() => {
@@ -100,7 +100,7 @@ export function HorizonView() {
   const lane = (thing: Thing) => {
     const life = d.life.get(thing.id)!
     const rows = coverRows.get(thing.id) ?? []
-    const subs = d.subsFor(thing.id).filter((s) => s.status !== 'cancelled')
+    const subs = d.subsFor(thing.id).filter((s) => !isOver(s))
     const height = laneHeight(thing)
     // Everything below the coverage rows moves down with them.
     const drop = height - ROW
@@ -154,7 +154,7 @@ export function HorizonView() {
       <div key={s.id} className="relative border-b border-line/[0.06]" style={{ height: lanePad(SUB_ROW) }}>
         <button type="button" className={NAME_TAG} onClick={() => ui.open({ type: 'subscription', id: s.id })}><span className="truncate">{s.name}</span></button>
         <div className="absolute inset-x-0 bottom-0" style={{ height: SUB_ROW }}>
-          {isBilling(s) && <div className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sub/30" style={bar(ref, endDay)} />}
+          {isBilling(s) && <div className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-sub/30" style={bar(ref, termEnd(s) && termEnd(s)! < endDay ? termEnd(s)! : endDay)} />}
           {until && inView(until) && (
             <span title={t('horizon.tip.trialConverts', { date: fmtDay(until) })} className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bad bg-bg" style={{ left: `${pos(until)}%` }} />
           )}

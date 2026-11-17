@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { today } from '@/core/dates'
 import type { HorizonEvent, Thing } from '@/core/types'
 import { INTENT_ACTIONS, handleIntent, type IntentContext, type LedgerIO } from './handleIntent'
 import { LEDGER_LIMIT, findHandled, readLedger, recordHandled, writeLedger, type HandledWrite } from './ledger'
@@ -116,6 +117,19 @@ describe('creating', () => {
     expect(vi.mocked(ctx.savePlan).mock.calls[0][0]).toMatchObject({ name: 'iCloud+ 2TB', amount: 9.99, cycle: 'monthly', autoRenew: true, status: 'active', review: false, coversThingIds: ['t1'], payerMemberId: null, visibility: 'shared' })
     expect(await handleIntent({ action: 'create_plan', clientId: 'q', payload: { name: 'X', amount: 1, thing_ids: ['gone'] } }, ctx, memory())).toMatchObject({ code: 'not_found' })
     expect(await handleIntent({ action: 'create_plan', clientId: 'r', payload: { name: 'X', amount: 1, status: 'trial' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
+  })
+  it('starts a plan when the thing it is on was bought, or today, or when it is told', async () => {
+    const bought: Thing = { ...laptop, purchaseDate: '2026-09-22' }
+    const ctx = fakes({ getThing: vi.fn(async (id: string) => (id === 't1' ? bought : id === 't2' ? laptop : null)) })
+    const saved = () => vi.mocked(ctx.savePlan).mock.calls.at(-1)![0]
+    await handleIntent({ action: 'create_plan', clientId: 'a', payload: { name: 'Care', amount: 6.49, thing_ids: ['t2', 't1'] } }, ctx, memory())
+    expect(saved()).toMatchObject({ startDate: '2026-09-22' })
+    expect(saved().endDate).toBeUndefined()
+    await handleIntent({ action: 'create_plan', clientId: 'b', payload: { name: 'Music', amount: 10.99 } }, ctx, memory())
+    expect(saved().startDate).toBe(today())
+    await handleIntent({ action: 'create_plan', clientId: 'c', payload: { name: 'Lease', amount: 75.17, thing_ids: ['t1'], start_date: '2026-10-01', end_date: '2029-10-01' } }, ctx, memory())
+    expect(saved()).toMatchObject({ startDate: '2026-10-01', endDate: '2029-10-01', autoRenew: true })
+    expect(await handleIntent({ action: 'create_plan', clientId: 'd', payload: { name: 'X', amount: 1, start_date: '2027-01-01', end_date: '2026-01-01' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
   })
 })
 

@@ -4,10 +4,10 @@
 // so a pulled row can never loop back into a push.
 
 import { db } from './client'
-import type { Coverage, Decision, DeviceLink, Member, Subscription, Thing } from '@/core/types'
+import type { Coverage, Decision, DeviceLink, Member, OwnershipSpan, Subscription, Thing } from '@/core/types'
 import { ownershipId, ownershipRow, type OwnershipFact } from '@/core/ownership'
 import { nowIso, today } from '@/core/dates'
-import { handDown, isTied, memberTies, privateHeld, reassignPlan, reassignThing, userIds, type MemberTies } from '@/core/household'
+import { handDown, isTied, memberTies, privateHeld, reassignPlan, reassignThing, userIds, withoutEntrySpan, type MemberTies, type OwnerChange } from '@/core/household'
 import { markDirty } from '@/sync/dirtyTracker'
 import { getDeviceId } from '@/sync/deviceId'
 import { markRosterDirty } from '@/multiuser/rosterDirtyTracker'
@@ -68,15 +68,25 @@ export async function createThing(input: ThingInput, id: string = uuid()): Promi
   return thing
 }
 
-export async function updateThing(id: string, patch: Partial<ThingInput>): Promise<void> {
+// How a change of owner is to be recorded (core/household.ts: handDown). Left
+// out, it is a hand-over today. `history` puts an earlier history back as it
+// was: what an undo does, since a hand-over cannot be un-handed a day later.
+export interface OwnerChangeOptions {
+  as?: OwnerChange
+  history?: OwnershipSpan[] | null
+}
+
+export async function updateThing(id: string, patch: Partial<ThingInput>, owner: OwnerChangeOptions = {}): Promise<void> {
   await promoteFamily(id)
   const cur = await db.things.get(id)
   if (!cur) return
   // A change of owner is a hand-me-down: same thing, same dates, and a note of
   // who had it before.
-  const owner = patch.ownerMemberId !== undefined ? handDown(cur, patch.ownerMemberId, today()) : {}
+  const owned = owner.history !== undefined
+    ? { ownershipHistory: owner.history?.length ? owner.history : undefined }
+    : patch.ownerMemberId !== undefined ? handDown(cur, patch.ownerMemberId, today(), owner.as) : {}
   // put (not update) so a cleared optional field is really removed.
-  await db.things.put(clean({ ...cur, ...patch, ...owner, sample: undefined, updatedAt: nowIso() }) as Thing)
+  await db.things.put(clean({ ...cur, ...patch, ...owned, sample: undefined, updatedAt: nowIso() }) as Thing)
   markDirty(id)
 }
 
@@ -305,6 +315,22 @@ export async function detachDevice(deviceId: string = getDeviceId()): Promise<vo
 }
 
 // ── Housekeeping ─────────────────────────────────────────────────────────────
+
+// Takes the span an entry-day change of owner used to leave out of every
+// thing that has one (core/household.ts: withoutEntrySpan), and answers how
+// many it changed. Through the one write path, so the repair syncs; a thing
+// another device has already repaired has nothing left to take out. Sample
+// rows have no history.
+export async function repairEntryOwnership(): Promise<number> {
+  let repaired = 0
+  for (const thing of await db.things.toArray()) {
+    const history = thing.sample ? null : withoutEntrySpan(thing)
+    if (!history) continue
+    await updateThing(thing.id, {}, { history })
+    repaired += 1
+  }
+  return repaired
+}
 
 export async function hasAnyData(): Promise<boolean> {
   return (await db.things.count()) + (await db.subscriptions.count()) > 0

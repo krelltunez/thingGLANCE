@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Coverage, DataSet, Decision, Subscription, Thing } from './types'
-import { forecast, monthlyCost, nextRenewal, renewalsBetween } from './money'
+import { chargesWithin, forecast, isBilling, isOver, leftOnTerm, monthlyCost, nextRenewal, paidToDate, planStart, renewalsBetween, termEnd } from './money'
 import { lifecycle, replacementFund } from './health'
-import { attentionQueue, buildHorizon, eventKey, nextEventFor } from './horizon'
+import { TERM_END_LEAD, attentionQueue, buildHorizon, eventKey, nextEventFor } from './horizon'
 import { buildSnapshot } from './snapshot'
-import { packRows, tMinus } from './dates'
+import { dayOf, packRows, tMinus } from './dates'
 import { CATEGORIES, category, guessCategory } from './categories'
 
 const REF = '2026-11-12'
@@ -35,6 +35,76 @@ describe('renewals', () => {
   it('forecasts charges by calendar month, skipping a trial until it converts', () => {
     const f = forecast([sub({}), sub({ id: 's2', status: 'trial', trialEnd: '2026-12-20', anchorDate: '2026-12-20', amount: 5 })], 3, REF)
     expect(f.map((m) => m.total)).toEqual([10, 15, 15])
+  })
+})
+
+// A desktop leased on 2026-09-22 for three years, paid monthly on the 19th,
+// with a protection plan billed monthly on the 22nd.
+describe('a plan with a beginning and an end', () => {
+  const entered = '2026-11-13T18:00:00.000Z'
+  const lease = sub({ id: 'lease', name: 'Apple Lease', amount: 75.17, anchorDate: '2026-11-19', startDate: '2026-09-22', endDate: '2029-09-22', createdAt: entered })
+  const care = sub({ id: 'care', name: 'AppleCare+', amount: 6.49, anchorDate: '2026-11-22', startDate: '2026-09-22', createdAt: entered })
+  const TODAY = '2026-11-16'
+
+  it('renews from the day it began and stops before the day it ends', () => {
+    const all = renewalsBetween(lease, '2020-01-01', '2035-01-01')
+    expect(all[0]).toBe('2026-10-19')
+    expect(all[all.length - 1]).toBe('2029-09-19')
+    expect(all).toHaveLength(36)
+    // The last day of a term is the day it ends, not one more payment.
+    expect(renewalsBetween({ ...lease, anchorDate: '2026-11-22' }, '2029-08-01', '2030-01-01')).toEqual(['2029-08-22'])
+    expect(nextRenewal(lease, '2029-09-20')).toBeNull()
+    // Nothing renewed before there was a plan.
+    expect(renewalsBetween(care, '2025-10-01', TODAY)).toEqual(['2026-09-22', '2026-10-22'])
+  })
+  it('counts a plan from the day it was entered when no start is on record', () => {
+    const { startDate: _none, ...legacy } = care
+    // The day that moment fell on, wherever this is read.
+    const day = dayOf(entered)
+    expect(['2026-11-13', '2026-11-14']).toContain(day)
+    expect(planStart(legacy)).toBe(day)
+    expect(renewalsBetween(legacy, '2025-10-01', TODAY)).toEqual([])
+    expect(paidToDate(legacy, TODAY)).toEqual({ since: day, payments: 0, total: 0, last: null })
+    // With nothing to bound it, the cycle alone answers, as it always did.
+    expect(renewalsBetween({ anchorDate: '2026-11-22', cycle: 'monthly' }, '2026-09-01', '2026-10-31')).toEqual(['2026-09-22', '2026-10-22'])
+  })
+  it('adds up what has been paid, and what is left on a term', () => {
+    expect(paidToDate(care, TODAY)).toEqual({ since: '2026-09-22', payments: 2, total: 12.98, last: '2026-10-22' })
+    expect(paidToDate(lease, TODAY)).toEqual({ since: '2026-09-22', payments: 1, total: 75.17, last: '2026-10-19' })
+    expect(leftOnTerm(lease, TODAY)).toEqual({ ends: '2029-09-22', payments: 35, total: 2630.95 })
+    expect(leftOnTerm(care, TODAY)).toBeNull()
+    // A trial has taken nothing until it converts.
+    expect(paidToDate(sub({ status: 'trial', trialEnd: '2026-12-01', anchorDate: '2026-12-01', startDate: '2026-09-01' }), TODAY).payments).toBe(0)
+  })
+  it('costs what it costs until the term is over, and nothing after', () => {
+    expect(termEnd(lease)).toBe('2029-09-22')
+    expect(isBilling(lease, TODAY)).toBe(true)
+    expect(monthlyCost(lease, TODAY)).toBeCloseTo(75.17, 2)
+    expect(monthlyCost(lease, '2029-09-22')).toBe(0)
+    expect(isOver(lease, '2029-09-22')).toBe(false)
+    expect(isOver(lease, '2029-09-23')).toBe(true)
+    // Paid up front and not renewing is a different thing: no term, no cost.
+    const prepaid = sub({ autoRenew: false, endDate: '2027-06-01' })
+    expect(termEnd(prepaid)).toBeNull()
+    expect(monthlyCost(prepaid, TODAY)).toBe(0)
+    expect(isOver(prepaid, '2028-01-01')).toBe(false)
+    expect(isOver(sub({ status: 'cancelled' }), TODAY)).toBe(true)
+  })
+  it('stops charging and forecasting at the end of the term', () => {
+    expect(chargesWithin([lease], '2029-09-01', 60).map((c) => c.date)).toEqual(['2029-09-19'])
+    const months = forecast([lease], 3, '2029-08-20')
+    expect(months.map((m) => m.total)).toEqual([0, 75.17, 0])
+  })
+  it('puts the end of the term on the horizon, and no renewal past it', () => {
+    const events = buildHorizon(data({ subscriptions: [lease] }), { ref: TODAY, from: '2026-01-01', to: '2031-01-01' }).filter((e) => e.subscriptionId === 'lease')
+    const end = events.find((e) => e.type === 'sub-end')!
+    expect(end).toMatchObject({ date: '2029-09-22', title: 'Apple Lease term ends', lead: TERM_END_LEAD })
+    const renewals = events.filter((e) => e.type === 'renewal').map((e) => e.date)
+    expect(renewals[0]).toBe('2026-10-19')
+    expect(renewals[renewals.length - 1]).toBe('2029-09-19')
+    // It asks for a decision once it is close, like any other date.
+    const near = buildHorizon(data({ subscriptions: [lease] }), { ref: '2029-08-01' }).find((e) => e.type === 'sub-end')!
+    expect(near.attention).toBe(true)
   })
 })
 

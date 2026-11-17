@@ -29,6 +29,7 @@
       "accessEnds": "{{name}} access ends",
       "trialConverts": "{{name}} trial converts",
       "expires": "{{name}} expires",
+      "termEnds": "{{name}} term ends",
       "renews": "{{name}} renews"
     },
     "detail": {
@@ -369,6 +370,13 @@
     "soldFor": "Sold for ({{currency}})",
     "holderLabel": "Whose is it?",
     "handOverHint": "Handing it on keeps its dates, coverage and plans, and remembers who had it before.",
+    "ownerChange": {
+      "label": "How long has {{name}} had it?",
+      "household": "the household",
+      "correction": "All along",
+      "handover": "From today",
+      "correctionHint": "The owner on record was wrong. Nothing is added to its history."
+    },
     "notes": "Notes",
     "notesPlaceholder": "Serial number, battery health, quirks…",
     "lookup": {
@@ -430,6 +438,17 @@
     "accessEndsHint": "Optional.",
     "nextRenewal": "Next renewal",
     "nextRenewalHint": "Any renewal date works; it repeats from there.",
+    "started": "Started",
+    "startedHint": "Its payments are counted from here.",
+    "termEnds": "Ends on",
+    "termEndsHint": "For a lease or a payment plan: the day its term ends. Leave it empty for a plan that renews until you cancel.",
+    "expires": "Expires on",
+    "expiresHint": "Leave it empty and it expires on its next renewal date.",
+    "paidSoFar_one": "Paid so far, at today's price: {{amount}} ({{count}} payment since {{since}}).",
+    "paidSoFar_other": "Paid so far, at today's price: {{amount}} ({{count}} payments since {{since}}).",
+    "leftOnTerm_one": "Left on the term: {{amount}} ({{count}} payment, ending {{ends}}).",
+    "leftOnTerm_other": "Left on the term: {{amount}} ({{count}} payments, ending {{ends}}).",
+    "termOver": "Nothing left to pay on the term. Its last day: {{ends}}.",
     "attachedTo": "Attached to",
     "attachedSplitHint": "Its cost is split evenly between them.",
     "detach": "Detach {{name}}",
@@ -512,6 +531,8 @@
       "title": "Plans",
       "empty": "Nothing recurring attached to this.",
       "cancelled": "cancelled",
+      "ended": "ended",
+      "until": "until {{when}}",
       "underReview": "under review",
       "active": "Active"
     },
@@ -759,13 +780,17 @@
       "accessEnds": "access ends {{date}}",
       "trialConverts": "trial converts {{date}}",
       "expires": "expires {{date}}",
-      "renews": "renews {{date}}"
+      "renews": "renews {{date}}",
+      "termEnds": "term ends {{date}}",
+      "termEnded": "term ended {{date}}"
     },
     "row": {
       "andMore_one": "{{name}} + {{count}} more",
       "andMore_other": "{{name}} + {{count}} more",
       "trial": "Trial",
       "cancelled": "Cancelled",
+      "ended": "Ended",
+      "termEnds": "ends {{date}}",
       "standalone": "Standalone",
       "underReview": "Under review: you will be asked before it renews",
       "review": "Review before it renews"

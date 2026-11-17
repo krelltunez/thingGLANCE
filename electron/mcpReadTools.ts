@@ -49,9 +49,22 @@ const THING_NOTE =
 
 const DATE_NOTE =
   ' Each date has a type: "coverage-end" (a warranty or insurance runs out), "support-end" (security updates stop), "replace" ' +
-  '(the planned replacement), "renewal" (a plan renews), "trial-end" (a trial converts to paid) or "sub-end" (a cancelled plan\'s ' +
-  'access ends). days_away is negative once it has passed. needs_decision is true while it sits in the queue; state is "open", ' +
+  '(the planned replacement), "renewal" (a plan renews), "trial-end" (a trial converts to paid) or "sub-end" (a plan ends: a ' +
+  'cancelled one\'s access runs out, one that does not renew expires, or a lease or installment plan reaches the end of its ' +
+  'term). days_away is negative once it has passed, and the date then carries past: true. needs_decision is true while it sits in the queue; state is "open", ' +
   '"done", "dismissed" or "sent" (handed to dayGLANCE as a task). handler_name is the household member it falls to, when it falls to one.';
+
+// A null owner or payer is a value, not a gap.
+const HOUSEHOLD_NOTE =
+  ' An owner or a payer is a household member or the household itself. For the household the member id is null, the name is ' +
+  '"Household" and owner (or payer) is "household": null there never means "not set".';
+
+const PLAN_NOTE =
+  ' On a plan: start_date is where its payments are counted from (start_date_recorded false means none was entered, so it counts ' +
+  'from the day the plan was added: set one with thingglance_update_plan). paid_to_date is history, the payments made from ' +
+  'start_date up to yesterday at today\'s price, and is never mixed with what is coming. A plan with auto_renew true and an ' +
+  'end_date has a fixed term (a lease, installments): it is paid each cycle until end_date, next_renewal is null once no payment ' +
+  'is left, and left_on_term says what remains. With auto_renew false it is already paid for: no renewals, no monthly cost.';
 
 const PRIVACY = ' You see what the member this computer belongs to sees: another member\'s private things and plans are not listed.';
 
@@ -100,7 +113,7 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
         'The things thingGLANCE tracks, with filters. status: "active" (default), "retired" or "all". category is a category id as ' +
         'returned on a thing. verdict narrows to one verdict. owner: a member id, "me" (this computer\'s member) or "household" (things ' +
         'the household owns together). query matches words in the name, brand, model and category, accents and case ignored. ' +
-        'Ordered by what runs out soonest. ' + PAGING + ' ' + IDS + THING_NOTE + PRIVACY,
+        'Ordered by what runs out soonest. ' + PAGING + ' ' + IDS + THING_NOTE + HOUSEHOLD_NOTE + PRIVACY,
       inputSchema: z.object({
         status: z.string().optional().describe('active, retired or all. Default active.'),
         category: z.string().optional().describe('A category id, e.g. "phone" or "laptop".'),
@@ -123,7 +136,9 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
     {
       description:
         'One thing in full: what it is, when it was bought and for how much, its notes and specs, who owns it and who deals with it, ' +
-        'every warranty and insurance on it (coverage), the plans attached to it, and its dates ahead.' + THING_NOTE + DATE_NOTE,
+        'every warranty and insurance on it (coverage), the plans attached to it, and its dates: the ones ahead, and any behind that ' +
+        'still wait for a decision. owned_since is when the current owner\'s time with it began (the last hand-over, or the day it ' +
+        'was bought); ownership_history lists the owners before, oldest first.' + THING_NOTE + DATE_NOTE + HOUSEHOLD_NOTE + PLAN_NOTE,
       inputSchema: z.object({ thing_id: z.string().describe('A thing id from thingglance_list_things.') }),
     },
     async ({ thing_id }) => {
@@ -138,9 +153,10 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
     {
       description:
         'The plans (subscriptions, memberships, anything that renews) with what each costs and when it next renews, most expensive ' +
-        'first, and the totals a month and a year. status: "current" (default: active and trials), "active", "trial", "cancelled" or ' +
-        '"all". thing_id keeps the plans attached to one thing. query matches the name and provider. review_before_renewal means the ' +
-        'user asked to be asked before it renews. ' + PAGING + ' ' + IDS + PRIVACY,
+        'first. totals is what the plans listed come to a month and a year: it follows the filters (and counts every page, not ' +
+        'only this one). all_plans_totals is the same for every plan, whatever the filters. status: "current" (default: active and ' +
+        'trials), "active", "trial", "cancelled" or "all". thing_id keeps the plans attached to one thing. query matches the name ' +
+        'and provider. review_before_renewal means the user asked to be asked before it renews. ' + PAGING + ' ' + IDS + HOUSEHOLD_NOTE + PLAN_NOTE + PRIVACY,
       inputSchema: z.object({
         status: z.string().optional().describe('current, active, trial, cancelled or all. Default current.'),
         thing_id: z.string().optional().describe('A thing id: only the plans attached to it.'),
@@ -152,7 +168,7 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
       const filter = { status: status ?? 'current', thing_id, query: query?.trim() || undefined };
       const r = await ask('list_plans', filter);
       if (!r.ok) return bridgeError(r);
-      return page((data(r).items as unknown[]) ?? [], JSON.stringify(filter), limit, cursor, { totals: data(r).totals }, deps.timeZone());
+      return page((data(r).items as unknown[]) ?? [], JSON.stringify(filter), limit, cursor, { totals: data(r).totals, all_plans_totals: data(r).all_plans_totals }, deps.timeZone());
     },
   );
 
@@ -163,7 +179,9 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
         'The dates between two local days (both included), soonest first: warranties ending, support ending, planned replacements, ' +
         'renewals, trials converting. Default: today to 90 days ahead; at most about three years at once. types narrows to some kinds. ' +
         'thing_id or plan_id narrows to one thing or plan. Routine renewals (a monthly plan nobody asked to review) are left out ' +
-        'unless include_routine is true. For "what is coming up" and "what renews this quarter". ' + PAGING + DATE_NOTE + PRIVACY,
+        'unless include_routine is true. A from before today also lists what has already happened, each marked past: true; a ' +
+        'plan\'s renewals are listed only from its start_date, since nothing was paid before it began, and never on or after the ' +
+        'day it ends. For "what is coming up" and "what renews this quarter". ' + PAGING + DATE_NOTE + PRIVACY,
       inputSchema: z.object({
         from: z.string().optional().describe('First local date, YYYY-MM-DD. Default today.'),
         to: z.string().optional().describe('Last local date, YYYY-MM-DD. Default 90 days from today.'),
@@ -206,8 +224,9 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
     {
       description:
         'The household: everyone things are tracked for, whether or not they use the app (uses_the_app), how many things each owns ' +
-        'and plans each pays for, which member this computer belongs to (is_this_device), and how many things the household owns ' +
-        'together. Member ids are what owner and payer fields take.',
+        'and plans each pays for, which member this computer belongs to (is_this_device), and what belongs to the household itself: ' +
+        'household_owns and household_pays_for count the things and plans whose owner or payer is null. Member ids are what owner ' +
+        'and payer fields take; null there means the household.',
     },
     async () => {
       const r = await ask('list_members');

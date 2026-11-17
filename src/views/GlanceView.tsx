@@ -10,7 +10,7 @@ import { DAY, daysBetween, fmtDay, relative, span, today } from '@/core/dates'
 import { EVENT_META, eventKindLabel } from '@/core/horizon'
 import { replacementFund } from '@/core/health'
 import { fundByOwner } from '@/core/household'
-import { chargesWithin, cycleShort, forecast, money, monthlyCost } from '@/core/money'
+import { chargesWithin, cycleShort, forecast, isOver, money, monthlyCost } from '@/core/money'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { useUI } from '@/state/ui'
@@ -179,7 +179,7 @@ export function GlanceView() {
                 ? (first.days < 0 ? <Trans i18nKey="glance.next.overdue" {...nextUp} /> : <Trans i18nKey="glance.next.upcoming" {...nextUp} />)
                 : t('glance.watching.sentence', {
                   things: t('glance.watching.things', { count: d.activeThings.length }),
-                  plans: t('glance.watching.plans', { count: d.visibleSubs.filter((s) => s.status !== 'cancelled').length }),
+                  plans: t('glance.watching.plans', { count: d.visibleSubs.filter((s) => !isOver(s)).length }),
                 })}
             </p>
           </div>

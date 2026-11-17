@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { today } from '@/core/dates'
 import { TODAY, household, readOf, writeDepsOf, type Household } from './fixture'
 import { handleRead } from './readModel'
 import { handleWrite, undoWrites, type UndoOp, type WriteAnswer } from './writeModel'
@@ -120,7 +121,29 @@ describe('reassigning', () => {
     const a = done(await write('reassign_thing', { thing_id: 't-laptop', owner_member_id: 'kid', responsible_member_id: 'ben' }))
     expect(thing(h, 't-laptop')).toMatchObject({ ownerMemberId: 'kid', responsibleMemberId: 'ben' })
     expect(thing(h, 't-laptop').ownershipHistory).toEqual([expect.objectContaining({ memberId: 'ann', to: TODAY })])
-    expect(a.undo?.op).toEqual({ kind: 'restore_thing_fields', thingId: 't-laptop', before: { ownerMemberId: 'ann', responsibleMemberId: null } })
+    expect(a.undo?.op).toEqual({ kind: 'restore_thing_fields', thingId: 't-laptop', before: { ownerMemberId: 'ann', responsibleMemberId: null, ownershipHistory: null } })
+    expect(a.data.thing).toMatchObject({ owner_name: 'Kit', owned_since: TODAY })
+  })
+  it('corrects an owner without a hand-over, and takes either back exactly', async () => {
+    const { h, deps, write } = setup()
+    // The TV was entered as the household's. It was Ann's all along.
+    const fixed = done(await write('reassign_thing', { thing_id: 't-tv', owner_member_id: 'ann', correction: true }))
+    expect(thing(h, 't-tv')).toMatchObject({ ownerMemberId: 'ann' })
+    expect(thing(h, 't-tv').ownershipHistory).toBeUndefined()
+    expect(fixed.data.thing).toMatchObject({ owner: 'member', owner_name: 'Ann', owned_since: '2020-01-10', ownership_history: [] })
+    // Then it really does change hands.
+    const handed = done(await write('reassign_thing', { thing_id: 't-tv', owner_member_id: 'ben' }))
+    expect(thing(h, 't-tv').ownershipHistory).toEqual([{ memberId: 'ann', from: '2020-01-10', to: TODAY }])
+    // Undone newest first: the hand-over leaves no trace, and neither does the correction.
+    expect(await undoWrites([handed.undo!.op, fixed.undo!.op], deps)).toEqual({ undone: 2, skipped: [] })
+    expect(thing(h, 't-tv').ownerMemberId).toBeNull()
+    expect(thing(h, 't-tv').ownershipHistory).toBeUndefined()
+    expect(refusal(await write('reassign_thing', { thing_id: 't-tv', responsible_member_id: 'ann', correction: true }))).toBe('validation')
+  })
+  it('gives a thing added with an owner one period, from the day it was bought', async () => {
+    const { write } = setup()
+    const a = done(await write('create_thing', { name: 'Kindle', purchase_date: '2025-01-01', owner_member_id: 'ann', new_id: ID }))
+    expect(a.data.thing).toMatchObject({ owner: 'member', owner_name: 'Ann', owned_since: '2025-01-01', ownership_history: [] })
   })
   it('needs something to change, and a member who exists', async () => {
     const { write } = setup()
@@ -136,6 +159,33 @@ describe('editing a plan', () => {
     expect(plan(h, 'p-stream')).toMatchObject({ status: 'cancelled', endDate: '2026-12-03' })
     expect(a.undo?.op).toEqual({ kind: 'restore_plan_fields', planId: 'p-stream', before: { status: 'active', endDate: null } })
     expect(a.data.plan).toMatchObject({ status: 'cancelled', next_renewal: null, monthly_cost: 0 })
+  })
+  it('starts a plan on a thing the day the thing was bought, unless told otherwise', async () => {
+    const { h, write } = setup()
+    done(await write('create_plan', { name: 'Phone care', amount: 5, thing_ids: ['t-phone'], new_id: ID }))
+    expect(plan(h, ID).startDate).toBe('2025-11-25')
+    done(await write('create_plan', { name: 'Music', amount: 10.99, new_id: ID2 }))
+    expect(plan(h, ID2).startDate).toBe(today())
+    const a = done(await write('create_plan', { name: 'Lease', amount: 75.17, anchor_date: '2026-11-19', start_date: '2026-09-22', end_date: '2029-09-22', thing_ids: ['t-phone'], new_id: '8a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4d' }))
+    expect(a.data.plan).toMatchObject({ start_date: '2026-09-22', start_date_recorded: true, end_date: '2029-09-22', monthly_cost: 75.17, left_on_term: { ends: '2029-09-22', payments: 35 } })
+    expect(refusal(await write('create_plan', { name: 'Backwards', amount: 1, start_date: '2027-01-01', end_date: '2026-01-01', new_id: '9a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4e' }))).toBe('validation')
+  })
+  it('sets and clears a start date, and turns a plan into a fixed term', async () => {
+    const { h, write } = setup()
+    const a = done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-08-03' }))
+    expect(plan(h, 'p-stream').startDate).toBe('2026-08-03')
+    // Aug 3, Sep 3, Oct 3, Nov 3: four payments behind it on the 16th.
+    expect(a.data.plan).toMatchObject({ start_date: '2026-08-03', start_date_recorded: true, paid_to_date: { payments: 4, total: 63.96 } })
+    expect(a.undo?.op).toEqual({ kind: 'restore_plan_fields', planId: 'p-stream', before: { startDate: null } })
+    // Paid each month until it ends: December, January and February are left.
+    const term = done(await write('update_plan', { plan_id: 'p-stream', end_date: '2027-03-03' }))
+    expect(term.data.plan).toMatchObject({ auto_renew: true, monthly_cost: 15.99, left_on_term: { ends: '2027-03-03', payments: 3, total: 47.97 } })
+    // Paid up front and not renewing: nothing more to pay, and no term.
+    const prepaid = done(await write('update_plan', { plan_id: 'p-stream', auto_renew: false }))
+    expect(prepaid.data.plan).toMatchObject({ monthly_cost: 0, next_renewal: null, left_on_term: null })
+    done(await write('update_plan', { plan_id: 'p-stream', start_date: null }))
+    expect(plan(h, 'p-stream').startDate).toBeUndefined()
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date: '2027-06-01' }))).toBe('validation')
   })
   it('keeps the form\'s rules', async () => {
     const { write } = setup()

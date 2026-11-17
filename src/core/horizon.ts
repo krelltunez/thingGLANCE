@@ -22,6 +22,10 @@ export const LEAD_DAYS: Record<EventType, number> = {
 // Monthly and weekly renewals are noise unless you asked to review them.
 const REVIEW_LEAD_SHORT_CYCLE = 7
 
+// The end of a fixed term (a lease to return or buy out, the last payment on
+// a phone) takes longer to act on than a cancelled plan's last day.
+export const TERM_END_LEAD = 60
+
 // A lapsed event stays in the queue this long before it quietly drops off.
 // Support and replacement never drop: an out-of-support device is the point.
 const PAST_GRACE: Record<EventType, number> = {
@@ -150,6 +154,9 @@ export function buildHorizon(data: DataSet, opts: HorizonOptions = {}): HorizonE
       if (end) push({ ...base, type: 'sub-end', entityId: s.id, date: end, title: tr('event.title.expires', { name: s.name }), detail: where })
       continue
     }
+    // A fixed term: it renews each cycle and then ends. renewalsBetween()
+    // stops before that day; this is the day itself.
+    if (s.endDate) push({ ...base, type: 'sub-end', entityId: s.id, date: s.endDate, title: tr('event.title.termEnds', { name: s.name }), detail: where, lead: TERM_END_LEAD })
     const long = s.cycle === 'yearly' || s.cycle === 'quarterly'
     const lead = long ? LEAD_DAYS.renewal : s.review ? REVIEW_LEAD_SHORT_CYCLE : -1
     const start = s.status === 'trial' && s.trialEnd && s.trialEnd > from ? s.trialEnd : from

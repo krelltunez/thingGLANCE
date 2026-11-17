@@ -225,10 +225,24 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
   const trialEnd = r.day('trial_end')
   if (status === 'trial' && !trialEnd) invalid('"trial_end" is required for a trial')
   const thingIds = r.ids('thing_ids')
+  const things: Thing[] = []
+  if (ctx.getThing) {
+    for (const id of thingIds) {
+      const thing = await ctx.getThing(id)
+      if (!thing) throw new Refused('not_found', `"thing_ids": no thing with id ${id} on this device`)
+      things.push(thing)
+    }
+  }
+  // As in the form: a plan on a thing began when the thing was bought, until
+  // told otherwise, and one on its own the day it is entered.
+  const startDate = r.day('start_date') ?? things.map((t) => t.purchaseDate).find((day) => !!day) ?? today()
+  const endDate = r.day('end_date')
+  if (endDate && startDate > endDate) invalid('"start_date" is after "end_date"')
   const input: SubscriptionInput = {
     name: r.str('name', true)!, amount: r.num('amount', true)!,
     cycle: r.oneOf('cycle', CYCLES) ?? 'monthly',
     anchorDate: r.day('anchor_date') ?? today(),
+    startDate, endDate,
     autoRenew: r.bool('auto_renew') ?? true,
     status, trialEnd: status === 'trial' ? trialEnd : undefined,
     review: r.bool('review') ?? false,
@@ -238,7 +252,6 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
     responsibleMemberId: null,
     visibility: 'shared',
   }
-  if (ctx.getThing) for (const id of thingIds) if (!(await ctx.getThing(id))) throw new Refused('not_found', `"thing_ids": no thing with id ${id} on this device`)
   if (!ctx.savePlan) return { success: true, plan_id: id }
   return { success: true, plan_id: (await ctx.savePlan(input, id)).id }
 }

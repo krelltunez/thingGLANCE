@@ -29,6 +29,11 @@
 //     adds lands in the database and in the journal, and Settings' undo takes
 //     it back out; the discovery file is there while it runs; turning it off
 //     frees the port;
+//   - "Set up Claude Desktop": on macOS and Windows it writes the entry (to a
+//     stand-in config in this profile, never Claude's own), and that entry,
+//     started the way Claude Desktop starts it (the app's binary as Node, on
+//     the bridge the build brought), lists the app's tools over stdio; a
+//     second press keeps a copy of the first; Linux has nothing to set up;
 //   - Stream Deck: off until turned on; then the listener hands a client with
 //     no Origin a token and the state the keys draw; a press settles a date in
 //     the page's database, once, and a second press is answered too_soon; a
@@ -50,6 +55,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import net from 'node:net'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import { WebSocket } from 'ws'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -381,6 +387,43 @@ try {
     } finally {
       await client.close().catch(() => {})
     }
+    // "Set up Claude Desktop" (docs/mcp.md). On a profile of its own the app
+    // writes a stand-in config here, never the one a person's Claude reads.
+    const claudeConfig = path.join(userData, 'claude_desktop_config.json')
+    const setUp = await page.evaluate(() => window.thingglanceDesktop.mcpSetup.claudeDesktop())
+    if (mainPlatform === 'linux') {
+      check(setUp?.ok === false && setUp.reason === 'unsupported_platform' && !existsSync(claudeConfig), `Linux has no Claude Desktop to set up (${setUp?.reason})`)
+    } else {
+      const entry = existsSync(claudeConfig) ? JSON.parse(readFileSync(claudeConfig, 'utf-8')).mcpServers?.thingglance : null
+      check(setUp?.ok === true && setUp.action === 'created' && setUp.path === claudeConfig && entry?.env?.ELECTRON_RUN_AS_NODE === '1'
+        && entry.args?.slice(1).join(' ') === '--app thingglance' && existsSync(entry.command) && existsSync(entry.args[0]),
+      `"Set up Claude Desktop" writes an entry that runs the app's own binary on the bridge it brought (${JSON.stringify(setUp)})`)
+      if (entry) {
+        // Started as Claude Desktop starts it. The bridge finds a direct build
+        // through its discovery file; this profile's is not where it looks, so
+        // the port and token are handed over the other way it takes them.
+        const bridged = new Client({ name: 'thingglance-smoke-stdio', version: '0.0.0' })
+        let viaBridge = []
+        let bridgeError = ''
+        try {
+          await bridged.connect(new StdioClientTransport({
+            command: entry.command,
+            args: entry.args,
+            env: { ...entry.env, THINGGLANCE_MCP_PORT: String(mcpPort), THINGGLANCE_MCP_TOKEN: mcpView.mcp.token },
+            stderr: 'ignore',
+          }))
+          viaBridge = (await bridged.listTools()).tools.map((x) => x.name)
+        } catch (err) {
+          bridgeError = String(err?.message ?? err)
+        } finally {
+          await bridged.close().catch(() => {})
+        }
+        check(viaBridge.includes('thingglance_get_overview'), `started that way, the bridge lists the app's tools over stdio (${viaBridge.length}${bridgeError ? `; ${bridgeError}` : ''})`)
+      }
+      const again = await page.evaluate(() => window.thingglanceDesktop.mcpSetup.claudeDesktop())
+      check(again?.ok === true && again.action === 'merged' && typeof again.backupPath === 'string' && existsSync(again.backupPath), 'a second press keeps a copy of the settings it found')
+    }
+
     const mcpOff = await li({ type: 'set-mcp-read-tier', tier: 'off' })
     const freed = await new Promise((resolve) => {
       const probe = net.createConnection({ host: '127.0.0.1', port: mcpPort })

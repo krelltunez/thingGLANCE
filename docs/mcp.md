@@ -29,7 +29,12 @@ Settings, Integrations, "On this computer" (desktop app only).
 claude mcp add --transport http thingglance http://127.0.0.1:7910/mcp --header "Authorization: Bearer <token>"
 ```
 
-**Claude Desktop** only starts servers over stdio from its config file, so it needs the family's stdio bridge (`@glance-apps/mcp-bridge`), which is a pipe with no tools of its own. The bridge needs a thingGLANCE profile (port 7910, the `thingGLANCE` data folder) before the app can bundle it and offer the "Set up Claude Desktop" button the sibling apps have. Until then the server writes a discovery file for it all the same: `mcp.json` (port and token, owner-only) in the app's data folder, while the server runs, on direct builds. The Mac App Store build writes none.
+**Claude Desktop** only starts servers over stdio from its config file, so it goes through the family's stdio bridge (`@glance-apps/mcp-bridge`), which is a pipe with no tools of its own. Direct builds for macOS and Windows carry the bridge (in `Resources/mcp-bridge`) and Settings has a button for it.
+
+- **"Set up Claude Desktop"** adds one entry, `mcpServers.thingglance`, to Claude Desktop's config: thingGLANCE's own binary run as Node on the bundled bridge with `--app thingglance`. No Node install, no network. Every other server and every other key in the file is left as it was, and a copy of the file as it was found is kept beside it (`claude_desktop_config.json.bak-thingglance-<time>`). A file that is not valid JSON is never written over: Settings shows the lines to paste instead. Claude Desktop reads its config at start, so it needs a restart.
+- **How the bridge finds the app.** The server writes a discovery file while it runs: `mcp.json` (port and token, owner-only) in the app's data folder. The bridge's thingGLANCE profile reads it, so a new token or port needs no second press. The one exception is a Claude Desktop installed as a Windows package (MSIX): it runs the bridge inside its own container, which cannot see that file, so there the port and the token go into the entry itself, and a new token needs the button pressed again.
+- **Where the code is.** `electron/mcpDesktopConfig.ts` is the pure half (where the config lives, the entry, the merge) and `electron/mcpDesktopSetup.ts` reads and writes. Both are after lastGLANCE's. `main.ts` loads the second only when the button is pressed. On a profile of its own (`THINGGLANCE_USER_DATA_DIR`, the tests) the config written is a stand-in in that profile, never the one a person's Claude reads.
+- **Everything else** (the Mac App Store build, Linux, another stdio client) uses the bridge's own `.mcpb` extension or an `npx` entry: Settings links to the [setup guide](https://github.com/glance-apps/mcp-bridge#thingglance).
 
 ## How a request is answered
 
@@ -168,8 +173,9 @@ Settles a date in the queue, by `event_key`: `done` (the default), `dismissed`, 
 - **Sending a date to dayGLANCE.** The app does it; no tool does yet.
 - **Coverage edits.** A tool adds coverage; changing or removing one is done in the app.
 - **A server without the desktop app.** dayGLANCE has a design for a host that syncs with the vault directly and serves MCP on its own. thingGLANCE's pure core suits it, and it is not built.
-- **The Claude Desktop button**, until the stdio bridge has a thingGLANCE profile.
 
 ## Mac App Store
 
 The listener needs the sandbox's network server entitlement (`com.apple.security.network.server`), which `electron/entitlements.mas.plist` carries for this and for the Stream Deck listener. It binds 127.0.0.1 only. dayGLANCE passed review with the same entitlement, answered with a demo video; expect to need the same.
+
+The Claude Desktop setup is not in this build at all: an app from the store may not change another app's settings or point it at code to run (App Review Guideline 2.5.2). `electron-builder.config.cjs` leaves the two setup modules and the bridge out of the package, `__MAS_BUILD__` compiles the button out of the page, and main registers no handler. `scripts/verify-mas-compileout.mjs --mas <the .app>` reads the built app and fails if any of the three is there (`--direct` checks the opposite on a direct build). No discovery file is written either, so a Mac App Store user pastes the token into the bridge's extension.

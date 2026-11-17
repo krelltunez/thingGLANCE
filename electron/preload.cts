@@ -106,6 +106,9 @@ contextBridge.exposeInMainWorld('thingglanceDesktop', {
     undo: (groupKey: string | null) => ipcRenderer.invoke('mcp-journal:undo', groupKey),
     onChanged: (listener: (payload: unknown) => void) => subscribe('mcp-journal:changed', listener),
   },
+  mcpSetup: {
+    claudeDesktop: () => ipcRenderer.invoke('mcp-setup:claude-desktop'),
+  },
   tray: {
     state: () => ipcRenderer.invoke('tray:state'),
     decide: (key: string) => ipcRenderer.send('tray:decide', key),

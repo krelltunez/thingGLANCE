@@ -213,6 +213,27 @@ export interface DesktopMcpJournal {
   onChanged(listener: (snapshot: unknown) => void): () => void
 }
 
+/** What "Set up Claude Desktop" did (electron/mcpDesktopSetup.ts). */
+export type DesktopClaudeSetupResult =
+  | { ok: true; action: 'created' | 'merged'; path: string; backupPath: string | null }
+  | {
+    ok: false
+    reason: 'unsupported_platform' | 'bridge_missing' | 'unreadable' | 'unparseable' | 'write_failed' | 'invalid_sender'
+    path?: string
+    /** The lines to paste into Claude Desktop's config by hand. */
+    manualEntry?: string
+    error?: string
+  }
+
+/**
+ * Adds thingGLANCE to Claude Desktop's config (docs/mcp.md, "Connecting an
+ * assistant"). Direct builds on macOS and Windows; the Mac App Store build has
+ * no handler behind it, and no button that would call it.
+ */
+export interface DesktopMcpSetup {
+  claudeDesktop(): Promise<DesktopClaudeSetupResult>
+}
+
 /** What the tray popup draws (electron/trayModel.ts, TrayState). */
 export interface DesktopTrayState {
   ready: boolean
@@ -252,6 +273,7 @@ export interface DesktopBridge {
   localIntegrations: DesktopLocalIntegrations
   mcp: DesktopMcp
   mcpJournal: DesktopMcpJournal
+  mcpSetup: DesktopMcpSetup
   tray: DesktopTray
 }
 
@@ -302,6 +324,7 @@ export const DESKTOP_BRIDGE_METHODS = [
   'mcpJournal.get',
   'mcpJournal.undo',
   'mcpJournal.onChanged',
+  'mcpSetup.claudeDesktop',
   'tray.state',
   'tray.decide',
   'tray.send',

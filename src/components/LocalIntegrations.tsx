@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, RefreshCw, Undo2 } from 'lucide-react'
+import { CLAUDE_SETUP_GUIDE_URL, claudeSetupNote, offersClaudeDesktopSetup, type ClaudeSetupNote } from '@/native/claudeDesktop'
 import { desktopBridge, type DesktopIntegrationsView, type DesktopMcpJournalSnapshot } from '@/native/desktop'
 import { toast } from '@/state/toast'
 import { TONES, cx } from './kit'
@@ -25,6 +26,7 @@ export function LocalIntegrations() {
   const [consent, setConsent] = useState<Consent | null>(null)
   const [shown, setShown] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const [claude, setClaude] = useState<ClaudeSetupNote | null>(null)
 
   useEffect(() => {
     if (!bridge) return
@@ -46,6 +48,10 @@ export function LocalIntegrations() {
     if (!r?.ok) setNote(t('settings.local.errorGeneric'))
   }
   const copy = (text: string) => void navigator.clipboard.writeText(text).then(() => toast({ title: t('settings.local.copied') })).catch(() => {})
+  const setUpClaude = async () => {
+    const r = await bridge.mcpSetup.claudeDesktop().catch(() => null)
+    setClaude(claudeSetupNote(r ?? { ok: false, reason: 'write_failed' }))
+  }
   const undo = async (groupKey: string | null) => {
     const r = await bridge.mcpJournal.undo(groupKey).catch(() => null)
     if (!r?.ok) { toast({ title: t('settings.local.undoFailed'), tone: 'bad' }); return }
@@ -110,6 +116,24 @@ export function LocalIntegrations() {
               <button type="button" className="icon-btn h-8 w-8 shrink-0" aria-label={t('settings.local.copy')} title={t('settings.local.copy')} onClick={() => copy(command)}><Copy size={13} /></button>
             </div>
             <p className="mt-1 leading-relaxed text-faint">{t('settings.local.claudeCodeHint')}</p>
+          </div>
+
+          <div data-claude-desktop>
+            <p className="label mb-1">{t('settings.local.claudeDesktop')}</p>
+            {/* Compiled out of the Mac App Store build, which may not change another app's settings (docs/mcp.md). */}
+            {!__MAS_BUILD__ && offersClaudeDesktopSetup(bridge.info.platform, bridge.info.isMAS) ? (
+              <>
+                <button type="button" className="btn" onClick={() => void setUpClaude()}>{t('settings.local.claudeDesktopSetup')}</button>
+                <p className="mt-1 leading-relaxed text-faint">{t('settings.local.claudeDesktopHint')}</p>
+                {claude && <p className={cx('mt-2 rounded-lg border px-3 py-2 leading-relaxed', claude.bad ? TONES.bad.soft : TONES.ok.soft)} data-claude-desktop-result={claude.bad ? 'bad' : 'ok'}>{claude.text}</p>}
+                {claude?.manual && <pre className="num mt-2 whitespace-pre-wrap break-all rounded-lg border border-line/10 bg-bg/60 px-2.5 py-1.5 text-dim">{claude.manual}</pre>}
+              </>
+            ) : (
+              <p className="leading-relaxed text-faint">
+                {t('settings.local.claudeDesktopGuide')}{' '}
+                <a href={CLAUDE_SETUP_GUIDE_URL} target="_blank" rel="noreferrer" className="text-accent hover:underline">{t('settings.local.setupGuide')}</a>
+              </p>
+            )}
           </div>
         </div>
       )}

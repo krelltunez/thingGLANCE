@@ -52,6 +52,22 @@ export function visibleTo(data: DataSet, viewerId: string | null): DataSet {
   }
 }
 
+// ── The household, as a holder ───────────────────────────────────────────────
+//
+// One convention for every "who" on a thing or a plan. Where one member is
+// named (an owner, a payer, whoever deals with it), null is the household:
+// it owns it, pays for it, or deals with it together, so everyone is asked.
+// Where several can be named (who a plan is used by), the household is said
+// outright with `coversHousehold`, because an empty list already means
+// something else: nobody has said.
+
+export type Holder = 'household' | 'member'
+export const holderOf = (memberId: string | null): Holder => (memberId === null ? 'household' : 'member')
+
+export type UsedBy = 'household' | 'members' | 'not_set'
+export const usedBy = (s: Pick<Subscription, 'coversMemberIds' | 'coversHousehold'>): UsedBy =>
+  s.coversMemberIds.length > 0 ? 'members' : s.coversHousehold === true ? 'household' : 'not_set'
+
 // ── Whose it is (the member filter) ──────────────────────────────────────────
 
 // A thing concerns a member when they own it, when they are the one who deals
@@ -59,11 +75,13 @@ export function visibleTo(data: DataSet, viewerId: string | null): DataSet {
 export const concernsThing = (t: Thing, memberId: string): boolean =>
   t.ownerMemberId === null || t.ownerMemberId === memberId || t.responsibleMemberId === memberId
 
-// A plan concerns a member when they pay for it, handle it or are covered by
-// it. A household-paid plan follows the things it is attached to; one that is
-// attached to nothing is everyone's.
+// A plan concerns a member when they pay for it, handle it or use it, alone
+// or as one of the household. A household-paid plan nobody is named on
+// follows the things it is attached to; one attached to nothing is everyone's.
 export function concernsPlan(s: Subscription, memberId: string, thingById: Map<string, Thing>): boolean {
   if (s.payerMemberId === memberId || s.responsibleMemberId === memberId || s.coversMemberIds.includes(memberId)) return true
+  // Used by the household is used by each of its members, whoever pays.
+  if (usedBy(s) === 'household') return true
   if (s.payerMemberId !== null) return false
   const things = s.coversThingIds.map((id) => thingById.get(id)).filter((t): t is Thing => !!t)
   return things.length === 0 || things.some((t) => concernsThing(t, memberId))

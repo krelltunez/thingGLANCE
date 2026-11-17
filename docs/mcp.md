@@ -78,7 +78,11 @@ Every id is thingGLANCE's own and the same on every device. Pass ids exactly as 
 
 A **verdict** says where a thing is in its life: `prime`, `solid`, `watch`, `replace`, `overdue`, `retired` or `unknown`. A **date** has a type: `coverage-end`, `support-end`, `replace`, `renewal`, `trial-end` or `sub-end`, and a state: `open`, `done`, `dismissed` or `sent` (handed to dayGLANCE). One that has passed carries `past: true`.
 
-**The household is a value, not a gap.** An owner or a payer is a member or the household itself. For the household the id is `null`, as it is on the way in, and the answer says so: the name is `Household` and `owner` (or `payer`) is `household`. `thingglance_list_members` counts what belongs to it (`household_owns`, `household_pays_for`). Who deals with something is different: `null` there means nobody in particular.
+**The household is a value, not a gap, and every "who" follows one rule.**
+
+- Where one member is named (a thing's owner, a plan's payer, whoever is responsible for either), it is a member or the household itself. For the household the id is `null`, as it is on the way in, and the answer says so: the name is `Household` and `owner`, `payer` or `responsible` is `household`. The word `household` is taken in place of `null` on the way in. A responsible of `household` means nobody in particular deals with it, so everyone is asked.
+- Where several can be named (who a plan is used by), `used_by` says which: `members` (`member_ids` and `member_names` list them), `household` (the household as a whole, said on purpose) or `not_set` (nobody has said). An empty `member_ids` is never read as the household.
+- `thingglance_list_members` counts what belongs to the household: `household_owns`, `household_pays_for`, `household_uses`.
 
 **A plan has a beginning and may have an end.** Every figure below comes from `src/core/money.ts`, which is also what the app draws from: the tools expand nothing of their own.
 
@@ -91,7 +95,7 @@ A **verdict** says where a thing is in its life: `prime`, `solid`, `watch`, `rep
 | `not_set` | Nobody has said yet. The only state worth asking about | `null` |
 
   A plan added on a thing takes the thing's purchase date unless it is told otherwise. One on its own starts `not_set`.
-- `paid_to_date` is history: the payments made up to yesterday, at today's price (what a plan cost before is not on record). Its `basis` says where the count begins: `start_date`, or `entry_date` (the day the plan was added) when no start is on record, which is then what was paid since tracking began. It is kept apart from the dates ahead. A range that starts in the past (`thingglance_list_upcoming`) lists those payments too, each marked `past: true`, and none from before the count begins.
+- `paid_to_date` is history: the payments made up to yesterday, at today's price (what a plan cost before is not on record). Its `basis` says where the count begins. `start_date`: the plan's own start. With no start on record, `anchor`: the last payment on the plan's cycle before it was entered, which was made or there would have been no plan to enter; or `entry_date`, when a payment fell on the very day it was entered. Without a start it is what is known to have been paid, not everything since the plan began. It is kept apart from the dates ahead. A range that starts in the past (`thingglance_list_upcoming`) lists those payments too, each marked `past: true`, and none from before the count begins.
 - `end_date` means one of three things:
 
 | The plan | How it is recorded | What follows |
@@ -122,7 +126,7 @@ One thing in full, by `thing_id`: its details, notes and specs, who owns it and 
 
 ### `thingglance_list_plans`
 
-The plans, most expensive first. Filters: `status` (`current` by default, `active`, `trial`, `cancelled`, `all`), `thing_id` and `query`. `totals` is what the plans listed come to a month and a year, so it follows the filters; `all_plans_totals` is the same for every plan.
+The plans, most expensive first. Filters: `status` (`current` by default, `active`, `trial`, `cancelled`, `all`), `thing_id`, `used_by` (a member id, `me` or `household`: the plans that name that member, or the ones said to be the household's as a whole) and `query`. `totals` is what the plans listed come to a month and a year, so it follows the filters; `all_plans_totals` is the same for every plan.
 
 ### `thingglance_list_upcoming`
 
@@ -134,7 +138,7 @@ Every date that needs a decision now, most pressing first.
 
 ### `thingglance_list_members`
 
-The household: each member, whether they use the app, what they own and pay for, which member this computer belongs to, and what belongs to the household itself (`household_owns`, `household_pays_for`).
+The household: each member, whether they use the app, what they own, pay for and use, which member this computer belongs to, and what belongs to the household itself (`household_owns`, `household_pays_for`, `household_uses`).
 
 ### `thingglance_list_mcp_writes`
 
@@ -180,11 +184,11 @@ Adds a warranty, an extended warranty or insurance to a thing. `thing_id`, `name
 
 ### `thingglance_create_plan`
 
-Adds a plan. `name` and `amount` are required. Also: `cycle` (`monthly` by default, `weekly`, `quarterly`, `yearly`), `anchor_date`, `start_date` (the attached thing's purchase date when left out, else none), `start_date_status` (`unknown`, with no `start_date`, for a plan that began before it was tracked), `end_date`, `provider`, `status` (`active` or `trial`, which needs `trial_end`), `auto_renew`, `review`, `thing_ids`, `payer_member_id`, `notes`. What `end_date` means is in the table above.
+Adds a plan. `name` and `amount` are required. Also: `cycle` (`monthly` by default, `weekly`, `quarterly`, `yearly`), `anchor_date`, `start_date` (the attached thing's purchase date when left out, else none), `start_date_status` (`unknown`, with no `start_date`, for a plan that began before it was tracked), `end_date`, `provider`, `status` (`active` or `trial`, which needs `trial_end`), `auto_renew`, `review`, `thing_ids`, `member_ids` (who uses it) or `used_by: "household"`, `payer_member_id`, `notes`. What `end_date` means is in the table above.
 
 ### `thingglance_update_plan`
 
-Edits a plan, by `plan_id`. Every field the app's form edits: `name`, `amount`, `cycle`, `anchor_date`, `start_date`, `start_date_status`, `provider`, `status` (`active`, `trial`, `cancelled`), `trial_end`, `end_date`, `auto_renew`, `review_before_renewal`, `thing_ids`, `payer_member_id`, `responsible_member_id`, `visibility` (private needs a payer) and `notes`. A cancellation is `status: "cancelled"` with the `end_date` access runs to; a lease or a prepaid term is in the table above. A `start_date` makes the status `recorded`; `start_date_status: "unknown"` clears the date and records that answer, and `"not_set"` clears both. Either one together with a date is refused.
+Edits a plan, by `plan_id`. Every field the app's form edits: `name`, `amount`, `cycle`, `anchor_date`, `start_date`, `start_date_status`, `provider`, `status` (`active`, `trial`, `cancelled`), `trial_end`, `end_date`, `auto_renew`, `review_before_renewal`, `thing_ids`, `member_ids`, `used_by`, `payer_member_id`, `responsible_member_id`, `visibility` (private needs a payer) and `notes`. `member_ids` replaces who uses it; `used_by: "household"` says the household as a whole does, and `"not_set"` clears the answer. The household and names together are refused. A cancellation is `status: "cancelled"` with the `end_date` access runs to; a lease or a prepaid term is in the table above. A `start_date` makes the status `recorded`; `start_date_status: "unknown"` clears the date and records that answer, and `"not_set"` clears both. Either one together with a date is refused.
 
 ### `thingglance_decide_event`
 

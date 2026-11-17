@@ -52,7 +52,11 @@ export function idFromKey(storeKey: string): string {
 const KEY = z.string().optional()
   .describe('Optional retry token, 1-128 characters of [A-Za-z0-9_.:-]. Sending the same key again returns the first result and changes nothing. Use one per intended change.');
 const DAY = 'a local date, YYYY-MM-DD';
-const MEMBER = 'A member id from thingglance_list_members, or null for the household.';
+const MEMBER = 'A member id from thingglance_list_members, or null (or "household") for the household.';
+// Who a plan is used by: three answers, and the tools keep them apart.
+const USED_BY =
+  ' Who uses it is member_ids (the members it covers) or used_by "household" (the household as a whole, said on purpose), never ' +
+  'both. With neither it is "not_set": nobody has said, which is not the same as the household.';
 const NO_DELETE = ' Nothing can be deleted over MCP: removing anything is done in the app.';
 const UNDO_NOTE = ' The user can undo this change from thingGLANCE.';
 const EDIT_NOTE = ' Send only the fields to change: a field left out is untouched, and null clears one that can be empty.';
@@ -179,7 +183,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       inputSchema: z.object({
         thing_id: z.string().describe('A thing id from thingglance_list_things.'),
         owner_member_id: z.string().nullable().optional().describe(MEMBER),
-        responsible_member_id: z.string().nullable().optional().describe('A member id, or null for nobody in particular.'),
+        responsible_member_id: z.string().nullable().optional().describe('A member id, or null (or "household") for the household: nobody in particular, so everyone is asked.'),
         correction: z.boolean().optional().describe('true: the owner was recorded wrong, so no hand-over is added to the history. Default false.'),
         idempotency_key: KEY,
       }),
@@ -221,8 +225,8 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         'from there. Left out, a plan attached to a thing takes the thing\'s purchase date, and a plan on its own has no start ' +
         '(start_date_status "not_set"), so send the date whenever it is known. When the user says it began some time before they ' +
         'tracked it and the day is not known, send start_date_status "unknown" and no start_date: that records the answer, and ' +
-        'its payments are counted from today. Never guess a date. Added as shared, paid by the household unless payer_member_id ' +
-        'says otherwise.' +
+        'its payments are counted from the last one on its cycle before today. Never guess a date. Added as shared, paid by the ' +
+        'household unless payer_member_id says otherwise.' + USED_BY +
         PLAN_ENDS + UNDO_NOTE,
       inputSchema: z.object({
         name: z.string().describe('What it is called, e.g. "Netflix" or "iCloud+ 2 TB".'),
@@ -238,13 +242,15 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         auto_renew: z.boolean().optional().describe('Default true.'),
         review: z.boolean().optional().describe('Ask before it renews. Default false.'),
         thing_ids: z.array(z.string()).optional().describe('Thing ids it is attached to.'),
-        payer_member_id: z.string().optional().describe('A member id from thingglance_list_members. Left out, the household pays.'),
+        member_ids: z.array(z.string()).optional().describe('The members who use it: ids from thingglance_list_members.'),
+        used_by: z.string().optional().describe('"household": the household as a whole uses it. Not with member_ids.'),
+        payer_member_id: z.string().optional().describe('A member id from thingglance_list_members. Left out, or "household", the household pays.'),
         notes: z.string().optional(),
         idempotency_key: KEY,
       }),
     },
     async (args) => write('create_plan', args.idempotency_key, 'create_plan', (new_id) => ({
-      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'end_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'payer_member_id', 'notes']), new_id,
+      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'end_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'member_ids', 'used_by', 'payer_member_id', 'notes']), new_id,
     })),
   );
 
@@ -254,7 +260,9 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       description:
         'Edit a plan: any field the app\'s own form edits. start_date is the day it began, where its payments are counted from; ' +
         'setting one makes start_date_status "recorded". start_date_status "unknown" (with no start_date) records that it began ' +
-        'before it was tracked and clears any date; "not_set" clears both, as if it had never been answered. ' +
+        'before it was tracked and clears any date; "not_set" clears both, as if it had never been answered. member_ids ' +
+        'replaces who uses it; used_by "household" says the household as a whole does and clears the names, and "not_set" ' +
+        'clears both. '+
         'thing_ids replaces the things it is attached to. visibility "private" shows it only on the payer\'s devices, so it needs ' +
         'a payer.' + PLAN_ENDS + EDIT_NOTE + NO_DELETE + UNDO_NOTE,
       inputSchema: z.object({
@@ -272,8 +280,10 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         auto_renew: z.boolean().optional(),
         review_before_renewal: z.boolean().optional(),
         thing_ids: z.array(z.string()).optional(),
+        member_ids: z.array(z.string()).optional().describe('The members who use it. Replaces the list.'),
+        used_by: z.string().optional().describe('"household" or "not_set", without member_ids; "members" only alongside them.'),
         payer_member_id: z.string().nullable().optional().describe(MEMBER),
-        responsible_member_id: z.string().nullable().optional().describe('A member id, or null for everyone.'),
+        responsible_member_id: z.string().nullable().optional().describe('A member id, or null (or "household") for the household: everyone is asked.'),
         visibility: z.string().optional().describe('"shared" or "private".'),
         notes: z.string().nullable().optional(),
         idempotency_key: KEY,
@@ -281,7 +291,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
     },
     async (args) => write('update_plan', args.idempotency_key, 'update_plan', () => named(args, [
       'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
-      'thing_ids', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
+      'thing_ids', 'member_ids', 'used_by', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
     ])),
   );
 

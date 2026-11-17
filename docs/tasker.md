@@ -61,7 +61,7 @@ The fields are the ones in [links-and-intents.md](links-and-intents.md#intents),
 { "name": "iCloud+ 2 TB", "amount": "9.99", "cycle": "monthly", "anchor_date": "2026-12-01" }
 ```
 
-`name` and `amount` are required. Optional: `cycle` (`weekly`, `monthly`, `quarterly`, `yearly`), `anchor_date` (any renewal date), `start_date` (the day it began: the attached thing's purchase date when left out, else none), `start_date_status` (`unknown` and no `start_date`, for a plan that began before you tracked it), `end_date` (with `auto_renew` on, the last day of a lease or a payment plan; with it off, the day it expires), `provider`, `thing_ids`, `payer_member_id`, `auto_renew`, `status`, `trial_end`, `review`, `notes`.
+`name` and `amount` are required. Optional: `cycle` (`weekly`, `monthly`, `quarterly`, `yearly`), `anchor_date` (any renewal date), `start_date` (the day it began: the attached thing's purchase date when left out, else none), `start_date_status` (`unknown` and no `start_date`, for a plan that began before you tracked it), `end_date` (with `auto_renew` on, the last day of a lease or a payment plan; with it off, the day it expires), `provider`, `thing_ids`, `member_ids` (the members who use it) or `used_by` set to `household` (the household as a whole), `payer_member_id` (a member id, or `household`), `auto_renew`, `status`, `trial_end`, `review`, `notes`.
 
 `ADD_COVERAGE`
 

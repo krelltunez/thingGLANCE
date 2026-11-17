@@ -42,13 +42,17 @@ export function normalizeThing(raw: unknown): Thing {
 }
 
 export function normalizeSubscription(raw: unknown): Subscription {
-  const { thingId, payerId, startUnknown, ...r } = raw as Loose
+  const { thingId, payerId, startUnknown, coversHousehold, ...r } = raw as Loose
   const legacyThing = str(thingId)
   const payer = 'payerMemberId' in r ? str(r.payerMemberId) : str(payerId)
+  const members = strs(r.coversMemberIds)
   return {
     ...r,
     coversThingIds: Array.isArray(r.coversThingIds) ? strs(r.coversThingIds) : legacyThing ? [legacyThing] : [],
-    coversMemberIds: strs(r.coversMemberIds),
+    coversMemberIds: members,
+    // "The household uses it" is true or absent, and gives way to anyone
+    // named: a row cannot say both.
+    ...(coversHousehold === true && members.length === 0 ? { coversHousehold: true } : {}),
     payerMemberId: payer,
     responsibleMemberId: str(r.responsibleMemberId),
     visibility: visibility(r.visibility, payer),

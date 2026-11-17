@@ -46,6 +46,7 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       ? { holder: existing.payerMemberId ?? '', responsible: existing.responsibleMemberId ?? '', isPrivate: existing.visibility === 'private' }
       : { holder: '', responsible: d.meId ?? '', isPrivate: false }) as WhoDraft,
     coversMemberIds: existing?.coversMemberIds ?? [],
+    coversHousehold: !existing?.coversMemberIds.length && existing?.coversHousehold === true,
     notes: existing?.notes ?? '',
   }))
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }))
@@ -91,6 +92,7 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       // synced) are kept: the form only edits what it can show.
       coversThingIds: f.thingIds,
       coversMemberIds: f.coversMemberIds,
+      coversHousehold: !f.coversMemberIds.length && f.coversHousehold ? true : undefined,
       status: f.status,
       trialEnd: f.status === 'trial' ? f.trialEnd || undefined : undefined,
       endDate: f.endDate || undefined,
@@ -175,7 +177,9 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
           <p className="rounded-xl border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim" data-plan-sums>
             {paid && paid.payments > 0 && <span className="block">{paid.basis === 'start_date'
               ? t('planForm.paidSoFar', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })
-              : t('planForm.paidSinceTracking', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })}</span>}
+              : paid.basis === 'anchor'
+                ? t('planForm.paidSinceLastPayment', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })
+                : t('planForm.paidSinceTracking', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })}</span>}
             {left && <span className="block">{left.payments > 0
               ? t('planForm.leftOnTerm', { count: left.payments, amount: money(left.total, currency, { cents: true }), ends: fmtDay(left.ends) })
               : t('planForm.termOver', { ends: fmtDay(left.ends) })}</span>}
@@ -191,7 +195,8 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
 
         <HouseholdFields value={f.who} onChange={(who) => set('who', who)} noun="plan" holderLabel={t('planForm.holderLabel')} />
         {d.multiUser && d.members.length > 1 && (
-          <MembersPicker label={t('planForm.coversLabel')} value={f.coversMemberIds} onChange={(ids) => set('coversMemberIds', ids)} hint={t('planForm.coversHint')} />
+          <MembersPicker label={t('planForm.coversLabel')} value={f.coversMemberIds} household={f.coversHousehold} hint={t('planForm.coversHint')}
+            onChange={(next) => setF((p) => ({ ...p, coversMemberIds: next.ids, coversHousehold: next.household }))} />
         )}
 
         <Field label={t('planForm.notes')}><textarea className="input" rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('planForm.notesPlaceholder')} /></Field>

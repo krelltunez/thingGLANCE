@@ -140,6 +140,27 @@ describe('creating', () => {
   })
 })
 
+describe('who a plan from outside is for', () => {
+  const saved = (ctx: ReturnType<typeof fakes>) => vi.mocked(ctx.savePlan).mock.calls.at(-1)![0]
+  it('takes the household by name, the members by id, and leaves it unsaid otherwise', async () => {
+    const ctx = fakes()
+    await handleIntent({ action: 'create_plan', clientId: 'a', payload: { name: 'Films', amount: 20, payer_member_id: 'household', used_by: 'household' } }, ctx, memory())
+    expect(saved(ctx)).toMatchObject({ payerMemberId: null, coversMemberIds: [], coversHousehold: true })
+    await handleIntent({ action: 'create_plan', clientId: 'b', payload: { name: 'Games', amount: 5, member_ids: ['ann', 'ann'] } }, ctx, memory())
+    expect(saved(ctx)).toMatchObject({ coversMemberIds: ['ann'] })
+    expect(saved(ctx).coversHousehold).toBeUndefined()
+    await handleIntent({ action: 'create_plan', clientId: 'c', payload: { name: 'Music', amount: 10 } }, ctx, memory())
+    expect(saved(ctx).coversMemberIds).toEqual([])
+    expect(saved(ctx).coversHousehold).toBeUndefined()
+  })
+  it('refuses the household together with names, and a member who is not there', async () => {
+    const ctx = fakes()
+    expect(await handleIntent({ action: 'create_plan', clientId: 'a', payload: { name: 'X', amount: 1, member_ids: ['ann'], used_by: 'household' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
+    expect(await handleIntent({ action: 'create_plan', clientId: 'b', payload: { name: 'X', amount: 1, used_by: 'members' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
+    expect(await handleIntent({ action: 'create_plan', clientId: 'c', payload: { name: 'X', amount: 1, member_ids: ['stranger'] } }, ctx, memory())).toMatchObject({ code: 'not_found' })
+  })
+})
+
 describe('the queue from outside', () => {
   it('clears a date and puts it back', async () => {
     const ctx = fakes()

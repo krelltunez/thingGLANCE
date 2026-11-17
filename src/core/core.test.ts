@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Coverage, DataSet, Decision, Subscription, Thing } from './types'
-import { chargesWithin, forecast, isBilling, isOver, leftOnTerm, monthlyCost, nextRenewal, paidToDate, planStart, renewalsBetween, startStatus, termEnd } from './money'
+import { chargesWithin, countedFrom, forecast, isBilling, isOver, leftOnTerm, monthlyCost, nextRenewal, paidToDate, planStart, renewalsBetween, startStatus, termEnd } from './money'
 import { lifecycle, replacementFund } from './health'
 import { TERM_END_LEAD, attentionQueue, buildHorizon, eventKey, nextEventFor } from './horizon'
 import { buildSnapshot } from './snapshot'
@@ -57,28 +57,52 @@ describe('a plan with a beginning and an end', () => {
     // Nothing renewed before there was a plan.
     expect(renewalsBetween(care, '2025-10-01', TODAY)).toEqual(['2026-09-22', '2026-10-22'])
   })
-  it('counts a plan from the day it was entered when no start is on record', () => {
+  it('counts a plan with no start from the last payment before it was entered', () => {
+    // Billed on the 22nd and entered on the 13th: October's payment was made,
+    // or there would have been no plan to enter. Nothing before it is known.
     const { startDate: _none, ...legacy } = care
-    // The day that moment fell on, wherever this is read.
+    expect(countedFrom(legacy)).toEqual({ day: '2026-10-22', basis: 'anchor' })
+    expect(planStart(legacy)).toBe('2026-10-22')
+    expect(renewalsBetween(legacy, '2025-10-01', TODAY)).toEqual(['2026-10-22'])
+    expect(paidToDate(legacy, TODAY)).toEqual({ basis: 'anchor', since: '2026-10-22', payments: 1, total: 6.49, last: '2026-10-22' })
+    // A payment on the very day it was entered: that day is where it begins.
     const day = dayOf(entered)
     expect(['2026-11-13', '2026-11-14']).toContain(day)
-    expect(planStart(legacy)).toBe(day)
-    expect(renewalsBetween(legacy, '2025-10-01', TODAY)).toEqual([])
-    expect(paidToDate(legacy, TODAY)).toEqual({ basis: 'entry_date', since: day, payments: 0, total: 0, last: null })
+    const sameDay = { ...legacy, anchorDate: day }
+    expect(countedFrom(sameDay)).toEqual({ day, basis: 'entry_date' })
+    expect(paidToDate(sameDay, TODAY)).toEqual({ basis: 'entry_date', since: day, payments: 1, total: 6.49, last: day })
+    // Whatever the cycle, it is the one payment before entry and no more.
+    expect(countedFrom({ ...legacy, cycle: 'weekly', anchorDate: '2026-11-19' })).toEqual({ day: '2026-11-12', basis: 'anchor' })
+    expect(countedFrom({ ...legacy, cycle: 'quarterly', anchorDate: '2026-12-01' })).toEqual({ day: '2026-09-01', basis: 'anchor' })
+    expect(countedFrom({ ...legacy, anchorDate: '2026-01-31' })).toEqual({ day: '2026-10-31', basis: 'anchor' })
+    // A start on record is where it counts from, as before.
+    expect(countedFrom(care)).toEqual({ day: '2026-09-22', basis: 'start_date' })
+    expect(paidToDate({ ...care, startDate: '2026-11-10' }, TODAY)).toMatchObject({ basis: 'start_date', since: '2026-11-10', payments: 0 })
     // With nothing to bound it, the cycle alone answers, as it always did.
     expect(renewalsBetween({ anchorDate: '2026-11-22', cycle: 'monthly' }, '2026-09-01', '2026-10-31')).toEqual(['2026-09-22', '2026-10-22'])
   })
-  it('tells a start that is unknown from one nobody has given, and counts both from the day of entry', () => {
+  it('counts the payment a prepaid year began with, entered ten days later', () => {
+    // Paid for the year on the 3rd, entered on the 13th, start unknown.
+    const audible = sub({ id: 'audible', name: 'Audible Premium Plus', amount: 149.5, cycle: 'yearly', anchorDate: '2026-11-03', endDate: '2027-11-03', autoRenew: false, startUnknown: true, createdAt: entered })
+    const paid = { basis: 'anchor', since: '2026-11-03', payments: 1, total: 149.5, last: '2026-11-03' }
+    expect(paidToDate(audible, TODAY)).toEqual(paid)
+    // The same with the question never answered.
+    const { startUnknown: _unanswered, ...notSet } = audible
+    expect(paidToDate(notSet, TODAY)).toEqual(paid)
+    // And only that one: the year before is not known to have been paid.
+    expect(renewalsBetween(audible, '2020-01-01', TODAY)).toEqual(['2026-11-03'])
+  })
+  it('tells a start that is unknown from one nobody has given, and counts both the same way', () => {
     const { startDate: _none, ...notSet } = care
     const unknown: Subscription = { ...notSet, startUnknown: true }
     expect([startStatus(care), startStatus(unknown), startStatus(notSet)]).toEqual(['recorded', 'unknown', 'not_set'])
     // A date settles it, whatever else a row says.
     expect(startStatus({ startDate: '2026-09-22', startUnknown: true })).toBe('recorded')
-    // Entered on the 13th at the latest, wherever this is read, and first billed on the 22nd.
+    // Entered mid-cycle: October's payment, then November's and December's.
     const later = '2027-01-10'
     for (const plan of [unknown, notSet]) {
-      expect(planStart(plan)).toBe(dayOf(entered))
-      expect(paidToDate(plan, later)).toMatchObject({ basis: 'entry_date', since: dayOf(entered), payments: 2, total: 12.98, last: '2026-12-22' })
+      expect(planStart(plan)).toBe('2026-10-22')
+      expect(paidToDate(plan, later)).toEqual({ basis: 'anchor', since: '2026-10-22', payments: 3, total: 19.47, last: '2026-12-22' })
     }
     expect(paidToDate(care, later)).toMatchObject({ basis: 'start_date', since: '2026-09-22', payments: 4 })
   })

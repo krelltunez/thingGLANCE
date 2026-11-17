@@ -30,16 +30,26 @@ export function MemberPicker({ label, value, onChange, hint, below }: { label: s
   )
 }
 
-// Any number of members.
-export function MembersPicker({ label, value, onChange, hint }: { label: string; value: string[]; onChange: (ids: string[]) => void; hint?: ReactNode }) {
+// Any number of members, or the household as a whole. The two are different
+// answers and never both: picking one lets go of the other. Nothing picked is
+// a third, "nobody has said".
+export function MembersPicker({ label, value, household, onChange, hint }: {
+  label: string
+  value: string[]
+  household: boolean
+  onChange: (next: { ids: string[]; household: boolean }) => void
+  hint?: ReactNode
+}) {
+  const { t } = useTranslation()
   const d = useData()
   return (
     <div>
       <span className="label mb-1.5 block">{label}</span>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" data-used-by>
+        <button type="button" aria-pressed={household} className={chip(household)} onClick={() => onChange({ ids: [], household: !household })}>{t('common.household')}</button>
         {d.members.map((m) => {
           const on = value.includes(m.id)
-          return <button key={m.id} type="button" aria-pressed={on} className={chip(on)} onClick={() => onChange(on ? value.filter((x) => x !== m.id) : [...value, m.id])}>{m.name}</button>
+          return <button key={m.id} type="button" aria-pressed={on} className={chip(on)} onClick={() => onChange({ ids: on ? value.filter((x) => x !== m.id) : [...value, m.id], household: false })}>{m.name}</button>
         })}
       </div>
       {hint && <p className="mt-1.5 text-xs text-faint">{hint}</p>}

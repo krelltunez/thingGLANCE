@@ -189,11 +189,11 @@ describe('editing a plan', () => {
   })
   it('takes "started before I tracked it" as an answer, and never beside a date', async () => {
     const { h, deps, write } = setup()
-    const made = done(await write('create_plan', { name: 'Old gym', amount: 30, start_date_status: 'unknown', thing_ids: ['t-phone'], new_id: ID }))
+    const made = done(await write('create_plan', { name: 'Old gym', amount: 30, anchor_date: '2025-12-20', start_date_status: 'unknown', thing_ids: ['t-phone'], new_id: ID }))
     // Unknown is said in place of a date: the phone's purchase date is not borrowed.
     expect(plan(h, ID).startDate).toBeUndefined()
     expect(plan(h, ID).startUnknown).toBe(true)
-    expect(made.data.plan).toMatchObject({ start_date: null, start_date_status: 'unknown', paid_to_date: { basis: 'entry_date' } })
+    expect(made.data.plan).toMatchObject({ start_date: null, start_date_status: 'unknown', paid_to_date: { basis: 'anchor', since: '2025-12-20' } })
     expect(refusal(await write('create_plan', { name: 'Both', amount: 1, start_date: '2026-01-01', start_date_status: 'unknown', new_id: ID2 }))).toBe('validation')
 
     // On a plan that has a date: unknown clears it, and undo brings it back.
@@ -218,6 +218,37 @@ describe('editing a plan', () => {
     expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'recorded' }))).toBe('validation')
     expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'sometime' }))).toBe('validation')
     expect(done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-09-03', start_date_status: 'recorded' })).data.plan).toMatchObject({ start_date_status: 'recorded' })
+  })
+  it('takes the household by name for who pays, who deals with it and who uses it', async () => {
+    const { h, deps, write } = setup()
+    // Ann pays for the cloud plan. Hand all three to the household, in words.
+    const a = done(await write('update_plan', { plan_id: 'p-cloud', payer_member_id: 'household', responsible_member_id: 'household', used_by: 'household' }))
+    expect(plan(h, 'p-cloud')).toMatchObject({ payerMemberId: null, responsibleMemberId: null, coversMemberIds: [], coversHousehold: true })
+    expect(a.data).toMatchObject({ changed: ['coversHousehold', 'payerMemberId'], plan: { payer: 'household', responsible: 'household', used_by: 'household', member_names: ['Household'] } })
+    // Naming people takes the household's place.
+    const named = done(await write('update_plan', { plan_id: 'p-cloud', member_ids: ['ann', 'kid'] }))
+    expect(plan(h, 'p-cloud').coversMemberIds).toEqual(['ann', 'kid'])
+    expect(plan(h, 'p-cloud').coversHousehold).toBeUndefined()
+    expect(named.data.plan).toMatchObject({ used_by: 'members', member_names: ['Ann', 'Kit'] })
+    // "not_set" takes the answer back altogether.
+    expect(done(await write('update_plan', { plan_id: 'p-cloud', used_by: 'not_set' })).data.plan).toMatchObject({ used_by: 'not_set', member_ids: [] })
+    // Undo, newest first, puts back who was named and then the household.
+    expect(await undoWrites([named.undo!.op], deps)).toEqual({ undone: 1, skipped: [] })
+    expect(plan(h, 'p-cloud')).toMatchObject({ coversMemberIds: [], coversHousehold: true })
+
+    expect(refusal(await write('update_plan', { plan_id: 'p-cloud', member_ids: ['ann'], used_by: 'household' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-cloud', used_by: 'members' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-cloud', used_by: 'everyone' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-cloud', member_ids: ['stranger'] }))).toBe('not_found')
+
+    // A new plan takes the same words.
+    const made = done(await write('create_plan', { name: 'Family films', amount: 20, payer_member_id: 'household', used_by: 'household', new_id: ID }))
+    expect(plan(h, ID)).toMatchObject({ payerMemberId: null, coversMemberIds: [], coversHousehold: true })
+    expect(made.data.plan).toMatchObject({ payer: 'household', used_by: 'household' })
+    done(await write('create_plan', { name: 'Kit\'s games', amount: 5, member_ids: ['kid'], new_id: ID2 }))
+    expect(plan(h, ID2)).toMatchObject({ coversMemberIds: ['kid'] })
+    expect(plan(h, ID2).coversHousehold).toBeUndefined()
+    expect(refusal(await write('create_plan', { name: 'Both', amount: 1, member_ids: ['kid'], used_by: 'household', new_id: '8a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4d' }))).toBe('validation')
   })
   it('keeps the form\'s rules', async () => {
     const { write } = setup()

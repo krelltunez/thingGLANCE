@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DataSet, DeviceLink, Member, Subscription, Thing } from './types'
 import { normalizeSubscription, normalizeThing } from './shape'
 import {
-  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, handlerOfEvent, isTied, memberOfDevice, memberTies, ownedSince, withoutEntrySpan,
+  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, holderOf, usedBy, handlerOfEvent, isTied, memberOfDevice, memberTies, ownedSince, withoutEntrySpan,
   handlerOfPlan, handlerOfThing, needsSomeone, planCostByPayer, privateHeld, reassignPlan, reassignThing, responsibleFor, userIds, visibleTo,
 } from './household'
 import { ownership } from './health'
@@ -67,6 +67,31 @@ describe('reading v0.1 rows', () => {
     // And a build that has not heard of the flag keeps it through an edit.
     const { startUnknown: _unheardOf, ...older } = unknown
     expect(through({ ...through(unknown), ...older, amount: 5 })).toMatchObject({ startUnknown: true, amount: 5 })
+  })
+  it('carries the household, in each place it can be named, through a vault row and a backup file', () => {
+    const through = (s: Subscription) => normalizeSubscription(JSON.parse(JSON.stringify(s)))
+    // Paid for, dealt with and used by the household: null, null and the flag.
+    const household = sub({ payerMemberId: null, responsibleMemberId: null, coversHousehold: true })
+    expect(through(household)).toEqual(household)
+    expect([holderOf(through(household).payerMemberId), holderOf(through(household).responsibleMemberId), usedBy(through(household))]).toEqual(['household', 'household', 'household'])
+    // Members named in all three come back as members.
+    const named = sub({ payerMemberId: 'sam', responsibleMemberId: 'emma', coversMemberIds: ['emma', 'gran'] })
+    expect(through(named)).toEqual(named)
+    expect([holderOf(through(named).payerMemberId), holderOf(through(named).responsibleMemberId), usedBy(through(named))]).toEqual(['member', 'member', 'members'])
+    // Nobody named and nothing said is its own answer, never the household.
+    const unsaid = sub({})
+    expect(through(unsaid)).toEqual(unsaid)
+    expect(usedBy(through(unsaid))).toBe('not_set')
+    expect('coversHousehold' in through(unsaid)).toBe(false)
+    expect(usedBy(through({ ...unsaid, coversHousehold: null } as unknown as Subscription))).toBe('not_set')
+    expect('coversHousehold' in through({ ...unsaid, coversHousehold: false } as unknown as Subscription)).toBe(false)
+    // The household and names cannot both stand: whoever is named wins.
+    const both = through({ ...named, coversHousehold: true })
+    expect(usedBy(both)).toBe('members')
+    expect('coversHousehold' in both).toBe(false)
+    // A build that has not heard of the flag keeps it through an edit.
+    const { coversHousehold: _unheardOf, ...older } = household
+    expect(through({ ...through(household), ...older, amount: 5 })).toMatchObject({ coversHousehold: true, amount: 5 })
   })
   it('never leaves something private to nobody', () => {
     expect(normalizeThing(thing({ ownerMemberId: null, visibility: 'private' })).visibility).toBe('shared')
@@ -133,6 +158,10 @@ describe('the member filter', () => {
     expect(concernsPlan(sub({ coversThingIds: ['ipad'] }), 'emma', things)).toBe(true)
     expect(concernsPlan(sub({ coversThingIds: ['ipad'] }), 'sam', things)).toBe(false)
     expect(concernsPlan(sub({}), 'gran', things)).toBe(true)
+    // Used by the household is used by each of its members, whoever pays and
+    // whatever it is attached to.
+    expect(concernsPlan(sub({ payerMemberId: 'sam', coversHousehold: true }), 'emma', things)).toBe(true)
+    expect(concernsPlan(sub({ coversThingIds: ['ipad'], coversHousehold: true }), 'sam', things)).toBe(true)
   })
 })
 

@@ -40,7 +40,7 @@ export interface Thing {
   // household (the TV, the router).
   ownerMemberId: string | null
   // Who deals with it: the member whose devices are asked about its dates.
-  // Null means nobody in particular, so everyone is asked.
+  // Null means the household: nobody in particular, so everyone is asked.
   responsibleMemberId: string | null
   // 'private' hides it on every device that is not its owner's. A display
   // rule, not encryption: every household device holds the same keys.
@@ -101,8 +101,12 @@ export interface Subscription {
   // camera cloud plan, AppleCare+ billed monthly. Several: a carrier plan
   // across the family's phones.
   coversThingIds: string[]
-  // The people it serves. Empty says nothing in particular.
+  // The people it serves. Empty says nothing: nobody has said who uses it.
   coversMemberIds: string[]
+  // It serves the household as a whole (the streaming plan on the TV). Only
+  // ever true, and only with nobody named above: the two never stand together
+  // (household.ts: usedBy).
+  coversHousehold?: true
   name: string
   provider?: string
   amount: number
@@ -128,7 +132,7 @@ export interface Subscription {
   review: boolean
   // Who pays; null means the household. Drives "what I pay".
   payerMemberId: string | null
-  // Who is asked before it renews; null means everyone.
+  // Who is asked before it renews; null means the household, so everyone is.
   responsibleMemberId: string | null
   // Private plans show only on the payer's devices.
   visibility: Visibility

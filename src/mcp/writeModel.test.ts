@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { today } from '@/core/dates'
 import { TODAY, household, readOf, writeDepsOf, type Household } from './fixture'
 import { handleRead } from './readModel'
 import { handleWrite, undoWrites, type UndoOp, type WriteAnswer } from './writeModel'
@@ -165,9 +164,10 @@ describe('editing a plan', () => {
     done(await write('create_plan', { name: 'Phone care', amount: 5, thing_ids: ['t-phone'], new_id: ID }))
     expect(plan(h, ID).startDate).toBe('2025-11-25')
     done(await write('create_plan', { name: 'Music', amount: 10.99, new_id: ID2 }))
-    expect(plan(h, ID2).startDate).toBe(today())
+    // One on its own has no start until someone gives it one.
+    expect(plan(h, ID2).startDate).toBeUndefined()
     const a = done(await write('create_plan', { name: 'Lease', amount: 75.17, anchor_date: '2026-11-19', start_date: '2026-09-22', end_date: '2029-09-22', thing_ids: ['t-phone'], new_id: '8a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4d' }))
-    expect(a.data.plan).toMatchObject({ start_date: '2026-09-22', start_date_recorded: true, end_date: '2029-09-22', monthly_cost: 75.17, left_on_term: { ends: '2029-09-22', payments: 35 } })
+    expect(a.data.plan).toMatchObject({ start_date: '2026-09-22', start_date_status: 'recorded', end_date: '2029-09-22', monthly_cost: 75.17, left_on_term: { ends: '2029-09-22', payments: 35 } })
     expect(refusal(await write('create_plan', { name: 'Backwards', amount: 1, start_date: '2027-01-01', end_date: '2026-01-01', new_id: '9a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4e' }))).toBe('validation')
   })
   it('sets and clears a start date, and turns a plan into a fixed term', async () => {
@@ -175,7 +175,7 @@ describe('editing a plan', () => {
     const a = done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-08-03' }))
     expect(plan(h, 'p-stream').startDate).toBe('2026-08-03')
     // Aug 3, Sep 3, Oct 3, Nov 3: four payments behind it on the 16th.
-    expect(a.data.plan).toMatchObject({ start_date: '2026-08-03', start_date_recorded: true, paid_to_date: { payments: 4, total: 63.96 } })
+    expect(a.data.plan).toMatchObject({ start_date: '2026-08-03', start_date_status: 'recorded', paid_to_date: { basis: 'start_date', payments: 4, total: 63.96 } })
     expect(a.undo?.op).toEqual({ kind: 'restore_plan_fields', planId: 'p-stream', before: { startDate: null } })
     // Paid each month until it ends: December, January and February are left.
     const term = done(await write('update_plan', { plan_id: 'p-stream', end_date: '2027-03-03' }))
@@ -186,6 +186,38 @@ describe('editing a plan', () => {
     done(await write('update_plan', { plan_id: 'p-stream', start_date: null }))
     expect(plan(h, 'p-stream').startDate).toBeUndefined()
     expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date: '2027-06-01' }))).toBe('validation')
+  })
+  it('takes "started before I tracked it" as an answer, and never beside a date', async () => {
+    const { h, deps, write } = setup()
+    const made = done(await write('create_plan', { name: 'Old gym', amount: 30, start_date_status: 'unknown', thing_ids: ['t-phone'], new_id: ID }))
+    // Unknown is said in place of a date: the phone's purchase date is not borrowed.
+    expect(plan(h, ID).startDate).toBeUndefined()
+    expect(plan(h, ID).startUnknown).toBe(true)
+    expect(made.data.plan).toMatchObject({ start_date: null, start_date_status: 'unknown', paid_to_date: { basis: 'entry_date' } })
+    expect(refusal(await write('create_plan', { name: 'Both', amount: 1, start_date: '2026-01-01', start_date_status: 'unknown', new_id: ID2 }))).toBe('validation')
+
+    // On a plan that has a date: unknown clears it, and undo brings it back.
+    done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-08-03' }))
+    const cleared = done(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'unknown' }))
+    expect(plan(h, 'p-stream')).toMatchObject({ startUnknown: true })
+    expect(plan(h, 'p-stream').startDate).toBeUndefined()
+    expect(cleared.data).toMatchObject({ changed: ['startDate', 'startUnknown'], plan: { start_date: null, start_date_status: 'unknown' } })
+    expect(await undoWrites([cleared.undo!.op], deps)).toEqual({ undone: 1, skipped: [] })
+    expect(plan(h, 'p-stream').startDate).toBe('2026-08-03')
+    expect(plan(h, 'p-stream').startUnknown).toBeUndefined()
+
+    // A date given later is the answer, and "not_set" takes either back.
+    done(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'unknown' }))
+    const dated = done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-09-03' }))
+    expect(plan(h, 'p-stream').startUnknown).toBeUndefined()
+    expect(dated.data.plan).toMatchObject({ start_date: '2026-09-03', start_date_status: 'recorded' })
+    expect(done(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'not_set' })).data.plan).toMatchObject({ start_date: null, start_date_status: 'not_set' })
+
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-09-03', start_date_status: 'unknown' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-09-03', start_date_status: 'not_set' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'recorded' }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', start_date_status: 'sometime' }))).toBe('validation')
+    expect(done(await write('update_plan', { plan_id: 'p-stream', start_date: '2026-09-03', start_date_status: 'recorded' })).data.plan).toMatchObject({ start_date_status: 'recorded' })
   })
   it('keeps the form\'s rules', async () => {
     const { write } = setup()

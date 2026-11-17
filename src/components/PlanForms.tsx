@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { Trash2, X } from 'lucide-react'
 import type { CoverageType, Cycle, Subscription } from '@/core/types'
-import { DAY, dayOf, fmtDay, nowIso, today } from '@/core/dates'
+import { DAY, fmtDay, nowIso, today } from '@/core/dates'
 import { CYCLES, cycleLabel, leftOnTerm, money, paidToDate } from '@/core/money'
 import { deleteCoverage, deleteSubscription, saveCoverage, saveSubscription } from '@/db/queries'
 import { useData } from '@/state/data'
@@ -28,12 +28,14 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
     amount: existing ? String(existing.amount) : '',
     cycle: (existing?.cycle ?? 'monthly') as Cycle,
     anchorDate: existing?.anchorDate ?? today(),
-    // A plan on a thing began when the thing was bought, until told otherwise;
-    // one on its own, the day it is entered. A plan from before start dates
-    // were kept is offered the same, to be saved or corrected.
+    // A plan on a thing is offered the day the thing was bought, to be saved
+    // or corrected. One on its own is offered nothing: most are entered long
+    // after they began, and an empty start says so. "Unknown" is an answer,
+    // so a plan that has it is offered nothing either.
     startDate: existing?.startDate
-      ?? (existing?.coversThingIds ?? (thingId ? [thingId] : [])).map((tid) => d.thingById.get(tid)?.purchaseDate).find((day) => !!day)
-      ?? (existing ? dayOf(existing.createdAt) : today()),
+      ?? (existing?.startUnknown ? undefined : (existing?.coversThingIds ?? (thingId ? [thingId] : [])).map((tid) => d.thingById.get(tid)?.purchaseDate).find((day) => !!day))
+      ?? '',
+    startUnknown: !existing?.startDate && existing?.startUnknown === true,
     thingIds: existing?.coversThingIds ?? (thingId ? [thingId] : []),
     status: (existing?.status ?? 'active') as Subscription['status'],
     trialEnd: existing?.trialEnd ?? '',
@@ -52,9 +54,12 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
   // The day a plan that is being added will have been entered on.
   const [openedAt] = useState(nowIso)
   const attach = (tid: string) => setF((p) => {
-    const bought = !existing && !startTyped && p.thingIds.length === 0 ? d.thingById.get(tid)?.purchaseDate : undefined
+    const bought = !existing && !startTyped && !p.startUnknown && p.thingIds.length === 0 ? d.thingById.get(tid)?.purchaseDate : undefined
     return { ...p, thingIds: [...p.thingIds, tid], ...(bought ? { startDate: bought } : {}) }
   })
+  // A date is an answer and so is "before I tracked it": never both.
+  const setStart = (startDate: string) => { setStartTyped(true); setF((p) => ({ ...p, startDate, startUnknown: startDate ? false : p.startUnknown })) }
+  const setStartUnknown = (startUnknown: boolean) => { setStartTyped(true); setF((p) => ({ ...p, startUnknown, startDate: startUnknown ? '' : p.startDate })) }
   // An end date left over from a cancellation is not the end of a term.
   const setStatus = (status: Subscription['status']) => setF((p) => ({ ...p, status, endDate: p.status === 'cancelled' && status !== 'cancelled' ? '' : p.endDate }))
   const amount = num(f.amount)
@@ -63,7 +68,7 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
   // What these dates come to, as they stand in the form.
   const draft: Subscription | null = amount != null && anchorDate ? {
     ...(existing ?? { id: '', kind: 'subscription', coversThingIds: [], coversMemberIds: [], name: '', review: false, payerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: openedAt, updatedAt: openedAt }),
-    amount, cycle: f.cycle, anchorDate, startDate: f.startDate || undefined, endDate: f.endDate || undefined, autoRenew: f.autoRenew, status: f.status, trialEnd: f.trialEnd || undefined,
+    amount, cycle: f.cycle, anchorDate, startDate: f.startDate || undefined, startUnknown: !f.startDate && f.startUnknown ? true : undefined, endDate: f.endDate || undefined, autoRenew: f.autoRenew, status: f.status, trialEnd: f.trialEnd || undefined,
   } : null
   const paid = draft ? paidToDate(draft) : null
   const left = draft ? leftOnTerm(draft) : null
@@ -81,6 +86,7 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       cycle: f.cycle,
       anchorDate,
       startDate: f.startDate || undefined,
+      startUnknown: !f.startDate && f.startUnknown ? true : undefined,
       // Ids this device cannot resolve (a thing hidden from it, or not yet
       // synced) are kept: the form only edits what it can show.
       coversThingIds: f.thingIds,
@@ -151,7 +157,13 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
               </select>
             )}
           </Field>
-          <Field label={t('planForm.started')} hint={t('planForm.startedHint')}><input type="date" className="input" data-plan-start value={f.startDate} onChange={(e) => { setStartTyped(true); set('startDate', e.target.value) }} /></Field>
+          <div>
+            <Field label={t('planForm.started')} hint={t('planForm.startedHint')}><input type="date" className="input" data-plan-start value={f.startDate} onChange={(e) => setStart(e.target.value)} /></Field>
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-[13px] text-dim">
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-accent" data-plan-start-unknown checked={f.startUnknown} onChange={(e) => setStartUnknown(e.target.checked)} />
+              {t('planForm.startUnknown')}
+            </label>
+          </div>
           {f.status !== 'cancelled' && (
             <Field label={f.autoRenew ? t('planForm.termEnds') : t('planForm.expires')} hint={f.autoRenew ? t('planForm.termEndsHint') : t('planForm.expiresHint')}>
               <input type="date" className="input" data-plan-end value={f.endDate} min={f.startDate || undefined} onChange={(e) => set('endDate', e.target.value)} />
@@ -161,7 +173,9 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
 
         {((paid && paid.payments > 0) || left) && (
           <p className="rounded-xl border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim" data-plan-sums>
-            {paid && paid.payments > 0 && <span className="block">{t('planForm.paidSoFar', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })}</span>}
+            {paid && paid.payments > 0 && <span className="block">{paid.basis === 'start_date'
+              ? t('planForm.paidSoFar', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })
+              : t('planForm.paidSinceTracking', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })}</span>}
             {left && <span className="block">{left.payments > 0
               ? t('planForm.leftOnTerm', { count: left.payments, amount: money(left.total, currency, { cents: true }), ends: fmtDay(left.ends) })
               : t('planForm.termOver', { ends: fmtDay(left.ends) })}</span>}

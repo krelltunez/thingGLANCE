@@ -6,6 +6,7 @@ import {
   handlerOfPlan, handlerOfThing, needsSomeone, planCostByPayer, privateHeld, reassignPlan, reassignThing, responsibleFor, userIds, visibleTo,
 } from './household'
 import { ownership } from './health'
+import { startStatus } from './money'
 import { buildHorizon } from './horizon'
 import { buildSnapshot } from './snapshot'
 
@@ -45,6 +46,27 @@ describe('reading v0.1 rows', () => {
     // laid over the stored row, not built from the fields that build knows.
     const { startDate: _unknown, ...asAnOlderBuildSeesIt } = s
     expect(normalizeSubscription({ ...normalizeSubscription(s), ...asAnOlderBuildSeesIt, amount: 5 })).toMatchObject({ startDate: '2026-09-22', amount: 5 })
+  })
+  it('carries each state of a plan\'s start through a vault row and a backup file', () => {
+    // Both are JSON and both come back in through this reader.
+    const through = (s: Subscription) => normalizeSubscription(JSON.parse(JSON.stringify(s)))
+    const recorded = sub({ startDate: '2026-09-22' })
+    const unknown = sub({ startUnknown: true })
+    const notSet = sub({})
+    expect(through(recorded)).toEqual(recorded)
+    expect(through(unknown)).toEqual(unknown)
+    expect(through(notSet)).toEqual(notSet)
+    expect([recorded, unknown, notSet].map((s) => startStatus(through(s)))).toEqual(['recorded', 'unknown', 'not_set'])
+    // A sender that writes an empty field as null says the same as leaving it out.
+    expect(startStatus(through({ ...notSet, startDate: null, startUnknown: null } as unknown as Subscription))).toBe('not_set')
+    expect('startUnknown' in through({ ...notSet, startUnknown: false } as unknown as Subscription)).toBe(false)
+    // "Unknown" beside a date cannot stand: the date is the answer.
+    const both = through({ ...recorded, startUnknown: true })
+    expect(startStatus(both)).toBe('recorded')
+    expect('startUnknown' in both).toBe(false)
+    // And a build that has not heard of the flag keeps it through an edit.
+    const { startUnknown: _unheardOf, ...older } = unknown
+    expect(through({ ...through(unknown), ...older, amount: 5 })).toMatchObject({ startUnknown: true, amount: 5 })
   })
   it('never leaves something private to nobody', () => {
     expect(normalizeThing(thing({ ownerMemberId: null, visibility: 'private' })).visibility).toBe('shared')

@@ -178,7 +178,8 @@ describe('a plan\'s payments, behind and ahead', () => {
   it('counts from the day the plan was entered until it has a start date', () => {
     const care = (data(askOf(studio(), 'get_thing', { thing_id: 't-studio' })).plans as Row[]).find((p) => p.plan_id === 'p-care')!
     const day = dayOf('2026-11-13T18:00:00.000Z')
-    expect(care).toMatchObject({ start_date: day, start_date_recorded: false, paid_to_date: { since: day, payments: 0, total: 0, last_payment: null }, left_on_term: null })
+    expect(care).toMatchObject({ start_date: null, start_date_status: 'not_set', paid_to_date: { basis: 'entry_date', since: day, payments: 0, total: 0, last_payment: null }, left_on_term: null })
+    expect('start_date_recorded' in care).toBe(false)
     expect(items(askOf(studio(), 'list_upcoming', { from: '2025-10-01', to: TODAY, plan_id: 'p-care', include_routine: true }))).toEqual([])
   })
   it('lists what was paid from the start date on, marked as past, and adds it up', () => {
@@ -189,7 +190,17 @@ describe('a plan\'s payments, behind and ahead', () => {
     expect(ahead.map((e) => e.date)).toEqual(['2026-11-22', '2026-12-22', '2027-01-22'])
     expect(ahead.some((e) => 'past' in e)).toBe(false)
     const care = items(askOf(h, 'list_plans', { thing_id: 't-studio' })).find((p) => p.plan_id === 'p-care')!
-    expect(care).toMatchObject({ start_date: '2026-09-22', start_date_recorded: true, paid_to_date: { since: '2026-09-22', payments: 2, total: 12.98, last_payment: '2026-10-22' } })
+    expect(care).toMatchObject({ start_date: '2026-09-22', start_date_status: 'recorded', paid_to_date: { basis: 'start_date', since: '2026-09-22', payments: 2, total: 12.98, last_payment: '2026-10-22' } })
+  })
+  it('says when a start is unknown on purpose, wherever a plan appears', () => {
+    const h = studio({ care: { startUnknown: true } })
+    const day = dayOf('2026-11-13T18:00:00.000Z')
+    const unknown = { start_date: null, start_date_status: 'unknown', paid_to_date: { basis: 'entry_date', since: day, payments: 0 } }
+    expect(items(askOf(h, 'list_plans')).find((p) => p.plan_id === 'p-care')).toMatchObject(unknown)
+    expect((data(askOf(h, 'get_thing', { thing_id: 't-studio' })).plans as Row[]).find((p) => p.plan_id === 'p-care')).toMatchObject(unknown)
+    // The lease beside it has its date, and the plans nobody answered for say so.
+    const statuses = Object.fromEntries(items(askOf(h, 'list_plans')).map((p) => [p.plan_id, p.start_date_status]))
+    expect(statuses).toMatchObject({ 'p-lease': 'recorded', 'p-care': 'unknown', 'p-stream': 'not_set' })
   })
   it('pays a lease each month until its term ends, then marks the end', () => {
     const h = studio()

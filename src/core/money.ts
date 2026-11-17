@@ -35,6 +35,16 @@ export const isBilling = (s: Subscription, ref: Day = today()): boolean =>
 export const yearlyCost = (s: Subscription, ref: Day = today()): number => (isBilling(s, ref) ? s.amount * perYear(s.cycle) : 0)
 export const monthlyCost = (s: Subscription, ref: Day = today()): number => yearlyCost(s, ref) / 12
 
+// Where a plan's start stands. 'recorded': the day is on record. 'unknown':
+// it began before it was tracked, and whoever entered it said so. 'not_set':
+// nobody has answered yet. The last two count the same way, from the day the
+// plan was entered, and are different things all the same: anything that asks
+// for a missing start date asks only about 'not_set', never 'unknown'.
+export type StartStatus = 'recorded' | 'unknown' | 'not_set'
+
+export const startStatus = (s: Pick<Subscription, 'startDate' | 'startUnknown'>): StartStatus =>
+  s.startDate ? 'recorded' : s.startUnknown === true ? 'unknown' : 'not_set'
+
 // The day a plan's payments are counted from: the day it began, when that is
 // on record, and otherwise the day it was entered.
 export const planStart = (s: Pick<Subscription, 'startDate' | 'createdAt'>): Day => s.startDate ?? dayOf(s.createdAt)
@@ -86,12 +96,14 @@ export function nextRenewal(s: Renewing, from: Day = today()): Day | null {
 // What a plan has taken so far: its renewal days from the day it began up to
 // yesterday, at what it costs now (what it cost before is not on record). A
 // trial has taken nothing until it converts.
-export interface Paid { since: Day; payments: number; total: number; last: Day | null }
+// `basis` says which day `since` is: the plan's own start, or the day it was
+// entered because no start is on record.
+export interface Paid { basis: 'start_date' | 'entry_date'; since: Day; payments: number; total: number; last: Day | null }
 
 export function paidToDate(s: Subscription, ref: Day = today()): Paid {
   const since = planStart(s)
   const days = renewalsBetween(s, since, addDays(ref, -1)).filter((d) => !(s.status === 'trial' && s.trialEnd && d < s.trialEnd))
-  return { since, payments: days.length, total: cents(days.length * s.amount), last: days[days.length - 1] ?? null }
+  return { basis: s.startDate ? 'start_date' : 'entry_date', since, payments: days.length, total: cents(days.length * s.amount), last: days[days.length - 1] ?? null }
 }
 
 // What is left on a fixed term: the payments from today to the day it ends.

@@ -80,6 +80,10 @@ export interface Coverage {
   name: string
   provider?: string
   startDate?: Day
+  // "Started before I tracked it": nobody knows the day, and that is the
+  // answer, not a gap. Only ever true, and only on a plan with no startDate.
+  // With neither, the question has not been answered (money.ts: startStatus).
+  startUnknown?: true
   endDate: Day
   cost?: number
   notes?: string
@@ -109,6 +113,10 @@ export interface Subscription {
   // payments are counted from. A plan from before the field existed has none
   // and counts from the day it was entered (core/money.ts: planStart).
   startDate?: Day
+  // "Started before I tracked it": nobody knows the day, and that is the
+  // answer, not a gap. Only ever true, and only on a plan with no startDate.
+  // With neither, the question has not been answered (money.ts: startStatus).
+  startUnknown?: true
   autoRenew: boolean
   status: 'active' | 'trial' | 'cancelled'
   trialEnd?: Day

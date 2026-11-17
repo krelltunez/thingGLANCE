@@ -82,8 +82,16 @@ A **verdict** says where a thing is in its life: `prime`, `solid`, `watch`, `rep
 
 **A plan has a beginning and may have an end.** Every figure below comes from `src/core/money.ts`, which is also what the app draws from: the tools expand nothing of their own.
 
-- `start_date` is where a plan's payments are counted from. A plan added on a thing starts the day the thing was bought, and one on its own the day it is added, unless it is told otherwise. A plan from before start dates were kept has none (`start_date_recorded: false`) and counts from the day it was entered.
-- `paid_to_date` is history: the payments from `start_date` up to yesterday, at today's price (what a plan cost before is not on record). It is kept apart from the dates ahead. A range that starts in the past (`thingglance_list_upcoming`) lists those payments too, each marked `past: true`, and none from before `start_date`.
+- `start_date` is the day a plan began, and `start_date_status` says where that stands:
+
+| `start_date_status` | Meaning | `start_date` |
+| --- | --- | --- |
+| `recorded` | The day is on record | The date |
+| `unknown` | It began before it was tracked, and whoever entered it said so. An answer, not a gap: never ask for the date or fill one in | `null` |
+| `not_set` | Nobody has said yet. The only state worth asking about | `null` |
+
+  A plan added on a thing takes the thing's purchase date unless it is told otherwise. One on its own starts `not_set`.
+- `paid_to_date` is history: the payments made up to yesterday, at today's price (what a plan cost before is not on record). Its `basis` says where the count begins: `start_date`, or `entry_date` (the day the plan was added) when no start is on record, which is then what was paid since tracking began. It is kept apart from the dates ahead. A range that starts in the past (`thingglance_list_upcoming`) lists those payments too, each marked `past: true`, and none from before the count begins.
 - `end_date` means one of three things:
 
 | The plan | How it is recorded | What follows |
@@ -172,11 +180,11 @@ Adds a warranty, an extended warranty or insurance to a thing. `thing_id`, `name
 
 ### `thingglance_create_plan`
 
-Adds a plan. `name` and `amount` are required. Also: `cycle` (`monthly` by default, `weekly`, `quarterly`, `yearly`), `anchor_date`, `start_date` (the attached thing's purchase date when left out, else today), `end_date`, `provider`, `status` (`active` or `trial`, which needs `trial_end`), `auto_renew`, `review`, `thing_ids`, `payer_member_id`, `notes`. What `end_date` means is in the table above.
+Adds a plan. `name` and `amount` are required. Also: `cycle` (`monthly` by default, `weekly`, `quarterly`, `yearly`), `anchor_date`, `start_date` (the attached thing's purchase date when left out, else none), `start_date_status` (`unknown`, with no `start_date`, for a plan that began before it was tracked), `end_date`, `provider`, `status` (`active` or `trial`, which needs `trial_end`), `auto_renew`, `review`, `thing_ids`, `payer_member_id`, `notes`. What `end_date` means is in the table above.
 
 ### `thingglance_update_plan`
 
-Edits a plan, by `plan_id`. Every field the app's form edits: `name`, `amount`, `cycle`, `anchor_date`, `start_date`, `provider`, `status` (`active`, `trial`, `cancelled`), `trial_end`, `end_date`, `auto_renew`, `review_before_renewal`, `thing_ids`, `payer_member_id`, `responsible_member_id`, `visibility` (private needs a payer) and `notes`. A cancellation is `status: "cancelled"` with the `end_date` access runs to; a lease or a prepaid term is in the table above.
+Edits a plan, by `plan_id`. Every field the app's form edits: `name`, `amount`, `cycle`, `anchor_date`, `start_date`, `start_date_status`, `provider`, `status` (`active`, `trial`, `cancelled`), `trial_end`, `end_date`, `auto_renew`, `review_before_renewal`, `thing_ids`, `payer_member_id`, `responsible_member_id`, `visibility` (private needs a payer) and `notes`. A cancellation is `status: "cancelled"` with the `end_date` access runs to; a lease or a prepaid term is in the table above. A `start_date` makes the status `recorded`; `start_date_status: "unknown"` clears the date and records that answer, and `"not_set"` clears both. Either one together with a date is refused.
 
 ### `thingglance_decide_event`
 

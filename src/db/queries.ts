@@ -151,7 +151,9 @@ export async function saveSubscription(input: SubscriptionInput, id?: string): P
   await promoteFamilies(input.coversThingIds)
   const stamp = nowIso()
   // clean() keeps null (the household) and drops only undefined and ''.
-  const row = clean({ ...cur, ...input, id: id ?? uuid(), kind: 'subscription', createdAt: cur?.createdAt ?? stamp, updatedAt: stamp, sample: undefined }) as Subscription
+  const merged = { ...cur, ...input }
+  // A start date settles the question: "unknown" does not outlive one.
+  const row = clean({ ...merged, startUnknown: merged.startDate ? undefined : merged.startUnknown, id: id ?? uuid(), kind: 'subscription', createdAt: cur?.createdAt ?? stamp, updatedAt: stamp, sample: undefined }) as Subscription
   await db.subscriptions.put(row)
   markDirty(row.id)
   return row

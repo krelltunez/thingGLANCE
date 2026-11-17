@@ -42,7 +42,7 @@ export function normalizeThing(raw: unknown): Thing {
 }
 
 export function normalizeSubscription(raw: unknown): Subscription {
-  const { thingId, payerId, ...r } = raw as Loose
+  const { thingId, payerId, startUnknown, ...r } = raw as Loose
   const legacyThing = str(thingId)
   const payer = 'payerMemberId' in r ? str(r.payerMemberId) : str(payerId)
   return {
@@ -52,5 +52,8 @@ export function normalizeSubscription(raw: unknown): Subscription {
     payerMemberId: payer,
     responsibleMemberId: str(r.responsibleMemberId),
     visibility: visibility(r.visibility, payer),
+    // "Started before I tracked it" is true or absent, and a plan with a
+    // start date has no use for it: the two can never say different things.
+    ...(startUnknown === true && !r.startDate ? { startUnknown: true } : {}),
   } as Subscription
 }

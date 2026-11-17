@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { today } from '@/core/dates'
 import type { HorizonEvent, Thing } from '@/core/types'
 import { INTENT_ACTIONS, handleIntent, type IntentContext, type LedgerIO } from './handleIntent'
 import { LEDGER_LIMIT, findHandled, readLedger, recordHandled, writeLedger, type HandledWrite } from './ledger'
@@ -118,7 +117,7 @@ describe('creating', () => {
     expect(await handleIntent({ action: 'create_plan', clientId: 'q', payload: { name: 'X', amount: 1, thing_ids: ['gone'] } }, ctx, memory())).toMatchObject({ code: 'not_found' })
     expect(await handleIntent({ action: 'create_plan', clientId: 'r', payload: { name: 'X', amount: 1, status: 'trial' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
   })
-  it('starts a plan when the thing it is on was bought, or today, or when it is told', async () => {
+  it('starts a plan when the thing it is on was bought, or when it is told, and otherwise leaves the start open', async () => {
     const bought: Thing = { ...laptop, purchaseDate: '2026-09-22' }
     const ctx = fakes({ getThing: vi.fn(async (id: string) => (id === 't1' ? bought : id === 't2' ? laptop : null)) })
     const saved = () => vi.mocked(ctx.savePlan).mock.calls.at(-1)![0]
@@ -126,7 +125,15 @@ describe('creating', () => {
     expect(saved()).toMatchObject({ startDate: '2026-09-22' })
     expect(saved().endDate).toBeUndefined()
     await handleIntent({ action: 'create_plan', clientId: 'b', payload: { name: 'Music', amount: 10.99 } }, ctx, memory())
-    expect(saved().startDate).toBe(today())
+    // On its own it has no start: nobody has said, and today would be a guess.
+    expect(saved().startDate).toBeUndefined()
+    expect(saved().startUnknown).toBeUndefined()
+    // "Before I tracked it" is an answer, and takes the place of any date.
+    await handleIntent({ action: 'create_plan', clientId: 'u', payload: { name: 'Gym', amount: 30, thing_ids: ['t1'], start_date_status: 'unknown' } }, ctx, memory())
+    expect(saved().startUnknown).toBe(true)
+    expect(saved().startDate).toBeUndefined()
+    expect(await handleIntent({ action: 'create_plan', clientId: 'v', payload: { name: 'X', amount: 1, start_date: '2026-01-01', start_date_status: 'unknown' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
+    expect(await handleIntent({ action: 'create_plan', clientId: 'w', payload: { name: 'X', amount: 1, start_date_status: 'recorded' } }, ctx, memory())).toMatchObject({ code: 'invalid' })
     await handleIntent({ action: 'create_plan', clientId: 'c', payload: { name: 'Lease', amount: 75.17, thing_ids: ['t1'], start_date: '2026-10-01', end_date: '2029-10-01' } }, ctx, memory())
     expect(saved()).toMatchObject({ startDate: '2026-10-01', endDate: '2029-10-01', autoRenew: true })
     expect(await handleIntent({ action: 'create_plan', clientId: 'd', payload: { name: 'X', amount: 1, start_date: '2027-01-01', end_date: '2026-01-01' } }, ctx, memory())).toMatchObject({ code: 'invalid' })

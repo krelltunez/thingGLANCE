@@ -20,6 +20,7 @@
 import { CATEGORIES } from '@/core/categories'
 import { isDay } from '@/core/dates'
 import { MAX_LIFESPAN_MONTHS } from '@/core/health'
+import type { StartStatus } from '@/core/money'
 import type { CategoryId, Cycle, Decision, OwnershipSpan, Subscription, Thing } from '@/core/types'
 import { db } from '@/db/client'
 import { decide, deleteCoverage, deleteSubscription, deleteThing, patchSubscription, retireThing, reviveThing, undecide, updateThing, type OwnerChangeOptions, type SubscriptionInput, type ThingInput } from '@/db/queries'
@@ -86,6 +87,7 @@ const fromIntent = (r: IntentResult): WriteAnswer => ({
 
 const CATEGORY_IDS = CATEGORIES.map((c) => c.id) as readonly CategoryId[]
 const CYCLES: readonly Cycle[] = ['weekly', 'monthly', 'quarterly', 'yearly']
+const START_STATUSES: readonly StartStatus[] = ['recorded', 'unknown', 'not_set']
 
 function fields(p: Record<string, unknown>, d: ReadData) {
   const given = (k: string) => p[k] !== undefined
@@ -296,7 +298,21 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
   if (f.given('status')) patch.status = f.oneOf('status', ['active', 'trial', 'cancelled'] as const)
   if (f.given('trial_end')) patch.trialEnd = f.day('trial_end')
   if (f.given('end_date')) patch.endDate = f.day('end_date')
-  if (f.given('start_date')) patch.startDate = f.day('start_date')
+  if (f.given('start_date')) {
+    patch.startDate = f.day('start_date')
+    // A date is the answer: it takes the place of "unknown".
+    if (patch.startDate) patch.startUnknown = undefined
+  }
+  if (f.given('start_date_status')) {
+    const status = f.oneOf('start_date_status', START_STATUSES)
+    if (status === 'recorded') {
+      if (!(f.given('start_date') ? patch.startDate : cur.startDate)) invalid('"start_date_status": "recorded" needs a "start_date".')
+    } else {
+      if (patch.startDate) invalid(`"start_date_status": "${status}" cannot come with a "start_date".`)
+      patch.startDate = undefined
+      patch.startUnknown = status === 'unknown' ? true : undefined
+    }
+  }
   if (f.given('thing_ids')) patch.coversThingIds = f.things('thing_ids')
   if (f.given('payer_member_id')) patch.payerMemberId = f.member('payer_member_id')
   if (f.given('responsible_member_id')) patch.responsibleMemberId = f.member('responsible_member_id')

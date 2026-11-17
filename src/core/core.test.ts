@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Coverage, DataSet, Decision, Subscription, Thing } from './types'
-import { chargesWithin, forecast, isBilling, isOver, leftOnTerm, monthlyCost, nextRenewal, paidToDate, planStart, renewalsBetween, termEnd } from './money'
+import { chargesWithin, forecast, isBilling, isOver, leftOnTerm, monthlyCost, nextRenewal, paidToDate, planStart, renewalsBetween, startStatus, termEnd } from './money'
 import { lifecycle, replacementFund } from './health'
 import { TERM_END_LEAD, attentionQueue, buildHorizon, eventKey, nextEventFor } from './horizon'
 import { buildSnapshot } from './snapshot'
@@ -64,13 +64,27 @@ describe('a plan with a beginning and an end', () => {
     expect(['2026-11-13', '2026-11-14']).toContain(day)
     expect(planStart(legacy)).toBe(day)
     expect(renewalsBetween(legacy, '2025-10-01', TODAY)).toEqual([])
-    expect(paidToDate(legacy, TODAY)).toEqual({ since: day, payments: 0, total: 0, last: null })
+    expect(paidToDate(legacy, TODAY)).toEqual({ basis: 'entry_date', since: day, payments: 0, total: 0, last: null })
     // With nothing to bound it, the cycle alone answers, as it always did.
     expect(renewalsBetween({ anchorDate: '2026-11-22', cycle: 'monthly' }, '2026-09-01', '2026-10-31')).toEqual(['2026-09-22', '2026-10-22'])
   })
+  it('tells a start that is unknown from one nobody has given, and counts both from the day of entry', () => {
+    const { startDate: _none, ...notSet } = care
+    const unknown: Subscription = { ...notSet, startUnknown: true }
+    expect([startStatus(care), startStatus(unknown), startStatus(notSet)]).toEqual(['recorded', 'unknown', 'not_set'])
+    // A date settles it, whatever else a row says.
+    expect(startStatus({ startDate: '2026-09-22', startUnknown: true })).toBe('recorded')
+    // Entered on the 13th at the latest, wherever this is read, and first billed on the 22nd.
+    const later = '2027-01-10'
+    for (const plan of [unknown, notSet]) {
+      expect(planStart(plan)).toBe(dayOf(entered))
+      expect(paidToDate(plan, later)).toMatchObject({ basis: 'entry_date', since: dayOf(entered), payments: 2, total: 12.98, last: '2026-12-22' })
+    }
+    expect(paidToDate(care, later)).toMatchObject({ basis: 'start_date', since: '2026-09-22', payments: 4 })
+  })
   it('adds up what has been paid, and what is left on a term', () => {
-    expect(paidToDate(care, TODAY)).toEqual({ since: '2026-09-22', payments: 2, total: 12.98, last: '2026-10-22' })
-    expect(paidToDate(lease, TODAY)).toEqual({ since: '2026-09-22', payments: 1, total: 75.17, last: '2026-10-19' })
+    expect(paidToDate(care, TODAY)).toEqual({ basis: 'start_date', since: '2026-09-22', payments: 2, total: 12.98, last: '2026-10-22' })
+    expect(paidToDate(lease, TODAY)).toEqual({ basis: 'start_date', since: '2026-09-22', payments: 1, total: 75.17, last: '2026-10-19' })
     expect(leftOnTerm(lease, TODAY)).toEqual({ ends: '2029-09-22', payments: 35, total: 2630.95 })
     expect(leftOnTerm(care, TODAY)).toBeNull()
     // A trial has taken nothing until it converts.

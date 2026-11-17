@@ -11,7 +11,8 @@ const chip = (on: boolean) =>
   cx('h-8 rounded-full border px-3 text-[13px] font-medium transition', on ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line/10 bg-bg/40 text-dim hover:text-ink')
 
 // One of the household's members, or the household itself ('').
-export function MemberPicker({ label, value, onChange, hint }: { label: string; value: string; onChange: (id: string) => void; hint?: ReactNode }) {
+// `below` is for something more than a line of text under the picker.
+export function MemberPicker({ label, value, onChange, hint, below }: { label: string; value: string; onChange: (id: string) => void; hint?: ReactNode; below?: ReactNode }) {
   const { t } = useTranslation()
   const d = useData()
   return (
@@ -24,6 +25,7 @@ export function MemberPicker({ label, value, onChange, hint }: { label: string; 
         ))}
       </div>
       {hint && <p className="mt-1.5 text-xs text-faint">{hint}</p>}
+      {below}
     </div>
   )
 }
@@ -47,11 +49,11 @@ export function MembersPicker({ label, value, onChange, hint }: { label: string;
 
 // `holderLabel` is the question the first picker asks: a thing has an owner, a
 // plan has a payer. Whoever that is, is who a private item stays visible to.
-export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun }: {
+export function HouseholdFields({ value, onChange, holderLabel, holderBelow, noun }: {
   value: WhoDraft
   onChange: (next: WhoDraft) => void
   holderLabel: string
-  holderHint?: ReactNode
+  holderBelow?: ReactNode
   noun: 'thing' | 'plan'
 }) {
   const { t } = useTranslation()
@@ -71,7 +73,7 @@ export function HouseholdFields({ value, onChange, holderLabel, holderHint, noun
   return (
     <div className="space-y-4">
       <MemberPicker
-        label={holderLabel} value={value.holder} hint={holderHint}
+        label={holderLabel} value={value.holder} below={holderBelow}
         // Private needs a user to be private to.
         onChange={(holder) => onChange({ ...value, holder, isPrivate: value.isPrivate && d.userIds.has(holder) })}
       />

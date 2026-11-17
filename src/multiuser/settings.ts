@@ -37,6 +37,18 @@ export function takeLegacyMeId(): string | null {
   return id
 }
 
+// Whether the ownership histories written before an entry-day change of owner
+// counted as a correction have been looked over on this device
+// (db/queries.ts: repairEntryOwnership). Marked once the repair has run, so
+// one that failed is tried again at the next start.
+const OWNER_SPANS_KEY = 'tg_owner_spans_repaired'
+export function needsOwnershipRepair(): boolean {
+  try { return localStorage.getItem(OWNER_SPANS_KEY) !== '1' } catch { return false }
+}
+export function markOwnershipRepaired(): void {
+  try { localStorage.setItem(OWNER_SPANS_KEY, '1') } catch { /* looked over again next time */ }
+}
+
 // True when this device was set to "Mine" under the old switch.
 export function takeLegacyMineFilter(): boolean {
   const mine = localStorage.getItem(LEGACY_FILTER_KEY) === 'mine'

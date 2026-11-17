@@ -10,13 +10,13 @@ import { useLinks } from '@/state/useLinks'
 import { DataProvider } from '@/state/DataProvider'
 import { UIContext, type Modal, type UI, type View } from '@/state/ui'
 import { useSync } from '@/state/sync'
-import { getWhoAsked, householdSnapshot, setFocusMemberId, setWhoAsked, subscribeHousehold, takeLegacyMeId, takeLegacyMineFilter } from '@/multiuser/settings'
+import { getWhoAsked, householdSnapshot, setFocusMemberId, setWhoAsked, subscribeHousehold, markOwnershipRepaired, needsOwnershipRepair, takeLegacyMeId, takeLegacyMineFilter } from '@/multiuser/settings'
 import { startSync } from '@/sync/manager'
 import { dispatchExternalWrite } from '@/intents/inbound'
 import { openLink } from '@/native/links'
 import { setBackHandler } from '@/native/backStack'
 import { describeDevice, setBadge } from '@/native/platform'
-import { attachThisDevice, removeSamples, recordOwnership } from '@/db/queries'
+import { attachThisDevice, removeSamples, recordOwnership, repairEntryOwnership } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
 import { HorizonView } from '@/views/HorizonView'
 import { ThingsView } from '@/views/ThingsView'
@@ -307,6 +307,12 @@ export default function App() {
   useEffect(() => {
     const legacy = takeLegacyMeId()
     if (legacy) void attachThisDevice(legacy, describeDevice())
+  }, [])
+
+  // Giving a thing its owner on the day it was entered used to be written
+  // down as a hand-over from the household. Those spans are taken out, once.
+  useEffect(() => {
+    if (needsOwnershipRepair()) void repairEntryOwnership().then(markOwnershipRepaired, () => { /* tried again at the next start */ })
   }, [])
 
   // A vault with no key on this device: ask for the passphrase once per load.

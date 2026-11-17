@@ -6,8 +6,8 @@ import { useMemo } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { Eye, EyeOff, Plus, Repeat } from 'lucide-react'
 import type { Subscription } from '@/core/types'
-import { daysFromToday, fmtDay, fmtMonth } from '@/core/dates'
-import { cycleShort, forecast, isBilling, money, monthlyCost, nextRenewal } from '@/core/money'
+import { daysFromToday, fmtDay, fmtMonth, today } from '@/core/dates'
+import { cycleShort, forecast, isBilling, isOver, money, monthlyCost, nextRenewal, termEnd } from '@/core/money'
 import { planCostByPayer } from '@/core/household'
 import { patchSubscription } from '@/db/queries'
 import { useData } from '@/state/data'
@@ -19,14 +19,16 @@ import { cx, type Tone } from '@/components/kit'
 
 // The next date a plan has, and what happens on it. `what` picks the words
 // (plans.next.*) where the row is drawn.
-type NextKind = 'accessEnds' | 'trialConverts' | 'expires' | 'renews'
+type NextKind = 'accessEnds' | 'trialConverts' | 'expires' | 'renews' | 'termEnds' | 'termEnded'
 
 function nextDate(s: Subscription): { day: string; what: NextKind } | null {
   if (s.status === 'cancelled') return s.endDate ? { day: s.endDate, what: 'accessEnds' } : null
   if (s.status === 'trial' && s.trialEnd) return { day: s.trialEnd, what: 'trialConverts' }
   if (!s.autoRenew) { const day = s.endDate ?? nextRenewal(s); return day ? { day, what: 'expires' } : null }
   const day = nextRenewal(s)
-  return day ? { day, what: 'renews' } : null
+  if (day) return { day, what: 'renews' }
+  // A fixed term with no payment left on it: the day it ends is what is next.
+  return s.endDate ? { day: s.endDate, what: s.endDate < today() ? 'termEnded' : 'termEnds' } : null
 }
 
 function PlanRow({ sub }: { sub: Subscription }) {
@@ -39,8 +41,10 @@ function PlanRow({ sub }: { sub: Subscription }) {
   const next = nextDate(sub)
   const days = next ? daysFromToday(next.day) : null
   const long = sub.cycle === 'yearly' || sub.cycle === 'quarterly'
-  const tone: Tone = days == null ? 'dim' : days < 0 ? 'bad' : days <= 14 && (long || sub.review || sub.status === 'trial') ? 'bad' : days <= 30 && long ? 'warn' : 'dim'
-  const off = sub.status === 'cancelled'
+  const tone: Tone = days == null || isOver(sub) ? 'dim' : days < 0 ? 'bad' : days <= 14 && (long || sub.review || sub.status === 'trial') ? 'bad' : days <= 30 && long ? 'warn' : 'dim'
+  const off = isOver(sub)
+  // A lease or a payment plan says when it ends, beside when it next renews.
+  const term = next?.what === 'renews' ? termEnd(sub) : null
   return (
     <div className={cx('group flex items-center gap-3 rounded-xl border border-line/10 bg-raised/40 px-3 py-2.5 transition hover:border-line/25 hover:bg-raised/70', off && 'opacity-60')}>
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sub/25 bg-sub/10 font-semibold uppercase text-sub">{sub.name.trim()[0] ?? '?'}</span>
@@ -48,11 +52,12 @@ function PlanRow({ sub }: { sub: Subscription }) {
         <span className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-ink">{sub.name}</span>
           {sub.status === 'trial' && <Chip tone="bad">{t('plans.row.trial')}</Chip>}
-          {off && <Chip tone="dim">{t('plans.row.cancelled')}</Chip>}
+          {off && <Chip tone="dim">{sub.status === 'cancelled' ? t('plans.row.cancelled') : t('plans.row.ended')}</Chip>}
         </span>
         <span className="block truncate text-xs text-dim">
           {[sub.provider, where, d.multiUser ? d.memberName(sub.payerMemberId) : null].filter(Boolean).join(' · ') || t('plans.row.standalone')}
           {next && <> · {t(`plans.next.${next.what}`, { date: fmtDay(next.day, 'MMM D') })}</>}
+          {term && <> · {t('plans.row.termEnds', { date: fmtDay(term, 'MMM YYYY') })}</>}
         </span>
       </button>
       <div className="shrink-0 text-right">
@@ -80,7 +85,7 @@ export function PlansView() {
   const { currency } = useSettings()
 
   const subs = d.visibleSubs
-  const live = subs.filter((s) => s.status !== 'cancelled')
+  const live = subs.filter((s) => !isOver(s))
   const monthly = subs.reduce((sum, s) => sum + monthlyCost(s), 0)
   const months = useMemo(() => forecast(subs, 12), [subs])
   // Who pays is about the whole household, whatever the member filter is on.
@@ -90,7 +95,7 @@ export function PlansView() {
   const sorted = (list: Subscription[]) => [...list].sort((a, b) => (nextDate(a)?.day ?? '9999').localeCompare(nextDate(b)?.day ?? '9999'))
   const watch = sorted(live.filter((s) => s.review || s.status === 'trial'))
   const rest = sorted(live.filter((s) => !s.review && s.status !== 'trial'))
-  const ended = subs.filter((s) => s.status === 'cancelled')
+  const ended = subs.filter((s) => isOver(s))
   const reviewMonthly = watch.reduce((sum, s) => sum + monthlyCost(s), 0)
 
   if (d.ready && subs.length === 0) {

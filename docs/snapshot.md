@@ -42,7 +42,7 @@ Readers are separate programs, and a stored snapshot may have been written by an
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `key` | string | Stable id: `type:entityId:date`. Use it to clear the item or send it to dayGLANCE. |
-| `type` | string | `coverage-end`, `support-end`, `replace`, `renewal`, `trial-end` or `sub-end`. |
+| `type` | string | `coverage-end`, `support-end`, `replace`, `renewal`, `trial-end` or `sub-end`. A `sub-end` is a plan ending, whichever way: a cancelled one's access running out, one that does not renew expiring, or a lease or payment plan reaching the end of its term. |
 | `date` | `YYYY-MM-DD` | The date itself. |
 | `days` | number | Days from `day`. Negative when the date has passed. |
 | `severity` | string | `past`, `urgent`, `soon` or `later`. |

@@ -262,6 +262,27 @@ await B.evaluate((id) => window.__thingglance.openLink(`thingglance://thing/${id
 await B.waitForTimeout(600)
 check('B: a link opens the thing it names', (await B.getByText('E2E Outside Write').count()) >= 2)
 await B.keyboard.press('Escape')
+
+// A plan with a beginning and an end (a lease). Both dates cross the vault,
+// and an edit on the other device that names neither leaves them as they were:
+// a row is laid over what is stored, never rebuilt from the fields a form knows.
+// (The edit is one that keeps the plan out of the queue: the dayGLANCE part
+// below sends the queue's first date.)
+const leaseId = crypto.randomUUID()
+const leaseWrite = { action: 'create_plan', clientId: leaseId, payload: { name: 'E2E Lease', amount: 75.17, start_date: '2026-09-22', end_date: '2029-09-22' } }
+const planRow = (page) => page.evaluate(async (id) => (await import('/src/db/client.ts')).db.subscriptions.get(id), leaseId)
+check('A: a plan from outside takes a start and an end', (await A.evaluate((w) => window.__thingglance.intent(w), leaseWrite)).plan_id === leaseId)
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+const leaseOnB = await planRow(B)
+check('B: the plan arrives with both dates', leaseOnB?.startDate === '2026-09-22' && leaseOnB?.endDate === '2029-09-22' && leaseOnB?.autoRenew === true, JSON.stringify(leaseOnB ?? null))
+await B.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { notes: 'Edited on B' }), leaseId)
+await B.waitForTimeout(4500)
+await syncNow(A)
+const leaseOnA = await planRow(A)
+check('A: an edit on B that names neither date leaves both', leaseOnA?.notes === 'Edited on B' && leaseOnA?.startDate === '2026-09-22' && leaseOnA?.endDate === '2029-09-22', JSON.stringify(leaseOnA ?? null))
+await goto(A, 'Plans')
+check('A: the plans page says when the term ends', await A.getByText(/ends Sep 2029/).first().isVisible().catch(() => false))
 await B.waitForTimeout(300)
 
 // ── Owned since: the record of a purchase travels with everything else ──────

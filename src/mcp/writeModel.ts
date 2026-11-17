@@ -20,9 +20,9 @@
 import { CATEGORIES } from '@/core/categories'
 import { isDay } from '@/core/dates'
 import { MAX_LIFESPAN_MONTHS } from '@/core/health'
-import type { CategoryId, Cycle, Decision, Subscription, Thing } from '@/core/types'
+import type { CategoryId, Cycle, Decision, OwnershipSpan, Subscription, Thing } from '@/core/types'
 import { db } from '@/db/client'
-import { decide, deleteCoverage, deleteSubscription, deleteThing, patchSubscription, retireThing, reviveThing, undecide, updateThing, type SubscriptionInput, type ThingInput } from '@/db/queries'
+import { decide, deleteCoverage, deleteSubscription, deleteThing, patchSubscription, retireThing, reviveThing, undecide, updateThing, type OwnerChangeOptions, type SubscriptionInput, type ThingInput } from '@/db/queries'
 import { MAX_AMOUNT, type ExternalWrite, type IntentResult } from '@/intents/handleIntent'
 import { dispatchExternalWrite } from '@/intents/inbound'
 import { readData } from './readData'
@@ -45,7 +45,7 @@ export type WriteAnswer =
 export interface WriteDeps {
   read: () => Promise<ReadData>
   dispatch: (write: ExternalWrite) => Promise<IntentResult>
-  updateThing: (id: string, patch: Partial<ThingInput>) => Promise<void>
+  updateThing: (id: string, patch: Partial<ThingInput>, owner?: OwnerChangeOptions) => Promise<void>
   retireThing: (id: string, resaleValue?: number) => Promise<void>
   reviveThing: (id: string) => Promise<void>
   patchPlan: (id: string, patch: Partial<SubscriptionInput>) => Promise<void>
@@ -255,6 +255,9 @@ async function reassignThing(p: Record<string, unknown>, deps: WriteDeps): Promi
   const cur = thingOr(d, p.thing_id)
   const f = fields(p, d)
   if (!f.given('owner_member_id') && !f.given('responsible_member_id')) invalid('Give "owner_member_id", "responsible_member_id" or both.')
+  // The owner on record was wrong, as opposed to the thing changing hands.
+  const correction = f.given('correction') && f.bool('correction')
+  if (correction && !f.given('owner_member_id')) invalid('"correction" goes with "owner_member_id": it says how the new owner is recorded.')
   const patch: Record<string, unknown> = {}
   if (f.given('owner_member_id')) patch.ownerMemberId = f.member('owner_member_id')
   if (f.given('responsible_member_id')) patch.responsibleMemberId = f.member('responsible_member_id')
@@ -262,15 +265,18 @@ async function reassignThing(p: Record<string, unknown>, deps: WriteDeps): Promi
   if (patch.ownerMemberId === null && cur.visibility === 'private') patch.visibility = 'shared'
   const keys = changedKeys(cur, patch)
   if (!keys.length) return { ok: true, data: { thing: thingDetail(d, cur), changed: [] } }
-  await deps.updateThing(cur.id, Object.fromEntries(keys.map((k) => [k, patch[k]])) as Partial<ThingInput>)
+  await deps.updateThing(cur.id, Object.fromEntries(keys.map((k) => [k, patch[k]])) as Partial<ThingInput>, correction ? { as: 'correction' } : {})
   const after = await deps.read()
   // The new owner may have made it private to someone else's device: it is
   // then no longer this member's to see.
   const now = after.data.things.find((t) => t.id === cur.id)
+  // Taking back a change of owner puts the history back as it was: handing
+  // the thing back would be one more hand-over.
+  const before = { ...was(cur, keys), ...(keys.includes('ownerMemberId') ? { ownershipHistory: cur.ownershipHistory ?? null } : {}) }
   return {
     ok: true,
     data: { thing: now ? thingDetail(after, now) : null, changed: keys },
-    undo: { summary: `Reassigned "${cur.name}"`, op: { kind: 'restore_thing_fields', thingId: cur.id, before: was(cur, keys) } },
+    undo: { summary: `Reassigned "${cur.name}"`, op: { kind: 'restore_thing_fields', thingId: cur.id, before } },
   }
 }
 
@@ -290,6 +296,7 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
   if (f.given('status')) patch.status = f.oneOf('status', ['active', 'trial', 'cancelled'] as const)
   if (f.given('trial_end')) patch.trialEnd = f.day('trial_end')
   if (f.given('end_date')) patch.endDate = f.day('end_date')
+  if (f.given('start_date')) patch.startDate = f.day('start_date')
   if (f.given('thing_ids')) patch.coversThingIds = f.things('thing_ids')
   if (f.given('payer_member_id')) patch.payerMemberId = f.member('payer_member_id')
   if (f.given('responsible_member_id')) patch.responsibleMemberId = f.member('responsible_member_id')
@@ -297,6 +304,7 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
   const next = { ...cur, ...patch } as Subscription
   if (next.status === 'trial' && !next.trialEnd) invalid('A trial needs "trial_end".')
   if (next.visibility === 'private' && next.payerMemberId === null) invalid('A plan the household pays for cannot be private. Give it a payer first.')
+  if (next.startDate && next.endDate && next.startDate > next.endDate) invalid('"start_date" is after "end_date".')
   const keys = changedKeys(cur, patch)
   if (!keys.length) return { ok: true, data: { plan: planSummary(d, cur), changed: [] } }
   await deps.patchPlan(cur.id, Object.fromEntries(keys.map((k) => [k, patch[k]])) as Partial<SubscriptionInput>)
@@ -347,8 +355,9 @@ export async function undoWrites(ops: unknown, deps: WriteDeps = liveWriteDeps):
         case 'remove_created_plan': if (!hasPlan(op.planId)) { gone(); continue } await deps.deletePlan(op.planId); break
         case 'restore_thing_fields': {
           if (!hasThing(op.thingId)) { gone(); continue }
-          const { status, ...rest } = restored(op.before)
-          await deps.updateThing(op.thingId, { ...rest, ...(status ? { status } : {}) } as Partial<ThingInput>)
+          const { status, ownershipHistory: _history, ...rest } = restored(op.before)
+          const owner: OwnerChangeOptions = 'ownershipHistory' in op.before ? { history: (op.before.ownershipHistory as OwnershipSpan[] | null) ?? [] } : {}
+          await deps.updateThing(op.thingId, { ...rest, ...(status ? { status } : {}) } as Partial<ThingInput>, owner)
           break
         }
         case 'restore_plan_fields': if (!hasPlan(op.planId)) { gone(); continue } await deps.patchPlan(op.planId, restored(op.before) as Partial<SubscriptionInput>); break

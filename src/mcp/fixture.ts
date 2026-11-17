@@ -8,19 +8,21 @@ import { buildHorizon } from '@/core/horizon'
 import { buildSnapshot } from '@/core/snapshot'
 import type { Coverage, DataSet, Decision, Member, Subscription, Thing } from '@/core/types'
 import { handleIntent } from '@/intents/handleIntent'
+import type { OwnerChangeOptions } from '@/db/queries'
 import type { HandledWrite } from '@/intents/ledger'
 import type { ReadData } from './readModel'
 import type { WriteDeps } from './writeModel'
 
 export const TODAY = '2026-11-16'
 export const NOW = Date.parse('2026-11-16T15:00:00Z')
-const stamp = '2026-01-01T00:00:00.000Z'
+// Midday, so the day it falls on is the same wherever the tests run.
+const stamp = '2026-01-01T12:00:00.000Z'
 
-const thing = (p: Partial<Thing> & { id: string; name: string }): Thing => ({
+export const thingRow = (p: Partial<Thing> & { id: string; name: string }): Thing => ({
   kind: 'thing', category: 'laptop', status: 'active', ownerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: stamp, updatedAt: stamp, ...p,
 })
 const coverage = (p: Partial<Coverage> & { id: string; thingId: string }): Coverage => ({ kind: 'coverage', type: 'warranty', name: 'Manufacturer warranty', endDate: '2026-11-25', createdAt: stamp, updatedAt: stamp, ...p })
-const plan = (p: Partial<Subscription> & { id: string; name: string }): Subscription => ({
+export const planRow = (p: Partial<Subscription> & { id: string; name: string }): Subscription => ({
   kind: 'subscription', amount: 10, cycle: 'monthly', anchorDate: '2026-11-01', autoRenew: true, status: 'active', review: false,
   coversThingIds: [], coversMemberIds: [], payerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: stamp, updatedAt: stamp, ...p,
 })
@@ -38,21 +40,21 @@ export function household(): Household {
   return {
     members: MEMBERS.map((m) => ({ ...m })),
     things: [
-      thing({ id: 't-laptop', name: 'MacBook Pro', brand: 'Apple', category: 'laptop', purchaseDate: '2024-11-20', price: 2400, lifespanMonths: 60, ownerMemberId: 'ann' }),
-      thing({ id: 't-phone', name: 'Pixel 9', brand: 'Google', category: 'phone', purchaseDate: '2025-11-25', price: 800, supportEnd: '2031-08-01', supportBasis: 'official', ownerMemberId: 'kid' }),
-      thing({ id: 't-tv', name: 'Living room TV', category: 'tv', purchaseDate: '2020-01-10', lifespanMonths: 84 }),
-      thing({ id: 't-old', name: 'Old tablet', category: 'tablet', status: 'retired', retiredAt: '2026-03-01', ownerMemberId: 'ann' }),
-      thing({ id: 't-diary', name: 'E-reader', category: 'other', ownerMemberId: 'ben', visibility: 'private' }),
+      thingRow({ id: 't-laptop', name: 'MacBook Pro', brand: 'Apple', category: 'laptop', purchaseDate: '2024-11-20', price: 2400, lifespanMonths: 60, ownerMemberId: 'ann' }),
+      thingRow({ id: 't-phone', name: 'Pixel 9', brand: 'Google', category: 'phone', purchaseDate: '2025-11-25', price: 800, supportEnd: '2031-08-01', supportBasis: 'official', ownerMemberId: 'kid' }),
+      thingRow({ id: 't-tv', name: 'Living room TV', category: 'tv', purchaseDate: '2020-01-10', lifespanMonths: 84 }),
+      thingRow({ id: 't-old', name: 'Old tablet', category: 'tablet', status: 'retired', retiredAt: '2026-03-01', ownerMemberId: 'ann' }),
+      thingRow({ id: 't-diary', name: 'E-reader', category: 'other', ownerMemberId: 'ben', visibility: 'private' }),
     ],
     coverages: [
       coverage({ id: 'c-phone', thingId: 't-phone', endDate: '2026-11-25' }),
       coverage({ id: 'c-laptop', thingId: 't-laptop', name: 'AppleCare+', type: 'extended', endDate: '2027-11-20' }),
     ],
     subscriptions: [
-      plan({ id: 'p-stream', name: 'Streamflix', amount: 15.99, cycle: 'monthly', anchorDate: '2026-11-03' }),
-      plan({ id: 'p-cloud', name: 'Cloud 2 TB', provider: 'Apple', amount: 119, cycle: 'yearly', anchorDate: '2026-12-01', payerMemberId: 'ann' }),
-      plan({ id: 'p-trial', name: 'Photo editor', amount: 11.99, status: 'trial', trialEnd: '2026-11-20', anchorDate: '2026-11-20' }),
-      plan({ id: 'p-gone', name: 'Old gym', amount: 40, status: 'cancelled', endDate: '2026-06-30' }),
+      planRow({ id: 'p-stream', name: 'Streamflix', amount: 15.99, cycle: 'monthly', anchorDate: '2026-11-03' }),
+      planRow({ id: 'p-cloud', name: 'Cloud 2 TB', provider: 'Apple', amount: 119, cycle: 'yearly', anchorDate: '2026-12-01', payerMemberId: 'ann' }),
+      planRow({ id: 'p-trial', name: 'Photo editor', amount: 11.99, status: 'trial', trialEnd: '2026-11-20', anchorDate: '2026-11-20' }),
+      planRow({ id: 'p-gone', name: 'Old gym', amount: 40, status: 'cancelled', endDate: '2026-06-30' }),
     ],
     decisions: [],
   }
@@ -82,8 +84,11 @@ export function writeDepsOf(h: Household): { deps: WriteDeps; calls: string[] } 
   const calls: string[] = []
   let ledger: HandledWrite[] = []
   const visible = () => readOf(h).data
-  const setThing = (id: string, patch: Partial<Thing>) => {
-    h.things = h.things.map((t) => (t.id === id ? clean({ ...t, ...patch, ...(patch.ownerMemberId !== undefined ? handDown(t, patch.ownerMemberId, TODAY) : {}), updatedAt: new Date(NOW).toISOString() }) : t))
+  const setThing = (id: string, patch: Partial<Thing>, owner: OwnerChangeOptions = {}) => {
+    const owned = (t: Thing) => (owner.history !== undefined
+      ? { ownershipHistory: owner.history?.length ? owner.history : undefined }
+      : patch.ownerMemberId !== undefined ? handDown(t, patch.ownerMemberId, TODAY, owner.as) : {})
+    h.things = h.things.map((t) => (t.id === id ? clean({ ...t, ...patch, ...owned(t), updatedAt: new Date(NOW).toISOString() }) : t))
   }
   const setDecision = (key: string, state: Decision['state'], taskId?: string) => {
     const cur = h.decisions.find((d) => d.eventKey === key)
@@ -104,7 +109,7 @@ export function writeDepsOf(h: Household): { deps: WriteDeps; calls: string[] } 
       decide: async (key, state) => { setDecision(key, state); calls.push(`decide:${state}`) },
       undecide: async (key) => { h.decisions = h.decisions.filter((d) => d.eventKey !== key); calls.push('undecide') },
     }, { ledger, persist: (next) => { ledger = next } }),
-    updateThing: async (id, patch) => { setThing(id, patch as Partial<Thing>); calls.push('updateThing') },
+    updateThing: async (id, patch, owner) => { setThing(id, patch as Partial<Thing>, owner); calls.push('updateThing') },
     retireThing: async (id, resaleValue) => { setThing(id, { status: 'retired', retiredAt: TODAY, resaleValue }); calls.push('retireThing') },
     reviveThing: async (id) => { setThing(id, { status: 'active', retiredAt: undefined, resaleValue: undefined }); calls.push('reviveThing') },
     patchPlan: async (id, patch) => { h.subscriptions = h.subscriptions.map((s) => (s.id === id ? clean({ ...s, ...patch }) as Subscription : s)); calls.push('patchPlan') },

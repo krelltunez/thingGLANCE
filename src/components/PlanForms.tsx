@@ -5,8 +5,8 @@ import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { Trash2, X } from 'lucide-react'
 import type { CoverageType, Cycle, Subscription } from '@/core/types'
-import { DAY, today } from '@/core/dates'
-import { CYCLES, cycleLabel } from '@/core/money'
+import { DAY, dayOf, fmtDay, nowIso, today } from '@/core/dates'
+import { CYCLES, cycleLabel, leftOnTerm, money, paidToDate } from '@/core/money'
 import { deleteCoverage, deleteSubscription, saveCoverage, saveSubscription } from '@/db/queries'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
@@ -28,6 +28,12 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
     amount: existing ? String(existing.amount) : '',
     cycle: (existing?.cycle ?? 'monthly') as Cycle,
     anchorDate: existing?.anchorDate ?? today(),
+    // A plan on a thing began when the thing was bought, until told otherwise;
+    // one on its own, the day it is entered. A plan from before start dates
+    // were kept is offered the same, to be saved or corrected.
+    startDate: existing?.startDate
+      ?? (existing?.coversThingIds ?? (thingId ? [thingId] : [])).map((tid) => d.thingById.get(tid)?.purchaseDate).find((day) => !!day)
+      ?? (existing ? dayOf(existing.createdAt) : today()),
     thingIds: existing?.coversThingIds ?? (thingId ? [thingId] : []),
     status: (existing?.status ?? 'active') as Subscription['status'],
     trialEnd: existing?.trialEnd ?? '',
@@ -41,8 +47,26 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
     notes: existing?.notes ?? '',
   }))
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }))
+  // The start follows the first thing attached to a new plan, until it is typed.
+  const [startTyped, setStartTyped] = useState(false)
+  // The day a plan that is being added will have been entered on.
+  const [openedAt] = useState(nowIso)
+  const attach = (tid: string) => setF((p) => {
+    const bought = !existing && !startTyped && p.thingIds.length === 0 ? d.thingById.get(tid)?.purchaseDate : undefined
+    return { ...p, thingIds: [...p.thingIds, tid], ...(bought ? { startDate: bought } : {}) }
+  })
+  // An end date left over from a cancellation is not the end of a term.
+  const setStatus = (status: Subscription['status']) => setF((p) => ({ ...p, status, endDate: p.status === 'cancelled' && status !== 'cancelled' ? '' : p.endDate }))
   const amount = num(f.amount)
-  const valid = !!f.name.trim() && amount != null && !!f.anchorDate
+  const anchorDate = f.status === 'trial' && f.trialEnd ? f.trialEnd : f.anchorDate
+  const valid = !!f.name.trim() && amount != null && !!f.anchorDate && !(f.startDate && f.endDate && f.startDate > f.endDate)
+  // What these dates come to, as they stand in the form.
+  const draft: Subscription | null = amount != null && anchorDate ? {
+    ...(existing ?? { id: '', kind: 'subscription', coversThingIds: [], coversMemberIds: [], name: '', review: false, payerMemberId: null, responsibleMemberId: null, visibility: 'shared', createdAt: openedAt, updatedAt: openedAt }),
+    amount, cycle: f.cycle, anchorDate, startDate: f.startDate || undefined, endDate: f.endDate || undefined, autoRenew: f.autoRenew, status: f.status, trialEnd: f.trialEnd || undefined,
+  } : null
+  const paid = draft ? paidToDate(draft) : null
+  const left = draft ? leftOnTerm(draft) : null
 
   const attached = f.thingIds.map((tid) => d.thingById.get(tid)).filter((thing) => !!thing)
   const attachable = d.things.filter((thing) => thing.status === 'active' && !f.thingIds.includes(thing.id))
@@ -55,14 +79,15 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       provider: f.provider.trim() || undefined,
       amount: amount!,
       cycle: f.cycle,
-      anchorDate: f.status === 'trial' && f.trialEnd ? f.trialEnd : f.anchorDate,
+      anchorDate,
+      startDate: f.startDate || undefined,
       // Ids this device cannot resolve (a thing hidden from it, or not yet
       // synced) are kept: the form only edits what it can show.
       coversThingIds: f.thingIds,
       coversMemberIds: f.coversMemberIds,
       status: f.status,
       trialEnd: f.status === 'trial' ? f.trialEnd || undefined : undefined,
-      endDate: f.status === 'cancelled' || !f.autoRenew ? f.endDate || undefined : undefined,
+      endDate: f.endDate || undefined,
       autoRenew: f.autoRenew,
       review: f.review,
       payerMemberId: who.holder,
@@ -99,7 +124,7 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
 
         <div>
           <span className="label mb-1.5 block">{t('planForm.status.label')}</span>
-          <Segmented value={f.status} onChange={(v) => set('status', v)} options={[{ id: 'active', label: t('planForm.status.active') }, { id: 'trial', label: t('planForm.status.trial') }, { id: 'cancelled', label: t('planForm.status.cancelled') }]} />
+          <Segmented value={f.status} onChange={setStatus} options={[{ id: 'active', label: t('planForm.status.active') }, { id: 'trial', label: t('planForm.status.trial') }, { id: 'cancelled', label: t('planForm.status.cancelled') }]} />
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -120,13 +145,28 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
               </div>
             )}
             {(attachable.length > 0 || attached.length === 0) && (
-              <select className="input" aria-label={t('planForm.attach')} value="" onChange={(e) => { if (e.target.value) set('thingIds', [...f.thingIds, e.target.value]) }}>
+              <select className="input" aria-label={t('planForm.attach')} value="" onChange={(e) => { if (e.target.value) attach(e.target.value) }}>
                 <option value="">{attached.length ? t('planForm.attachAnother') : t('planForm.attachNothing')}</option>
                 {attachable.map((thing) => <option key={thing.id} value={thing.id}>{thing.name}</option>)}
               </select>
             )}
           </Field>
+          <Field label={t('planForm.started')} hint={t('planForm.startedHint')}><input type="date" className="input" data-plan-start value={f.startDate} onChange={(e) => { setStartTyped(true); set('startDate', e.target.value) }} /></Field>
+          {f.status !== 'cancelled' && (
+            <Field label={f.autoRenew ? t('planForm.termEnds') : t('planForm.expires')} hint={f.autoRenew ? t('planForm.termEndsHint') : t('planForm.expiresHint')}>
+              <input type="date" className="input" data-plan-end value={f.endDate} min={f.startDate || undefined} onChange={(e) => set('endDate', e.target.value)} />
+            </Field>
+          )}
         </div>
+
+        {((paid && paid.payments > 0) || left) && (
+          <p className="rounded-xl border border-line/10 bg-bg/40 px-3 py-2 text-xs leading-relaxed text-dim" data-plan-sums>
+            {paid && paid.payments > 0 && <span className="block">{t('planForm.paidSoFar', { count: paid.payments, amount: money(paid.total, currency, { cents: true }), since: fmtDay(paid.since) })}</span>}
+            {left && <span className="block">{left.payments > 0
+              ? t('planForm.leftOnTerm', { count: left.payments, amount: money(left.total, currency, { cents: true }), ends: fmtDay(left.ends) })
+              : t('planForm.termOver', { ends: fmtDay(left.ends) })}</span>}
+          </p>
+        )}
 
         {f.status !== 'cancelled' && (
           <div className="space-y-2 rounded-xl border border-line/10 bg-bg/40 px-3 py-2">

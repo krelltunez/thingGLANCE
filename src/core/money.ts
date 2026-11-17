@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 import type { Cycle, Day, Subscription } from './types'
-import { DAY, today } from './dates'
+import { DAY, addDays, dayOf, today } from './dates'
 import { textLocale, tr } from './text'
 
 export const CYCLES: { id: Cycle; perYear: number }[] = [
@@ -15,11 +15,29 @@ const perYear = (c: Cycle): number => CYCLES.find((x) => x.id === c)!.perYear
 export const cycleLabel = (c: Cycle): string => tr(`cycle.${c}.label`)
 export const cycleShort = (c: Cycle): string => tr(`cycle.${c}.short`)
 
-// A subscription that still costs money going forward.
-export const isBilling = (s: Subscription): boolean => s.status === 'active' && s.autoRenew
+// A plan with a fixed term: it is paid each cycle until the day it ends (a
+// lease, a phone on installments). Answers that day, or null for a plan that
+// renews until someone cancels it, and for one that does not renew at all.
+export const termEnd = (s: Pick<Subscription, 'status' | 'autoRenew' | 'endDate'>): Day | null =>
+  s.status !== 'cancelled' && s.autoRenew && s.endDate ? s.endDate : null
 
-export const yearlyCost = (s: Subscription): number => (isBilling(s) ? s.amount * perYear(s.cycle) : 0)
-export const monthlyCost = (s: Subscription): number => yearlyCost(s) / 12
+// Over and done with: cancelled, or a fixed term whose last day has passed.
+// (A cancelled plan may still give access until its end date; it is in the
+// "ended" pile all the same, as it has been since it was cancelled.)
+export const isOver = (s: Pick<Subscription, 'status' | 'autoRenew' | 'endDate'>, ref: Day = today()): boolean =>
+  s.status === 'cancelled' || (termEnd(s) ?? ref) < ref
+
+// A subscription that still costs money going forward. A term that has run
+// out costs nothing more.
+export const isBilling = (s: Subscription, ref: Day = today()): boolean =>
+  s.status === 'active' && s.autoRenew && !(s.endDate && s.endDate <= ref)
+
+export const yearlyCost = (s: Subscription, ref: Day = today()): number => (isBilling(s, ref) ? s.amount * perYear(s.cycle) : 0)
+export const monthlyCost = (s: Subscription, ref: Day = today()): number => yearlyCost(s, ref) / 12
+
+// The day a plan's payments are counted from: the day it began, when that is
+// on record, and otherwise the day it was entered.
+export const planStart = (s: Pick<Subscription, 'startDate' | 'createdAt'>): Day => s.startDate ?? dayOf(s.createdAt)
 
 // The nth occurrence from the anchor, computed from the anchor each time so a
 // monthly plan anchored on the 31st does not drift to the 28th forever.
@@ -33,13 +51,26 @@ function occurrence(anchor: Day, cycle: Cycle, n: number): Day {
   }
 }
 
-// Every renewal day inside [from, to], inclusive.
-export function renewalsBetween(s: Pick<Subscription, 'anchorDate' | 'cycle'>, from: Day, to: Day): Day[] {
-  if (!s.anchorDate || from > to) return []
+// A weekly plan for a lifetime: enough for any range this app asks about.
+const MAX_RENEWALS = 5000
+
+// What a plan's renewal days are worked out from. The anchor and the cycle
+// say where they fall; the rest only bound them, and may be left out.
+export type Renewing = Pick<Subscription, 'anchorDate' | 'cycle'> & Partial<Pick<Subscription, 'startDate' | 'endDate' | 'createdAt'>>
+
+// Every renewal day inside [from, to], inclusive. A plan renews on its cycle
+// from the day it began and stops before the day it ends: nothing renewed
+// before there was a plan, and the last day of a term is not a payment.
+export function renewalsBetween(s: Renewing, from: Day, to: Day): Day[] {
+  if (!s.anchorDate) return []
+  const began = s.startDate ?? (s.createdAt ? dayOf(s.createdAt) : null)
+  if (began && began > from) from = began
+  if (s.endDate && s.endDate <= to) to = addDays(s.endDate, -1)
+  if (from > to) return []
   const approxDays = { weekly: 7, monthly: 30.44, quarterly: 91.3, yearly: 365.25 }[s.cycle]
   let n = Math.floor(dayjs(from).diff(dayjs(s.anchorDate), 'day') / approxDays) - 1
   const out: Day[] = []
-  for (let guard = 0; guard < 600; guard++, n++) {
+  for (let guard = 0; guard < MAX_RENEWALS; guard++, n++) {
     const d = occurrence(s.anchorDate, s.cycle, n)
     if (d > to) break
     if (d >= from) out.push(d)
@@ -47,10 +78,34 @@ export function renewalsBetween(s: Pick<Subscription, 'anchorDate' | 'cycle'>, f
   return out
 }
 
-export function nextRenewal(s: Pick<Subscription, 'anchorDate' | 'cycle'>, from: Day = today()): Day | null {
+export function nextRenewal(s: Renewing, from: Day = today()): Day | null {
   const far = dayjs(from).add(13, 'month').format(DAY)
   return renewalsBetween(s, from, far)[0] ?? null
 }
+
+// What a plan has taken so far: its renewal days from the day it began up to
+// yesterday, at what it costs now (what it cost before is not on record). A
+// trial has taken nothing until it converts.
+export interface Paid { since: Day; payments: number; total: number; last: Day | null }
+
+export function paidToDate(s: Subscription, ref: Day = today()): Paid {
+  const since = planStart(s)
+  const days = renewalsBetween(s, since, addDays(ref, -1)).filter((d) => !(s.status === 'trial' && s.trialEnd && d < s.trialEnd))
+  return { since, payments: days.length, total: cents(days.length * s.amount), last: days[days.length - 1] ?? null }
+}
+
+// What is left on a fixed term: the payments from today to the day it ends.
+// Null for a plan with no term.
+export interface TermLeft { ends: Day; payments: number; total: number }
+
+export function leftOnTerm(s: Subscription, ref: Day = today()): TermLeft | null {
+  const ends = termEnd(s)
+  if (!ends) return null
+  const days = renewalsBetween(s, ref, ends).filter((d) => !(s.status === 'trial' && s.trialEnd && d < s.trialEnd))
+  return { ends, payments: days.length, total: cents(days.length * s.amount) }
+}
+
+const cents = (n: number): number => Math.round(n * 100) / 100
 
 export interface Charge { subscriptionId: string; name: string; date: Day; amount: number }
 

@@ -15,8 +15,9 @@ import { categoryLabel } from '@/core/categories'
 import { addDays, isDay } from '@/core/dates'
 import { lifecycle, verdictLabel, type Verdict } from '@/core/health'
 import { attentionQueue, buildHorizon, eventKindLabel } from '@/core/horizon'
-import { handlerOfEvent } from '@/core/household'
-import { monthlyCost, nextRenewal, yearlyCost } from '@/core/money'
+import { handlerOfEvent, ownedSince } from '@/core/household'
+import { leftOnTerm, monthlyCost, nextRenewal, paidToDate, yearlyCost } from '@/core/money'
+import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import type { DataSet, Day, EventType, HorizonEvent, Member, Subscription, Thing } from '@/core/types'
 import dayjs from 'dayjs'
@@ -59,6 +60,11 @@ export function memberName(d: Pick<ReadData, 'members'>, id: string | null): str
   return id === null ? null : d.members.find((m) => m.id === id)?.name ?? null
 }
 
+// Who owns a thing or pays for a plan. A null id there is not "nobody": it is
+// the household, and an answer has to say so, as the app does.
+const holderName = (d: Pick<ReadData, 'members'>, id: string | null): string | null => (id === null ? tr('common.household') : memberName(d, id))
+const holder = (id: string | null): 'household' | 'member' => (id === null ? 'household' : 'member')
+
 function event(d: ReadData, e: HorizonEvent): Record<string, unknown> {
   const thingById = new Map<string, Thing>(d.all.things.map((t) => [t.id, t]))
   const subById = new Map<string, Subscription>(d.data.subscriptions.map((s) => [s.id, s]))
@@ -69,6 +75,8 @@ function event(d: ReadData, e: HorizonEvent): Record<string, unknown> {
     type_label: eventKindLabel(e.type),
     date: e.date,
     days_away: e.days,
+    // Already happened. Only a range that starts before today has these.
+    ...(e.days < 0 ? { past: true } : {}),
     severity: e.severity,
     title: e.title,
     detail: e.detail,
@@ -103,8 +111,10 @@ function thingSummary(d: ReadData, t: Thing): Record<string, unknown> {
     life_end: life.lifeEnd,
     life_end_reason: life.lifeEndReason,
     days_left: life.daysLeft,
+    owner: holder(t.ownerMemberId),
     owner_member_id: t.ownerMemberId,
-    owner_name: memberName(d, t.ownerMemberId),
+    owner_name: holderName(d, t.ownerMemberId),
+    owned_since: ownedSince(t),
     responsible_member_id: t.responsibleMemberId,
     visibility: t.visibility,
     pinned: t.pinned === true,
@@ -124,11 +134,14 @@ export function thingDetail(d: ReadData, t: Thing): Record<string, unknown> {
     summary: t.summary ?? null,
     source_url: t.sourceUrl ?? null,
     specs: t.specs ?? [],
-    ownership_history: (t.ownershipHistory ?? []).map((s) => ({ ...s, member_name: memberName(d, s.memberId) })),
+    // Earlier owners, oldest first. The current one is owner_*, since owned_since.
+    ownership_history: (t.ownershipHistory ?? []).map((s) => ({ owner: holder(s.memberId), member_id: s.memberId, member_name: holderName(d, s.memberId), from: s.from ?? null, to: s.to })),
   }
 }
 
 export function planSummary(d: ReadData, s: Subscription): Record<string, unknown> {
+  const paid = paidToDate(s, d.today)
+  const left = leftOnTerm(s, d.today)
   return {
     plan_id: s.id,
     name: s.name,
@@ -140,18 +153,36 @@ export function planSummary(d: ReadData, s: Subscription): Record<string, unknow
     review_before_renewal: s.review,
     next_renewal: s.status === 'cancelled' || !s.autoRenew ? null : nextRenewal(s, d.today),
     anchor_date: s.anchorDate,
+    // Where its payments are counted from. Not recorded on a plan from
+    // before start dates were kept: that one counts from the day it was entered.
+    start_date: paid.since,
+    start_date_recorded: !!s.startDate,
     trial_end: s.trialEnd ?? null,
     end_date: s.endDate ?? null,
-    monthly_cost: Math.round(monthlyCost(s) * 100) / 100,
-    yearly_cost: Math.round(yearlyCost(s) * 100) / 100,
+    monthly_cost: cents(monthlyCost(s, d.today)),
+    yearly_cost: cents(yearlyCost(s, d.today)),
+    // History, kept apart from what is coming: the payments made from
+    // start_date up to yesterday, at today's price.
+    paid_to_date: { since: paid.since, payments: paid.payments, total: paid.total, last_payment: paid.last },
+    // A fixed term (a lease, installments): what is still to pay before it ends.
+    left_on_term: left ? { ends: left.ends, payments: left.payments, total: left.total } : null,
     thing_ids: s.coversThingIds,
     member_ids: s.coversMemberIds,
+    payer: holder(s.payerMemberId),
     payer_member_id: s.payerMemberId,
-    payer_name: memberName(d, s.payerMemberId),
+    payer_name: holderName(d, s.payerMemberId),
     responsible_member_id: s.responsibleMemberId,
     visibility: s.visibility,
     notes: s.notes ?? null,
   }
+}
+
+const cents = (n: number): number => Math.round(n * 100) / 100
+
+// What a list of plans comes to a month and a year, as the plans stand today.
+function planTotals(d: ReadData, plans: Subscription[]): Record<string, unknown> {
+  const monthly = plans.reduce((t, s) => t + monthlyCost(s, d.today), 0)
+  return { monthly: cents(monthly), yearly: cents(monthly * 12), currency: d.snapshot.currency }
 }
 
 const horizon = (d: ReadData, from?: Day, to?: Day): HorizonEvent[] =>
@@ -215,22 +246,26 @@ function getThing(d: ReadData, p: Record<string, unknown>): McpAnswer {
       active: c.endDate >= d.today,
     })),
     plans: d.data.subscriptions.filter((s) => s.coversThingIds.includes(t.id)).map((s) => planSummary(d, s)),
-    dates: horizon(d).filter((e) => e.thingId === t.id && !e.repeat).map((e) => event(d, e)),
+    // What the app's own page for a thing lists: what is ahead, and anything
+    // behind that still waits for a decision. A plan's payments already made
+    // are on the plan (paid_to_date), never here.
+    dates: horizon(d).filter((e) => e.thingId === t.id && !e.repeat && (e.days >= 0 || e.attention)).map((e) => event(d, e)),
   })
 }
 
 function listPlans(d: ReadData, p: Record<string, unknown>): McpAnswer {
   const status = p.status ?? 'current'
   if (!['current', 'active', 'trial', 'cancelled', 'all'].includes(status as string)) return fail('validation', 'status must be current, active, trial, cancelled or all.')
-  const items = d.data.subscriptions
+  const listed = d.data.subscriptions
     .filter((s) => status === 'all' || (status === 'current' ? s.status !== 'cancelled' : s.status === status))
     .filter((s) => p.thing_id === undefined || s.coversThingIds.includes(p.thing_id as string))
     .filter((s) => matches(p.query, s.name, s.provider))
+  const items = listed
     .map((s) => planSummary(d, s))
     .sort((a, b) => (b.yearly_cost as number) - (a.yearly_cost as number) || String(a.name).localeCompare(String(b.name)))
-  const current = d.data.subscriptions.filter((s) => s.status !== 'cancelled')
-  const monthly = current.reduce((t, s) => t + monthlyCost(s), 0)
-  return ok({ items, totals: { monthly: Math.round(monthly * 100) / 100, yearly: Math.round(monthly * 12 * 100) / 100, currency: d.snapshot.currency } })
+  // `totals` is for the plans listed, whatever the filters were. What every
+  // plan comes to is its own figure.
+  return ok({ items, totals: planTotals(d, listed), all_plans_totals: planTotals(d, d.data.subscriptions) })
 }
 
 function listUpcoming(d: ReadData, p: Record<string, unknown>): McpAnswer {
@@ -265,7 +300,9 @@ function listMembers(d: ReadData): McpAnswer {
       pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === m.id).length,
     })),
     this_device_member_id: d.meId,
+    // What belongs to no one member: an owner or a payer of null is the household.
     household_owns: d.data.things.filter((t) => t.status === 'active' && t.ownerMemberId === null).length,
+    household_pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === null).length,
   })
 }
 

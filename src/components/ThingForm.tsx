@@ -5,13 +5,14 @@ import { Check, Globe, LoaderCircle, ScanSearch, Search, X } from 'lucide-react'
 import type { CategoryId, Spec, Thing } from '@/core/types'
 import { CATEGORIES, category, categoryLabel } from '@/core/categories'
 import { DAY, fmtDay, today } from '@/core/dates'
+import type { OwnerChange } from '@/core/household'
 import { createThing, saveCoverage, updateThing, type ThingInput } from '@/db/queries'
 import { findSupport, lookupProduct, searchWikipedia, type LookupResult, type SearchHit, type SupportInfo } from '@/lookup'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
 import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
-import { Chip, Field, Sheet } from './ui'
+import { Chip, Field, Segmented, Sheet } from './ui'
 import { cx, num, whoFields, type WhoDraft } from './kit'
 import { HouseholdFields } from './HouseholdFields'
 import { categoryIcon } from './icons'
@@ -172,6 +173,12 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
   const [supportNote, setSupportNote] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [saving, setSaving] = useState(false)
+  // A new owner on a thing already here: did it change hands, or was the
+  // owner on record wrong? One with no history has most likely never changed
+  // hands, so a correction is what is offered first.
+  const [ownerChange, setOwnerChange] = useState<OwnerChange | null>(null)
+  const ownerChanged = !!existing && (existing.ownerMemberId ?? '') !== f.who.holder
+  const changeAs: OwnerChange = ownerChange ?? (existing?.ownershipHistory?.length ? 'handover' : 'correction')
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setF((p) => ({ ...p, [k]: v }))
   const cat = category(f.category)
 
@@ -244,7 +251,7 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
     }
     try {
       if (existing) {
-        await updateThing(existing.id, input)
+        await updateThing(existing.id, input, ownerChanged ? { as: changeAs } : {})
         ui.close()
       } else {
         const thing = await createThing(input)
@@ -344,7 +351,13 @@ export function ThingForm({ id, initialCategory, initialName }: { id?: string; i
 
         <HouseholdFields
           value={f.who} onChange={(who) => set('who', who)} noun="thing" holderLabel={t('thingForm.holderLabel')}
-          holderHint={existing && (existing.ownerMemberId ?? '') !== f.who.holder ? t('thingForm.handOverHint') : undefined}
+          holderBelow={ownerChanged ? (
+            <div className="mt-2 space-y-1.5 text-xs" data-owner-change>
+              <p className="text-dim">{t('thingForm.ownerChange.label', { name: d.memberName(f.who.holder || null) ?? t('thingForm.ownerChange.household') })}</p>
+              <Segmented size="sm" value={changeAs} onChange={setOwnerChange} options={[{ id: 'correction', label: t('thingForm.ownerChange.correction') }, { id: 'handover', label: t('thingForm.ownerChange.handover') }]} />
+              <p className="text-faint">{changeAs === 'correction' ? t('thingForm.ownerChange.correctionHint') : t('thingForm.handOverHint')}</p>
+            </div>
+          ) : undefined}
         />
 
         <Field label={t('thingForm.notes')}>

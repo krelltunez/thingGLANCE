@@ -6,6 +6,8 @@ export const DAY = 'YYYY-MM-DD'
 
 export const today = (): Day => dayjs().format(DAY)
 export const nowIso = (): string => new Date().toISOString()
+// The calendar day a moment fell on, on this device.
+export const dayOf = (at: string): Day => dayjs(at).format(DAY)
 
 // A real calendar date, written YYYY-MM-DD, in a range this app can reason
 // about. The shape alone is not enough: "2027-13-45" has it, and anything

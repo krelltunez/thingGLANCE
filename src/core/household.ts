@@ -9,6 +9,7 @@
 // docs/household-members.md.
 
 import type { DataSet, Day, DeviceLink, HorizonEvent, Member, OwnershipSpan, Subscription, Thing } from './types'
+import { dayOf } from './dates'
 import { monthlyCost } from './money'
 import { listText, tr } from './text'
 
@@ -126,22 +127,59 @@ export const needsSomeone = (handler: string | null, users: Set<string>): boolea
 
 // ── Hand-me-downs ────────────────────────────────────────────────────────────
 
-// Changing the owner keeps the thing and everything hanging off it, and
-// records who had it before. Two same-day cases are corrections, not history:
-// an owner who held it for no time at all leaves no trace, and handing it
-// straight back undoes the hand-over.
-export function handDown(thing: Thing, to: string | null, day: Day): Pick<Thing, 'ownerMemberId' | 'ownershipHistory'> {
+// Changing the owner keeps the thing and everything hanging off it. What it
+// leaves behind depends on what the change was:
+//
+//   'handover'    it changed hands on `day`: who had it before is recorded.
+//   'correction'  the owner on record was wrong (most often the household,
+//                 which is what a thing is given when it is entered): nothing
+//                 is recorded, and the new owner has had it since the last
+//                 hand-over, or since it was bought.
+//
+// Left to itself, a change is a hand-over, with three cases that are
+// corrections whatever was meant: an owner who held it for no time at all
+// leaves no trace, handing it straight back undoes the hand-over, and the
+// owner of a thing entered today is still being filled in.
+export type OwnerChange = 'handover' | 'correction'
+
+export function handDown(thing: Thing, to: string | null, day: Day, as?: OwnerChange): Pick<Thing, 'ownerMemberId' | 'ownershipHistory'> {
   const history: OwnershipSpan[] = thing.ownershipHistory ?? []
   if (to === thing.ownerMemberId) return { ownerMemberId: to, ownershipHistory: thing.ownershipHistory }
   const last = history[history.length - 1]
   let next: OwnershipSpan[]
-  if (last && last.to === day && last.memberId === to) {
+  if (as === 'correction') {
+    // Corrected to whoever had it before: they never let go of it.
+    next = last && last.memberId === to ? history.slice(0, -1) : history
+  } else if (last && last.to === day && last.memberId === to) {
     next = history.slice(0, -1)
   } else {
     const from = last?.to ?? thing.purchaseDate ?? thing.createdAt.slice(0, 10)
-    next = from >= day ? history : [...history, { memberId: thing.ownerMemberId, from, to: day }]
+    const stillBeingEntered = !as && !last && enteredOn(thing, day)
+    next = from >= day || stillBeingEntered ? history : [...history, { memberId: thing.ownerMemberId, from, to: day }]
   }
   return { ownerMemberId: to, ownershipHistory: next.length ? next : undefined }
+}
+
+// Whether `day` is the day a thing was entered. The stamp is a moment, and
+// the day it fell on depends on where it is read: either reading counts.
+const enteredOn = (thing: Pick<Thing, 'createdAt'>, day: Day): boolean => thing.createdAt.slice(0, 10) === day || dayOf(thing.createdAt) === day
+
+// When the current owner's time with a thing began: the last hand-over, or
+// the day it was bought. Null when neither is on record.
+export const ownedSince = (thing: Pick<Thing, 'ownershipHistory' | 'purchaseDate'>): Day | null => {
+  const history = thing.ownershipHistory ?? []
+  return history[history.length - 1]?.to ?? thing.purchaseDate ?? null
+}
+
+// Before a change of owner on the day a thing was entered counted as a
+// correction, giving a thing its owner on that day wrote "the household, from
+// the day it was bought until today" into its history. That span says nothing
+// that happened. Answers the history without it, or null when a thing has no
+// such span.
+export function withoutEntrySpan(thing: Pick<Thing, 'ownershipHistory' | 'purchaseDate' | 'createdAt'>): OwnershipSpan[] | null {
+  const [first, ...rest] = thing.ownershipHistory ?? []
+  if (!first || first.memberId !== null || !thing.purchaseDate || first.from !== thing.purchaseDate || !enteredOn(thing, first.to)) return null
+  return rest
 }
 
 // ── Removing a member ────────────────────────────────────────────────────────

@@ -105,10 +105,16 @@ export interface Subscription {
   cycle: Cycle
   // Any date it renewed or will renew on; occurrences roll forward from here.
   anchorDate: Day
+  // The day it began. Nothing was paid before it, so this is where its
+  // payments are counted from. A plan from before the field existed has none
+  // and counts from the day it was entered (core/money.ts: planStart).
+  startDate?: Day
   autoRenew: boolean
   status: 'active' | 'trial' | 'cancelled'
   trialEnd?: Day
-  // Cancelled (or not auto-renewing): the day access runs out.
+  // The day it ends, and nothing renews on or after it. Cancelled, or not
+  // renewing: the day access runs out. Renewing: the end of a fixed term (a
+  // lease, a payment plan), paid each cycle until then.
   endDate?: Day
   // "Ask me before this renews." Annual plans ask anyway.
   review: boolean

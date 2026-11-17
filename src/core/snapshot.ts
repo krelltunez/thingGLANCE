@@ -13,7 +13,7 @@ import { attentionQueue, buildHorizon } from './horizon'
 import { lifecycle, replacementFund, type Verdict } from './health'
 import { concernsPlan, handlerOfEvent, visibleTo } from './household'
 import { eventLink, formatLink } from './links'
-import { chargesWithin, forecast, monthlyCost } from './money'
+import { chargesWithin, forecast, isOver, monthlyCost } from './money'
 import { capReminders, planReminders, type Reminder, type ReminderPrefs } from './reminders'
 import { textLocale } from './text'
 
@@ -166,7 +166,7 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
   const plans = data.subscriptions.filter((s) => !opts.memberId || concernsPlan(s, opts.memberId, new Map(data.things.map((t) => [t.id, t]))))
   const charges = chargesWithin(plans, ref, CHARGES_DAYS)
   const lives = new Map(active.map((t) => [t.id, lifecycle(t, data.coverages, ref)]))
-  const monthly = data.subscriptions.reduce((t, s) => t + monthlyCost(s), 0)
+  const monthly = data.subscriptions.reduce((t, s) => t + monthlyCost(s, ref), 0)
   return {
     version: SNAPSHOT_VERSION,
     generatedAt: new Date(now).toISOString(),
@@ -176,7 +176,7 @@ export function buildSnapshot(all: DataSet, opts: SnapshotOptions): GlanceSnapsh
     scope: { viewerId: opts.viewerId, memberId: opts.memberId ?? null },
     counts: {
       things: active.length,
-      subscriptions: data.subscriptions.filter((s) => s.status !== 'cancelled').length,
+      subscriptions: data.subscriptions.filter((s) => !isOver(s, ref)).length,
       attention: queue.length,
       urgent: queue.filter((e) => e.severity === 'urgent' || e.severity === 'past').length,
       covered: active.filter((t) => lives.get(t.id)!.covered).length,

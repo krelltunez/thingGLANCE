@@ -56,6 +56,13 @@ const MEMBER = 'A member id from thingglance_list_members, or null for the house
 const NO_DELETE = ' Nothing can be deleted over MCP: removing anything is done in the app.';
 const UNDO_NOTE = ' The user can undo this change from thingGLANCE.';
 const EDIT_NOTE = ' Send only the fields to change: a field left out is untouched, and null clears one that can be empty.';
+// How a plan that ends is recorded: three cases that read alike and are not.
+const PLAN_ENDS =
+  ' How a plan that ends is recorded. A lease, or anything paid in installments until a date: auto_renew true with end_date, the ' +
+  'last day of the term. It is paid each cycle until then, costs what it costs until then, and gets an end-of-term date. Paid up ' +
+  'front for a term and not renewing (a prepaid year): auto_renew false with end_date, the day it expires. It then counts as ' +
+  'already paid: no renewals, and no monthly cost. Cancelled: status "cancelled" with end_date, the day access runs out. With no ' +
+  'end_date, a plan that renews does so until it is cancelled.';
 
 export const CATEGORY_HINT = 'A category id such as phone, laptop, tablet, tv, appliance, car; left out, it is guessed from the name.';
 
@@ -102,7 +109,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         'Add a thing to track: something with a warranty, a support window or a planned replacement (a phone, a laptop, an ' +
         'appliance). Only the name is required. A purchase date and price let thingGLANCE work out its life and what it costs to ' +
         'own; coverage is added afterwards with thingglance_add_coverage. It is added as shared and owned by the household unless ' +
-        'owner_member_id says otherwise. Returns the thing as it now stands. thingGLANCE is not an inventory: add things whose ' +
+        'owner_member_id says otherwise; whoever owns it has had it since the purchase date (owned_since), not since today. Returns the thing as it now stands. thingGLANCE is not an inventory: add things whose ' +
         'dates matter, not everything someone owns.' + UNDO_NOTE,
       inputSchema: z.object({
         name: z.string().describe('What it is called, e.g. "Pixel 9" or "Bosch dishwasher".'),
@@ -162,17 +169,22 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
     {
       description:
         'Change whose a thing is (owner_member_id) or who deals with it (responsible_member_id: the member whose devices are asked ' +
-        'about its dates), or both. Handing it to someone else is recorded as a hand-me-down: the thing, its dates and its coverage ' +
-        'stay, and the earlier owner is kept in its history. null for the owner means the household; null for responsible means ' +
-        'nobody in particular, so everyone is asked. A private thing handed to the household becomes shared.' + UNDO_NOTE,
+        'about its dates), or both. A new owner is one of two things, and correction says which. Left out or false, the thing ' +
+        'changed hands today: a hand-me-down, with the earlier owner kept in its history (ownership_history) and the new one\'s ' +
+        'time counted from today. correction: true means the owner on record was simply wrong (it was the new owner\'s all along, ' +
+        'or the household was the default when it was entered): nothing is added to the history, and the new owner has had it ' +
+        'since it was bought. Use correction: true when the user is fixing who owns what, not describing a hand-over. null for the ' +
+        'owner means the household; null for responsible means nobody in particular, so everyone is asked. A private thing handed ' +
+        'to the household becomes shared.' + UNDO_NOTE,
       inputSchema: z.object({
         thing_id: z.string().describe('A thing id from thingglance_list_things.'),
         owner_member_id: z.string().nullable().optional().describe(MEMBER),
         responsible_member_id: z.string().nullable().optional().describe('A member id, or null for nobody in particular.'),
+        correction: z.boolean().optional().describe('true: the owner was recorded wrong, so no hand-over is added to the history. Default false.'),
         idempotency_key: KEY,
       }),
     },
-    async (args) => write('reassign_thing', args.idempotency_key, 'reassign_thing', () => named(args, ['thing_id', 'owner_member_id', 'responsible_member_id'])),
+    async (args) => write('reassign_thing', args.idempotency_key, 'reassign_thing', () => named(args, ['thing_id', 'owner_member_id', 'responsible_member_id', 'correction'])),
   );
 
   server.registerTool(
@@ -205,13 +217,17 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         'Add a plan: a subscription, a membership, anything that renews and costs money. name and amount are required. cycle is ' +
         '"weekly", "monthly" (default), "quarterly" or "yearly". anchor_date is any date it renewed or will renew on (default today); ' +
         'renewals roll forward from it. A trial needs status "trial" and trial_end. review: true asks the user before each renewal. ' +
-        'thing_ids attaches it to things (a phone plan to the phones). Added as shared, paid by the household unless payer_member_id ' +
-        'says otherwise.' + UNDO_NOTE,
+        'thing_ids attaches it to things (a phone plan to the phones). start_date is the day it began: its payments are counted ' +
+        'from there. Left out, it is the purchase date of the thing it is attached to, or today for a plan on its own, so send it ' +
+        'whenever the plan began on another day. Added as shared, paid by the household unless payer_member_id says otherwise.' +
+        PLAN_ENDS + UNDO_NOTE,
       inputSchema: z.object({
         name: z.string().describe('What it is called, e.g. "Netflix" or "iCloud+ 2 TB".'),
         amount: z.number().describe('What it charges each cycle, in the app\'s currency.'),
         cycle: z.string().optional().describe('weekly, monthly, quarterly or yearly. Default monthly.'),
         anchor_date: z.string().optional().describe(`A date it renews on: ${DAY}. Default today.`),
+        start_date: z.string().optional().describe(`The day it began: ${DAY}. Default: the attached thing's purchase date, else today.`),
+        end_date: z.string().optional().describe(`The day it ends, if it has one: ${DAY}. See the description for what that means with auto_renew.`),
         provider: z.string().optional(),
         status: z.string().optional().describe('"active" (default) or "trial".'),
         trial_end: z.string().optional().describe(`When a trial converts to paid: ${DAY}.`),
@@ -224,7 +240,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       }),
     },
     async (args) => write('create_plan', args.idempotency_key, 'create_plan', (new_id) => ({
-      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'payer_member_id', 'notes']), new_id,
+      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'start_date', 'end_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'payer_member_id', 'notes']), new_id,
     })),
   );
 
@@ -232,9 +248,9 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
     'thingglance_update_plan',
     {
       description:
-        'Edit a plan: any field the app\'s own form edits. To record a cancellation, set status "cancelled" and end_date to the day ' +
-        'access runs out (or auto_renew: false with end_date, if it runs to the end of its term). thing_ids replaces the things it ' +
-        'is attached to. visibility "private" shows it only on the payer\'s devices, so it needs a payer.' + EDIT_NOTE + NO_DELETE + UNDO_NOTE,
+        'Edit a plan: any field the app\'s own form edits. start_date is the day it began, where its payments are counted from. ' +
+        'thing_ids replaces the things it is attached to. visibility "private" shows it only on the payer\'s devices, so it needs ' +
+        'a payer.' + PLAN_ENDS + EDIT_NOTE + NO_DELETE + UNDO_NOTE,
       inputSchema: z.object({
         plan_id: z.string().describe('A plan id from thingglance_list_plans.'),
         name: z.string().optional(),
@@ -244,7 +260,8 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         provider: z.string().nullable().optional(),
         status: z.string().optional().describe('active, trial or cancelled.'),
         trial_end: z.string().nullable().optional().describe(`${DAY}.`),
-        end_date: z.string().nullable().optional().describe(`The day access runs out: ${DAY}.`),
+        start_date: z.string().nullable().optional().describe(`The day it began: ${DAY}. null: count from the day it was entered.`),
+        end_date: z.string().nullable().optional().describe(`The day it ends: ${DAY}. See the description for what that means with auto_renew and status.`),
         auto_renew: z.boolean().optional(),
         review_before_renewal: z.boolean().optional(),
         thing_ids: z.array(z.string()).optional(),
@@ -256,7 +273,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       }),
     },
     async (args) => write('update_plan', args.idempotency_key, 'update_plan', () => named(args, [
-      'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
+      'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'start_date', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
       'thing_ids', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
     ])),
   );

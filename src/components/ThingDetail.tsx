@@ -9,7 +9,7 @@ import type { Thing } from '@/core/types'
 import { categoryLabel } from '@/core/categories'
 import { daysBetween, daysFromToday, fmtDay, fmtMonth, relative, span, today } from '@/core/dates'
 import { ownership, verdictHint, type Lifecycle } from '@/core/health'
-import { cycleShort, money } from '@/core/money'
+import { cycleShort, isOver, money, termEnd } from '@/core/money'
 import { deleteThing, retireThing, reviveThing, updateThing } from '@/db/queries'
 import { useData } from '@/state/data'
 import { useSettings } from '@/state/settings'
@@ -89,7 +89,9 @@ export function ThingDetail({ thingId }: { thingId: string }) {
   const subs = d.subsFor(thing.id)
   const own = ownership(thing, covs, subs)
   const tone = verdictTone(life.verdict)
-  const upcoming = d.events.filter((e) => e.thingId === thing.id && (e.days >= 0 || e.attention)).slice(0, 6)
+  // The next renewal of a plan and not the five after it: they would crowd out
+  // the dates that are not routine (the end of a term, the replacement).
+  const upcoming = d.events.filter((e) => e.thingId === thing.id && !e.repeat && (e.days >= 0 || e.attention)).slice(0, 6)
   const owner = d.memberName(thing.ownerMemberId)
   const handler = thing.responsibleMemberId !== thing.ownerMemberId ? d.memberName(thing.responsibleMemberId) : null
   const before = (thing.ownershipHistory ?? []).map((h) => t('detail.heldUntil', { name: d.memberName(h.memberId) ?? t('common.household'), when: fmtDay(h.to, 'MMM YYYY') }))
@@ -208,11 +210,11 @@ export function ThingDetail({ thingId }: { thingId: string }) {
                 <div className="space-y-2">
                   {subs.map((s) => (
                     <button key={s.id} type="button" onClick={() => ui.open({ type: 'subscription', id: s.id })}
-                      className={cx('flex w-full items-center gap-3 rounded-xl border border-line/10 bg-raised/40 px-3 py-2.5 text-left transition hover:border-line/25', s.status === 'cancelled' && 'opacity-55')}>
+                      className={cx('flex w-full items-center gap-3 rounded-xl border border-line/10 bg-raised/40 px-3 py-2.5 text-left transition hover:border-line/25', isOver(s) && 'opacity-55')}>
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sub/25 bg-sub/10 text-sub"><Repeat size={15} /></span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-ink">{s.name}</span>
-                        <span className="block truncate text-xs text-dim">{[s.provider, s.status === 'cancelled' ? t('detail.plans.cancelled') : s.review ? t('detail.plans.underReview') : null].filter(Boolean).join(' · ') || t('detail.plans.active')}</span>
+                        <span className="block truncate text-xs text-dim">{[s.provider, s.status === 'cancelled' ? t('detail.plans.cancelled') : isOver(s) ? t('detail.plans.ended') : s.review ? t('detail.plans.underReview') : null, !isOver(s) && termEnd(s) ? t('detail.plans.until', { when: fmtDay(termEnd(s), 'MMM YYYY') }) : null].filter(Boolean).join(' · ') || t('detail.plans.active')}</span>
                       </span>
                       <span className="num shrink-0 text-sm text-ink">{money(s.amount, currency)}<span className="text-faint">/{cycleShort(s.cycle)}</span></span>
                     </button>

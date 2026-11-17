@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DataSet, DeviceLink, Member, Subscription, Thing } from './types'
 import { normalizeSubscription, normalizeThing } from './shape'
 import {
-  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, handlerOfEvent, isTied, memberOfDevice, memberTies,
+  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, handlerOfEvent, isTied, memberOfDevice, memberTies, ownedSince, withoutEntrySpan,
   handlerOfPlan, handlerOfThing, needsSomeone, planCostByPayer, privateHeld, reassignPlan, reassignThing, responsibleFor, userIds, visibleTo,
 } from './household'
 import { ownership } from './health'
@@ -38,8 +38,13 @@ describe('reading v0.1 rows', () => {
     const t = thing({ ownerMemberId: 'emma', visibility: 'private', ownershipHistory: [{ memberId: null, to: '2026-01-01' }] })
     expect(normalizeThing(t)).toEqual(t)
     expect(normalizeThing({ ...t, fromTheFuture: 1 })).toMatchObject({ fromTheFuture: 1 })
-    const s = sub({ coversThingIds: ['a', 'b'], coversMemberIds: ['emma'], payerMemberId: 'sam' })
+    const s = sub({ coversThingIds: ['a', 'b'], coversMemberIds: ['emma'], payerMemberId: 'sam', startDate: '2026-09-22', endDate: '2029-09-22' })
     expect(normalizeSubscription(s)).toEqual(s)
+    // A plan field added later (the start date was one) crosses a build that
+    // has not heard of it: the reader keeps it, and an edit made there is
+    // laid over the stored row, not built from the fields that build knows.
+    const { startDate: _unknown, ...asAnOlderBuildSeesIt } = s
+    expect(normalizeSubscription({ ...normalizeSubscription(s), ...asAnOlderBuildSeesIt, amount: 5 })).toMatchObject({ startDate: '2026-09-22', amount: 5 })
   })
   it('never leaves something private to nobody', () => {
     expect(normalizeThing(thing({ ownerMemberId: null, visibility: 'private' })).visibility).toBe('shared')
@@ -145,6 +150,43 @@ describe('hand-me-downs', () => {
   })
   it('does nothing when the owner has not changed', () => {
     expect(handDown(ipad, 'sam', '2026-11-12')).toEqual({ ownerMemberId: 'sam', ownershipHistory: undefined })
+  })
+  it('records nothing for a correction: the new owner has had it since it was bought', () => {
+    const fixed = handDown(ipad, 'emma', '2026-11-12', 'correction')
+    expect(fixed).toEqual({ ownerMemberId: 'emma', ownershipHistory: undefined })
+    expect(ownedSince({ ...ipad, ...fixed })).toBe('2023-03-01')
+    // After a real hand-over, a correction keeps it and changes only who has it now.
+    const once = { ...ipad, ...handDown(ipad, 'emma', '2025-06-01') }
+    expect(handDown(once, 'gran', '2026-11-12', 'correction').ownershipHistory).toEqual([{ memberId: 'sam', from: '2023-03-01', to: '2025-06-01' }])
+    expect(ownedSince({ ...once, ...handDown(once, 'gran', '2026-11-12', 'correction') })).toBe('2025-06-01')
+    // Corrected back to whoever had it before: they never let go of it.
+    expect(handDown(once, 'sam', '2026-11-12', 'correction')).toEqual({ ownerMemberId: 'sam', ownershipHistory: undefined })
+  })
+  it('treats the owner of a thing entered today as still being filled in', () => {
+    // Bought two years ago, entered today as the household's, then given its owner.
+    const tv = thing({ purchaseDate: '2024-11-01', createdAt: '2026-11-13T18:00:00.000Z' })
+    expect(handDown(tv, 'emma', '2026-11-13')).toEqual({ ownerMemberId: 'emma', ownershipHistory: undefined })
+    // A day later it is a hand-over, unless it is said to be a correction.
+    expect(handDown(tv, 'emma', '2026-11-16').ownershipHistory).toEqual([{ memberId: null, from: '2024-11-01', to: '2026-11-16' }])
+    // And on the day itself it can still be said to have changed hands.
+    expect(handDown(tv, 'emma', '2026-11-13', 'handover').ownershipHistory).toEqual([{ memberId: null, from: '2024-11-01', to: '2026-11-13' }])
+  })
+  it('says when the current owner\'s time began', () => {
+    expect(ownedSince(ipad)).toBe('2023-03-01')
+    expect(ownedSince({ ...ipad, ...handDown(ipad, 'emma', '2026-11-12') })).toBe('2026-11-12')
+    expect(ownedSince(thing({}))).toBeNull()
+  })
+  it('takes out the span an entry-day change of owner used to leave, and no other', () => {
+    const entered = { purchaseDate: '2026-09-22', createdAt: '2026-11-13T18:00:00.000Z' }
+    const artifact = { memberId: null, from: '2026-09-22', to: '2026-11-13' }
+    expect(withoutEntrySpan(thing({ ...entered, ownerMemberId: 'emma', ownershipHistory: [artifact] }))).toEqual([])
+    const later = { memberId: 'emma', from: '2026-11-13', to: '2026-11-15' }
+    expect(withoutEntrySpan(thing({ ...entered, ownerMemberId: 'sam', ownershipHistory: [artifact, later] }))).toEqual([later])
+    // A hand-over on another day, from a member, or from a later start, happened.
+    expect(withoutEntrySpan(thing({ ...entered, ownershipHistory: [{ ...artifact, to: '2026-11-16' }] }))).toBeNull()
+    expect(withoutEntrySpan(thing({ ...entered, ownershipHistory: [{ ...artifact, memberId: 'sam' }] }))).toBeNull()
+    expect(withoutEntrySpan(thing({ ...entered, ownershipHistory: [{ ...artifact, from: '2026-10-01' }] }))).toBeNull()
+    expect(withoutEntrySpan(thing({ ...entered }))).toBeNull()
   })
 })
 

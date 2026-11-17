@@ -283,6 +283,44 @@ const leaseOnA = await planRow(A)
 check('A: an edit on B that names neither date leaves both', leaseOnA?.notes === 'Edited on B' && leaseOnA?.startDate === '2026-09-22' && leaseOnA?.endDate === '2029-09-22', JSON.stringify(leaseOnA ?? null))
 await goto(A, 'Plans')
 check('A: the plans page says when the term ends', await A.getByText(/ends Sep 2029/).first().isVisible().catch(() => false))
+
+// A start has three states: a date, "started before I tracked it" (an answer)
+// and nothing yet. In the form the date and the box never stand together, and
+// each state reaches the other device as it was left.
+await A.getByRole('button', { name: /E2E Lease/ }).first().click()
+await A.waitForTimeout(400)
+const planForm = A.getByRole('dialog').last()
+const startBox = planForm.getByLabel('Started before I tracked it')
+const startField = planForm.locator('[data-plan-start]')
+const shown = { date: await startField.inputValue(), box: await startBox.isChecked() }
+await startBox.check()
+const ticked = { date: await startField.inputValue(), box: await startBox.isChecked() }
+await startField.fill('2026-10-01')
+const dated = { date: await startField.inputValue(), box: await startBox.isChecked() }
+await startBox.check()
+check('A: ticking "Started before I tracked it" clears the date, and a date unticks it',
+  shown.date === '2026-09-22' && !shown.box && ticked.date === '' && ticked.box && dated.date === '2026-10-01' && !dated.box && (await startField.inputValue()) === '',
+  JSON.stringify({ shown, ticked, dated }))
+await planForm.getByRole('button', { name: 'Save', exact: true }).click()
+await A.waitForTimeout(700)
+const unansweredId = crypto.randomUUID()
+await A.evaluate((w) => window.__thingglance.intent(w), { action: 'create_plan', clientId: unansweredId, payload: { name: 'E2E Unanswered', amount: 3 } })
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+const startOf = (page, id) => page.evaluate(async (planId) => {
+  const row = await (await import('/src/db/client.ts')).db.subscriptions.get(planId)
+  return row ? { status: (await import('/src/core/money.ts')).startStatus(row), startDate: row.startDate ?? null, startUnknown: row.startUnknown ?? null } : null
+}, id)
+const unknownOnB = await startOf(B, leaseId)
+check('B: "started before I tracked it" arrives as that, with no date', unknownOnB?.status === 'unknown' && unknownOnB.startDate === null && unknownOnB.startUnknown === true, JSON.stringify(unknownOnB))
+const unansweredOnB = await startOf(B, unansweredId)
+check('B: a plan nobody answered for arrives unanswered', unansweredOnB?.status === 'not_set' && unansweredOnB.startDate === null && unansweredOnB.startUnknown === null, JSON.stringify(unansweredOnB))
+// And a date given on the other device settles it everywhere.
+await B.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { startDate: '2026-09-22' }), leaseId)
+await B.waitForTimeout(4500)
+await syncNow(A)
+const settledOnA = await startOf(A, leaseId)
+check('A: a date given on B replaces "unknown"', settledOnA?.status === 'recorded' && settledOnA.startDate === '2026-09-22' && settledOnA.startUnknown === null, JSON.stringify(settledOnA))
 await B.waitForTimeout(300)
 
 // ── Owned since: the record of a purchase travels with everything else ──────
@@ -439,6 +477,41 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
   await fresh.goto(APP)
   await fresh.waitForTimeout(800)
   check('and the welcome does not come back', !(await fresh.getByRole('button', { name: /Explore with sample data/ }).isVisible().catch(() => false)))
+  await ctx.close()
+}
+
+// ── A backup file carries each state of a plan's start ───────────────────────
+// A device of its own with no vault: three plans, out to a file's text, the
+// data wiped, and back in.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const page = await ctx.newPage()
+  await page.goto(APP)
+  await page.waitForTimeout(1000)
+  const ids = { recorded: crypto.randomUUID(), unknown: crypto.randomUUID(), not_set: crypto.randomUUID() }
+  for (const [id, payload] of [
+    [ids.recorded, { name: 'Backup Recorded', amount: 5, start_date: '2025-03-01' }],
+    [ids.unknown, { name: 'Backup Unknown', amount: 6, start_date_status: 'unknown' }],
+    [ids.not_set, { name: 'Backup Unanswered', amount: 7 }],
+  ]) await page.evaluate((w) => window.__thingglance.intent(w), { action: 'create_plan', clientId: id, payload })
+  const restored = await page.evaluate(async (planIds) => {
+    const { buildBackup, importBackup, wipeLocalData } = await import('/src/db/backup.ts')
+    const { db } = await import('/src/db/client.ts')
+    const { startStatus } = await import('/src/core/money.ts')
+    const text = JSON.stringify(await buildBackup())
+    await wipeLocalData()
+    const emptied = await db.subscriptions.count()
+    const counts = await importBackup(text)
+    const out = { emptied, added: counts.added }
+    for (const [state, id] of Object.entries(planIds)) {
+      const row = await db.subscriptions.get(id)
+      out[state] = row ? `${startStatus(row)}:${row.startDate ?? ''}:${row.startUnknown ?? ''}` : 'missing'
+    }
+    return out
+  }, ids)
+  check('a backup file brings each state of a start back as it was',
+    restored.emptied === 0 && restored.added === 3 && restored.recorded === 'recorded:2025-03-01:' && restored.unknown === 'unknown::true' && restored.not_set === 'not_set::',
+    JSON.stringify(restored))
   await ctx.close()
 }
 

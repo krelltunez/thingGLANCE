@@ -234,15 +234,20 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
     }
   }
   // As in the form: a plan on a thing began when the thing was bought, until
-  // told otherwise, and one on its own the day it is entered.
-  const startDate = r.day('start_date') ?? things.map((t) => t.purchaseDate).find((day) => !!day) ?? today()
+  // told otherwise. One on its own has no start until it is given one, or is
+  // said to have begun before it was tracked ("unknown"): that is an answer,
+  // and it takes the place of a date, purchase date included.
+  const said = r.day('start_date')
+  const startUnknown = r.oneOf('start_date_status', ['unknown'] as const) === 'unknown'
+  if (startUnknown && said) invalid('"start_date_status": "unknown" cannot come with a "start_date"')
+  const startDate = said ?? (startUnknown ? undefined : things.map((t) => t.purchaseDate).find((day) => !!day))
   const endDate = r.day('end_date')
-  if (endDate && startDate > endDate) invalid('"start_date" is after "end_date"')
+  if (endDate && startDate && startDate > endDate) invalid('"start_date" is after "end_date"')
   const input: SubscriptionInput = {
     name: r.str('name', true)!, amount: r.num('amount', true)!,
     cycle: r.oneOf('cycle', CYCLES) ?? 'monthly',
     anchorDate: r.day('anchor_date') ?? today(),
-    startDate, endDate,
+    startDate, startUnknown: startUnknown || undefined, endDate,
     autoRenew: r.bool('auto_renew') ?? true,
     status, trialEnd: status === 'trial' ? trialEnd : undefined,
     review: r.bool('review') ?? false,

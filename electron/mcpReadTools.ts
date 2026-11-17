@@ -60,9 +60,12 @@ const HOUSEHOLD_NOTE =
   '"Household" and owner (or payer) is "household": null there never means "not set".';
 
 const PLAN_NOTE =
-  ' On a plan: start_date is where its payments are counted from (start_date_recorded false means none was entered, so it counts ' +
-  'from the day the plan was added: set one with thingglance_update_plan). paid_to_date is history, the payments made from ' +
-  'start_date up to yesterday at today\'s price, and is never mixed with what is coming. A plan with auto_renew true and an ' +
+  ' On a plan: start_date is the day it began, and start_date_status says where that stands. "recorded": the date is known. ' +
+  '"unknown": it began before the user tracked it, and they said so; that is an answer, so do not ask for a date or offer to ' +
+  'fill one in. "not_set": nobody has said yet; only these are worth asking about. start_date is null for the last two. ' +
+  'paid_to_date is history, the payments made up to yesterday at today\'s price, never mixed with what is coming: its basis is ' +
+  '"start_date" when it counts from the plan\'s own start, and "entry_date" when it counts from the day the plan was added ' +
+  'because no start is on record (then it is what was paid since tracking began, not since the plan began). A plan with auto_renew true and an ' +
   'end_date has a fixed term (a lease, installments): it is paid each cycle until end_date, next_renewal is null once no payment ' +
   'is left, and left_on_term says what remains. With auto_renew false it is already paid for: no renewals, no monthly cost.';
 

@@ -218,15 +218,19 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         '"weekly", "monthly" (default), "quarterly" or "yearly". anchor_date is any date it renewed or will renew on (default today); ' +
         'renewals roll forward from it. A trial needs status "trial" and trial_end. review: true asks the user before each renewal. ' +
         'thing_ids attaches it to things (a phone plan to the phones). start_date is the day it began: its payments are counted ' +
-        'from there. Left out, it is the purchase date of the thing it is attached to, or today for a plan on its own, so send it ' +
-        'whenever the plan began on another day. Added as shared, paid by the household unless payer_member_id says otherwise.' +
+        'from there. Left out, a plan attached to a thing takes the thing\'s purchase date, and a plan on its own has no start ' +
+        '(start_date_status "not_set"), so send the date whenever it is known. When the user says it began some time before they ' +
+        'tracked it and the day is not known, send start_date_status "unknown" and no start_date: that records the answer, and ' +
+        'its payments are counted from today. Never guess a date. Added as shared, paid by the household unless payer_member_id ' +
+        'says otherwise.' +
         PLAN_ENDS + UNDO_NOTE,
       inputSchema: z.object({
         name: z.string().describe('What it is called, e.g. "Netflix" or "iCloud+ 2 TB".'),
         amount: z.number().describe('What it charges each cycle, in the app\'s currency.'),
         cycle: z.string().optional().describe('weekly, monthly, quarterly or yearly. Default monthly.'),
         anchor_date: z.string().optional().describe(`A date it renews on: ${DAY}. Default today.`),
-        start_date: z.string().optional().describe(`The day it began: ${DAY}. Default: the attached thing's purchase date, else today.`),
+        start_date: z.string().optional().describe(`The day it began: ${DAY}. Default: the attached thing's purchase date, else none.`),
+        start_date_status: z.string().optional().describe('"unknown": it began before it was tracked and the day is not known. Not with a start_date.'),
         end_date: z.string().optional().describe(`The day it ends, if it has one: ${DAY}. See the description for what that means with auto_renew.`),
         provider: z.string().optional(),
         status: z.string().optional().describe('"active" (default) or "trial".'),
@@ -240,7 +244,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       }),
     },
     async (args) => write('create_plan', args.idempotency_key, 'create_plan', (new_id) => ({
-      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'start_date', 'end_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'payer_member_id', 'notes']), new_id,
+      ...named(args, ['name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'end_date', 'provider', 'status', 'trial_end', 'auto_renew', 'review', 'thing_ids', 'payer_member_id', 'notes']), new_id,
     })),
   );
 
@@ -248,7 +252,9 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
     'thingglance_update_plan',
     {
       description:
-        'Edit a plan: any field the app\'s own form edits. start_date is the day it began, where its payments are counted from. ' +
+        'Edit a plan: any field the app\'s own form edits. start_date is the day it began, where its payments are counted from; ' +
+        'setting one makes start_date_status "recorded". start_date_status "unknown" (with no start_date) records that it began ' +
+        'before it was tracked and clears any date; "not_set" clears both, as if it had never been answered. ' +
         'thing_ids replaces the things it is attached to. visibility "private" shows it only on the payer\'s devices, so it needs ' +
         'a payer.' + PLAN_ENDS + EDIT_NOTE + NO_DELETE + UNDO_NOTE,
       inputSchema: z.object({
@@ -260,7 +266,8 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         provider: z.string().nullable().optional(),
         status: z.string().optional().describe('active, trial or cancelled.'),
         trial_end: z.string().nullable().optional().describe(`${DAY}.`),
-        start_date: z.string().nullable().optional().describe(`The day it began: ${DAY}. null: count from the day it was entered.`),
+        start_date: z.string().nullable().optional().describe(`The day it began: ${DAY}. null clears it.`),
+        start_date_status: z.string().optional().describe('"unknown" or "not_set", without a start_date; "recorded" only alongside one.'),
         end_date: z.string().nullable().optional().describe(`The day it ends: ${DAY}. See the description for what that means with auto_renew and status.`),
         auto_renew: z.boolean().optional(),
         review_before_renewal: z.boolean().optional(),
@@ -273,7 +280,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
       }),
     },
     async (args) => write('update_plan', args.idempotency_key, 'update_plan', () => named(args, [
-      'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'start_date', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
+      'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
       'thing_ids', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
     ])),
   );

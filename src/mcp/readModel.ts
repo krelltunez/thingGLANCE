@@ -16,7 +16,7 @@ import { addDays, isDay } from '@/core/dates'
 import { lifecycle, verdictLabel, type Verdict } from '@/core/health'
 import { attentionQueue, buildHorizon, eventKindLabel } from '@/core/horizon'
 import { handlerOfEvent, ownedSince } from '@/core/household'
-import { leftOnTerm, monthlyCost, nextRenewal, paidToDate, yearlyCost } from '@/core/money'
+import { leftOnTerm, monthlyCost, nextRenewal, paidToDate, startStatus, yearlyCost } from '@/core/money'
 import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
 import type { DataSet, Day, EventType, HorizonEvent, Member, Subscription, Thing } from '@/core/types'
@@ -153,17 +153,18 @@ export function planSummary(d: ReadData, s: Subscription): Record<string, unknow
     review_before_renewal: s.review,
     next_renewal: s.status === 'cancelled' || !s.autoRenew ? null : nextRenewal(s, d.today),
     anchor_date: s.anchorDate,
-    // Where its payments are counted from. Not recorded on a plan from
-    // before start dates were kept: that one counts from the day it was entered.
-    start_date: paid.since,
-    start_date_recorded: !!s.startDate,
+    // The day it began, when that is on record. "unknown" (it began before
+    // it was tracked) and "not_set" (nobody has said) have no date.
+    start_date: s.startDate ?? null,
+    start_date_status: startStatus(s),
     trial_end: s.trialEnd ?? null,
     end_date: s.endDate ?? null,
     monthly_cost: cents(monthlyCost(s, d.today)),
     yearly_cost: cents(yearlyCost(s, d.today)),
-    // History, kept apart from what is coming: the payments made from
-    // start_date up to yesterday, at today's price.
-    paid_to_date: { since: paid.since, payments: paid.payments, total: paid.total, last_payment: paid.last },
+    // History, kept apart from what is coming: the payments made up to
+    // yesterday, at today's price. Counted from start_date, or with none on
+    // record from the day the plan was entered: `basis` says which.
+    paid_to_date: { basis: paid.basis, since: paid.since, payments: paid.payments, total: paid.total, last_payment: paid.last },
     // A fixed term (a lease, installments): what is still to pay before it ends.
     left_on_term: left ? { ends: left.ends, payments: left.payments, total: left.total } : null,
     thing_ids: s.coversThingIds,

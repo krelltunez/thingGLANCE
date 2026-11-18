@@ -14,6 +14,7 @@ import { toast } from '@/state/toast'
 import { useUI } from '@/state/ui'
 import { Field, Segmented, Sheet, Toggle } from './ui'
 import { cx, num, whoFields, type WhoDraft } from './kit'
+import { usersOf } from '@/core/household'
 import { HouseholdFields, MembersPicker } from './HouseholdFields'
 
 export function SubscriptionForm({ id, thingId, initialName }: { id?: string; thingId?: string; initialName?: string }) {
@@ -47,6 +48,8 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       : { holder: '', responsible: d.meId ?? '', isPrivate: false }) as WhoDraft,
     coversMemberIds: existing?.coversMemberIds ?? [],
     coversHousehold: !existing?.coversMemberIds.length && existing?.coversHousehold === true,
+    // Chosen by hand, as opposed to taken from the owner of what it is on.
+    coversSet: !!existing && (existing.coversSet === true || existing.coversMemberIds.length > 0 || existing.coversHousehold === true),
     notes: existing?.notes ?? '',
   }))
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }))
@@ -74,6 +77,15 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
   const paid = draft ? paidToDate(draft) : null
   const left = draft ? leftOnTerm(draft) : null
 
+  // Who uses it, as the form stands: what was picked, or with nothing picked
+  // the owner of whatever it is attached to.
+  const users = usersOf({
+    coversThingIds: f.thingIds,
+    coversMemberIds: f.coversSet ? f.coversMemberIds : [],
+    coversHousehold: f.coversSet && f.coversHousehold ? true : undefined,
+    coversSet: f.coversSet ? true : undefined,
+  }, d.thingById)
+
   const attached = f.thingIds.map((tid) => d.thingById.get(tid)).filter((thing) => !!thing)
   const attachable = d.things.filter((thing) => thing.status === 'active' && !f.thingIds.includes(thing.id))
 
@@ -91,8 +103,9 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
       // Ids this device cannot resolve (a thing hidden from it, or not yet
       // synced) are kept: the form only edits what it can show.
       coversThingIds: f.thingIds,
-      coversMemberIds: f.coversMemberIds,
-      coversHousehold: !f.coversMemberIds.length && f.coversHousehold ? true : undefined,
+      coversMemberIds: f.coversSet ? f.coversMemberIds : [],
+      coversHousehold: f.coversSet && !f.coversMemberIds.length && f.coversHousehold ? true : undefined,
+      coversSet: f.coversSet ? true : undefined,
       status: f.status,
       trialEnd: f.status === 'trial' ? f.trialEnd || undefined : undefined,
       endDate: f.endDate || undefined,
@@ -195,8 +208,16 @@ export function SubscriptionForm({ id, thingId, initialName }: { id?: string; th
 
         <HouseholdFields value={f.who} onChange={(who) => set('who', who)} noun="plan" holderLabel={t('planForm.holderLabel')} />
         {d.multiUser && d.members.length > 1 && (
-          <MembersPicker label={t('planForm.coversLabel')} value={f.coversMemberIds} household={f.coversHousehold} hint={t('planForm.coversHint')}
-            onChange={(next) => setF((p) => ({ ...p, coversMemberIds: next.ids, coversHousehold: next.household }))} />
+          <MembersPicker label={t('planForm.coversLabel')} value={users.memberIds} household={users.who === 'household'} hint={t('planForm.coversHint')}
+            // Picking anyone, from whatever is showing, is choosing by hand.
+            onChange={(next) => setF((p) => ({ ...p, coversMemberIds: next.ids, coversHousehold: next.household, coversSet: true }))}
+            below={f.thingIds.length > 0 && (
+              <p className="mt-1.5 text-xs text-dim" data-used-by-source={users.source}>
+                {users.source === 'thing'
+                  ? (users.who === 'not_set' ? t('planForm.coversFollowsNothing') : t('planForm.coversFollows'))
+                  : <button type="button" className="font-medium text-accent hover:underline" onClick={() => setF((p) => ({ ...p, coversMemberIds: [], coversHousehold: false, coversSet: false }))}>{t('planForm.coversFollow')}</button>}
+              </p>
+            )} />
         )}
 
         <Field label={t('planForm.notes')}><textarea className="input" rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('planForm.notesPlaceholder')} /></Field>

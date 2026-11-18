@@ -107,6 +107,11 @@ export interface Subscription {
   // ever true, and only with nobody named above: the two never stand together
   // (household.ts: usedBy).
   coversHousehold?: true
+  // Who uses it was chosen by hand, "nobody in particular" included. Only
+  // ever true. Without it, and with nobody named, a plan attached to a thing
+  // is used by whoever owns the thing, and moves with it (household.ts:
+  // usersOf).
+  coversSet?: true
   name: string
   provider?: string
   amount: number

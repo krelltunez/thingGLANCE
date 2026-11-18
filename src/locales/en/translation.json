@@ -439,7 +439,7 @@
     "nextRenewal": "Next renewal",
     "nextRenewalHint": "Any renewal date works; it repeats from there.",
     "started": "Started",
-    "startedHint": "Its payments are counted from here. Left empty, they are counted from the last payment before you added it.",
+    "startedHint": "Its payments are counted from here. Left empty, only what is known to have been paid is counted.",
     "startUnknown": "Started before I tracked it",
     "termEnds": "Ends on",
     "termEndsHint": "For a lease or a payment plan: the day its term ends. Leave it empty for a plan that renews until you cancel.",
@@ -467,6 +467,9 @@
     "holderLabel": "Who pays?",
     "coversLabel": "Who is it for?",
     "coversHint": "Optional. The household as a whole, or the people it covers.",
+    "coversFollows": "Following the owner of what it is attached to. Pick anyone to set it yourself.",
+    "coversFollowsNothing": "What it is attached to has more than one owner, so nothing is assumed. Pick anyone to set it yourself.",
+    "coversFollow": "Follow the owner of what it is attached to",
     "notes": "Notes",
     "notesPlaceholder": "Where to cancel, which card it is on…",
     "coverage": {

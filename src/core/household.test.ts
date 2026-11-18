@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DataSet, DeviceLink, Member, Subscription, Thing } from './types'
 import { normalizeSubscription, normalizeThing } from './shape'
 import {
-  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, holderOf, usedBy, handlerOfEvent, isTied, memberOfDevice, memberTies, ownedSince, withoutEntrySpan,
+  canSeePlan, canSeeThing, concernsPlan, concernsThing, describeTies, fundByOwner, handDown, holderOf, usedBy, usersOf, followsThing, handlerOfEvent, isTied, memberOfDevice, memberTies, ownedSince, withoutEntrySpan,
   handlerOfPlan, handlerOfThing, needsSomeone, planCostByPayer, privateHeld, reassignPlan, reassignThing, responsibleFor, userIds, visibleTo,
 } from './household'
 import { ownership } from './health'
@@ -93,6 +93,27 @@ describe('reading v0.1 rows', () => {
     const { coversHousehold: _unheardOf, ...older } = household
     expect(through({ ...through(household), ...older, amount: 5 })).toMatchObject({ coversHousehold: true, amount: 5 })
   })
+  it('carries whether who uses a plan was chosen or follows its thing', () => {
+    const through = (s: Subscription) => normalizeSubscription(JSON.parse(JSON.stringify(s)))
+    const things = new Map([['ipad', thing({ id: 'ipad', ownerMemberId: 'emma' })], ['tv', thing({ id: 'tv', ownerMemberId: null })]])
+    const following = sub({ coversThingIds: ['ipad'] })
+    const chosenNobody = sub({ coversThingIds: ['ipad'], coversSet: true })
+    const chosenSam = sub({ coversThingIds: ['ipad'], coversMemberIds: ['sam'], coversSet: true })
+    for (const row of [following, chosenNobody, chosenSam]) expect(through(row)).toEqual(row)
+    expect(usersOf(through(following), things)).toEqual({ who: 'members', memberIds: ['emma'], source: 'thing' })
+    expect(usersOf(through(chosenNobody), things)).toEqual({ who: 'not_set', memberIds: [], source: 'set' })
+    expect(usersOf(through(chosenSam), things)).toEqual({ who: 'members', memberIds: ['sam'], source: 'set' })
+    expect([followsThing(following), followsThing(chosenNobody), followsThing(chosenSam)]).toEqual([true, false, false])
+    // The household's thing, things with different owners, and nothing at all.
+    expect(usersOf(sub({ coversThingIds: ['tv'] }), things)).toEqual({ who: 'household', memberIds: [], source: 'thing' })
+    expect(usersOf(sub({ coversThingIds: ['ipad', 'tv'] }), things)).toEqual({ who: 'not_set', memberIds: [], source: 'thing' })
+    expect(usersOf(sub({ coversThingIds: ['ipad', 'gone'] }), things)).toEqual({ who: 'not_set', memberIds: [], source: 'thing' })
+    expect(usersOf(sub({}), things)).toEqual({ who: 'not_set', memberIds: [], source: 'set' })
+    // The flag is true or absent, and survives a build that has not heard of it.
+    expect('coversSet' in through({ ...following, coversSet: false } as unknown as Subscription)).toBe(false)
+    const { coversSet: _unheardOf, ...older } = chosenNobody
+    expect(through({ ...through(chosenNobody), ...older, amount: 5 })).toMatchObject({ coversSet: true, amount: 5 })
+  })
   it('never leaves something private to nobody', () => {
     expect(normalizeThing(thing({ ownerMemberId: null, visibility: 'private' })).visibility).toBe('shared')
     expect(normalizeSubscription(sub({ payerMemberId: null, visibility: 'private' })).visibility).toBe('shared')
@@ -158,6 +179,9 @@ describe('the member filter', () => {
     expect(concernsPlan(sub({ coversThingIds: ['ipad'] }), 'emma', things)).toBe(true)
     expect(concernsPlan(sub({ coversThingIds: ['ipad'] }), 'sam', things)).toBe(false)
     expect(concernsPlan(sub({}), 'gran', things)).toBe(true)
+    // Nobody chose who a plan on Emma's iPad is for: it is Emma's, whoever pays.
+    expect(concernsPlan(sub({ payerMemberId: 'sam', coversThingIds: ['ipad'] }), 'emma', things)).toBe(true)
+    expect(concernsPlan(sub({ payerMemberId: 'sam', coversThingIds: ['ipad'], coversMemberIds: ['gran'], coversSet: true }), 'emma', things)).toBe(false)
     // Used by the household is used by each of its members, whoever pays and
     // whatever it is attached to.
     expect(concernsPlan(sub({ payerMemberId: 'sam', coversHousehold: true }), 'emma', things)).toBe(true)

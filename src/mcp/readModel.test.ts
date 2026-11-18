@@ -182,13 +182,16 @@ describe('who a plan is paid for by, dealt with by and used by', () => {
     expect(all['p-stream']).toMatchObject({
       payer: 'household', payer_member_id: null, payer_name: 'Household',
       responsible: 'household', responsible_member_id: null, responsible_name: 'Household',
-      used_by: 'household', member_ids: [], member_names: ['Household'],
+      // The household is said by used_by: neither list holds it, and the two line up.
+      used_by: 'household', used_by_source: 'set', member_ids: [], member_names: [],
     })
     expect(all['p-cloud']).toMatchObject({
       payer: 'member', payer_name: 'Ann',
       responsible: 'member', responsible_member_id: 'ann', responsible_name: 'Ann',
-      used_by: 'members', member_ids: ['ann', 'kid'], member_names: ['Ann', 'Kit'],
+      used_by: 'members', used_by_source: 'set', member_ids: ['ann', 'kid'], member_names: ['Ann', 'Kit'],
     })
+    // Everywhere a plan appears, there is a name for each id and no more.
+    for (const p of Object.values(all) as Row[]) expect((p.member_names as unknown[]).length).toBe((p.member_ids as unknown[]).length)
   })
   it('keeps "nobody has said" apart from the household', () => {
     // The trial was never given anyone: an empty list, and not the household's.
@@ -202,9 +205,15 @@ describe('who a plan is paid for by, dealt with by and used by', () => {
   it('filters plans by who uses them: a member, "me" or the household', () => {
     const h = shared()
     expect(Object.keys(plans(h, { used_by: 'household' }))).toEqual(['p-stream'])
-    expect(Object.keys(plans(h, { used_by: 'kid' }))).toEqual(['p-cloud'])
-    expect(Object.keys(plans(h, { used_by: 'me' }))).toEqual(['p-cloud'])
-    expect(Object.keys(plans(h, { used_by: 'ben' }))).toEqual([])
+    // What the household uses, each member uses: as the app shows it.
+    expect(Object.keys(plans(h, { used_by: 'kid' }))).toEqual(['p-stream', 'p-cloud'])
+    expect(Object.keys(plans(h, { used_by: 'me' }))).toEqual(['p-stream', 'p-cloud'])
+    expect(Object.keys(plans(h, { used_by: 'ben' }))).toEqual(['p-stream'])
+    // `exact` keeps only the plans that name them.
+    expect(Object.keys(plans(h, { used_by: 'me', exact: true }))).toEqual(['p-cloud'])
+    expect(Object.keys(plans(h, { used_by: 'kid', exact: true }))).toEqual(['p-cloud'])
+    expect(Object.keys(plans(h, { used_by: 'ben', exact: true }))).toEqual([])
+    expect(Object.keys(plans(h, { used_by: 'household', exact: true }))).toEqual(['p-stream'])
     // The totals follow this filter like any other.
     expect(data(askOf(h, 'list_plans', { used_by: 'household' })).totals).toMatchObject({ monthly: 15.99 })
     expect(error(askOf(h, 'list_plans', { used_by: 'stranger' }))).toBe('not_found')
@@ -212,6 +221,45 @@ describe('who a plan is paid for by, dealt with by and used by', () => {
     const members = data(askOf(h, 'list_members'))
     expect(members.household_uses).toBe(1)
     expect((members.items as Row[]).map((m) => [m.member_id, m.uses])).toEqual([['ann', 1], ['ben', 0], ['kid', 1]])
+  })
+})
+
+describe('a plan on a thing is used by whoever owns the thing', () => {
+  const care = (h: Household) => items(askOf(h, 'list_plans', { query: 'applecare' }))[0]
+  const owned = (h: Household, by: string | null) => { h.things = h.things.map((t) => (t.id === 't-studio' ? { ...t, ownerMemberId: by } : t)); return h }
+  const on = (h: Household, patch: Row) => { h.subscriptions = h.subscriptions.map((s) => (s.id === 'p-care' ? { ...s, ...patch } : s)); return h }
+
+  it('follows the owner, and moves when the thing does', () => {
+    // The Mac is Ann's, and nobody said who the plan on it is for.
+    expect(care(studio())).toMatchObject({ used_by: 'members', used_by_source: 'thing', member_ids: ['ann'], member_names: ['Ann'] })
+    expect(care(owned(studio(), 'kid'))).toMatchObject({ used_by: 'members', used_by_source: 'thing', member_ids: ['kid'], member_names: ['Kit'] })
+    expect(care(owned(studio(), null))).toMatchObject({ used_by: 'household', used_by_source: 'thing', member_ids: [], member_names: [] })
+  })
+  it('stays where it was put once someone chose', () => {
+    const chosen = on(studio(), { coversMemberIds: ['ben'], coversSet: true })
+    expect(care(chosen)).toMatchObject({ used_by: 'members', used_by_source: 'set', member_ids: ['ben'] })
+    expect(care(owned(chosen, 'kid'))).toMatchObject({ used_by_source: 'set', member_ids: ['ben'] })
+    // "Nobody in particular" is a choice too, and a row from before the flag that names someone was chosen.
+    expect(care(on(studio(), { coversSet: true }))).toMatchObject({ used_by: 'not_set', used_by_source: 'set', member_ids: [] })
+    expect(care(on(studio(), { coversHousehold: true }))).toMatchObject({ used_by: 'household', used_by_source: 'set' })
+  })
+  it('assumes nothing across things with different owners, or a thing it cannot see', () => {
+    // On Ann's Mac and Kit's phone.
+    expect(care(on(studio(), { coversThingIds: ['t-studio', 't-phone'] }))).toMatchObject({ used_by: 'not_set', used_by_source: 'thing', member_ids: [], member_names: [] })
+    // On two things that are both Ann's.
+    expect(care(on(studio(), { coversThingIds: ['t-studio', 't-laptop'] }))).toMatchObject({ used_by: 'members', used_by_source: 'thing', member_ids: ['ann'] })
+    // On Ben's private e-reader: Ann's computer is not told whose it is.
+    const hidden = care(on(studio(), { coversThingIds: ['t-diary'] }))
+    expect(hidden).toMatchObject({ used_by: 'not_set', used_by_source: 'thing', member_ids: [] })
+    expect(JSON.stringify(hidden)).not.toContain('ben')
+  })
+  it('counts as that member\'s plan in the filter and the household\'s counts', () => {
+    const mine = (h: Household, params: Row = {}) => items(askOf(h, 'list_plans', { used_by: 'me', ...params })).map((p) => p.plan_id)
+    expect(mine(studio(), { exact: true })).toEqual(['p-lease', 'p-care'])
+    expect(mine(owned(studio(), 'kid'), { exact: true })).toEqual([])
+    expect(mine(owned(studio(), null))).toEqual(['p-lease', 'p-care'])
+    expect((data(askOf(studio(), 'list_members')).items as Row[]).find((m) => m.member_id === 'ann')).toMatchObject({ uses: 2 })
+    expect(data(askOf(owned(studio(), null), 'list_members')).household_uses).toBe(2)
   })
 })
 
@@ -224,13 +272,16 @@ describe('a plan\'s payments, behind and ahead', () => {
     expect(dates.filter((e) => e.type === 'renewal').every((e) => (e.date as string) >= TODAY)).toBe(true)
     expect(dates.some((e) => e.past === true && e.type === 'renewal')).toBe(false)
   })
-  it('counts from the last payment before the plan was entered until it has a start date', () => {
-    // Billed on the 22nd, entered on the 13th: October's payment and nothing before it.
+  it('guesses no payment for a plan nobody has given a start, with its renewal still ahead', () => {
+    // Billed on the 22nd, entered on the 13th, and nobody has said when it
+    // began: it may be new, so nothing before the 13th is counted.
     const care = (data(askOf(studio(), 'get_thing', { thing_id: 't-studio' })).plans as Row[]).find((p) => p.plan_id === 'p-care')!
-    expect(care).toMatchObject({ start_date: null, start_date_status: 'not_set', paid_to_date: { basis: 'anchor', since: '2026-10-22', payments: 1, total: 6.49, last_payment: '2026-10-22' }, left_on_term: null })
+    expect(care).toMatchObject({ start_date: null, start_date_status: 'not_set', paid_to_date: { basis: 'entry_date', payments: 0, total: 0, last_payment: null }, left_on_term: null })
     expect('start_date_recorded' in care).toBe(false)
-    const behind = items(askOf(studio(), 'list_upcoming', { from: '2025-10-01', to: TODAY, plan_id: 'p-care', include_routine: true }))
-    expect(behind.map((e) => [e.date, e.past])).toEqual([['2026-10-22', true]])
+    expect(items(askOf(studio(), 'list_upcoming', { from: '2025-10-01', to: TODAY, plan_id: 'p-care', include_routine: true }))).toEqual([])
+    // Entered with a renewal date already behind it, that payment counts.
+    const paid = (data(askOf(studio({ care: { anchorDate: '2026-11-03' } }), 'get_thing', { thing_id: 't-studio' })).plans as Row[]).find((p) => p.plan_id === 'p-care')!
+    expect(paid).toMatchObject({ start_date_status: 'not_set', paid_to_date: { basis: 'anchor', since: '2026-11-03', payments: 1, total: 6.49, last_payment: '2026-11-03' } })
   })
   it('counts the payment a prepaid year began with, when its start is unknown', () => {
     const h = household()

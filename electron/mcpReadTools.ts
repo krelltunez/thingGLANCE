@@ -60,18 +60,22 @@ const HOUSEHOLD_NOTE =
   'household itself: for the household the member id is null, the name is "Household" and owner, payer or responsible is ' +
   '"household". null there never means "not set". A responsible of "household" means nobody in particular deals with it, so ' +
   'everyone is asked. Where several can be named (who a plan is used by) used_by says which: "members" (member_ids and ' +
-  'member_names list them), "household" (the household as a whole, said on purpose) or "not_set" (nobody has said: do not ' +
-  'read an empty member_ids as the household).';
+  'member_names list them, one name for each id), "household" (the household as a whole; both lists are then empty) or ' +
+  '"not_set" (nobody has said: do not read an empty member_ids as the household). used_by_source says where that comes from: ' +
+  '"set" was chosen by hand, and "thing" is the owner of the thing the plan is attached to, which changes when the thing ' +
+  'changes owner ("thing" with "not_set" means its things have different owners, so nothing is assumed).';
 
 const PLAN_NOTE =
   ' On a plan: start_date is the day it began, and start_date_status says where that stands. "recorded": the date is known. ' +
   '"unknown": it began before the user tracked it, and they said so; that is an answer, so do not ask for a date or offer to ' +
   'fill one in. "not_set": nobody has said yet; only these are worth asking about. start_date is null for the last two. ' +
   'paid_to_date is history, the payments made up to yesterday at today\'s price, never mixed with what is coming: its basis is ' +
-  '"start_date" when it counts from the plan\'s own start. With no start on record it is "anchor" when it counts from the last ' +
-  'payment on the plan\'s cycle before it was added (that payment was made, or there would have been no plan to add), and ' +
-  '"entry_date" when a payment fell on the very day it was added. Either way it is then what is known to have been paid, not ' +
-  'everything since the plan began. A plan with auto_renew true and an ' +
+  '"start_date" when it counts from the plan\'s own start. With no start on record it is "anchor" when it counts from a payment ' +
+  'made before the plan was added, and "entry_date" when it counts from the day it was added. An "unknown" start counts the ' +
+  'payment its current cycle began with (the plan was already running). A "not_set" start counts a payment before it was ' +
+  'added only when the plan\'s renewal date itself is on or before that day; with the renewal date still ahead the plan may be ' +
+  'new, and nothing earlier is assumed. Either way it is what is known to have been paid, not everything since the plan ' +
+  'began. A plan with auto_renew true and an ' +
   'end_date has a fixed term (a lease, installments): it is paid each cycle until end_date, next_renewal is null once no payment ' +
   'is left, and left_on_term says what remains. With auto_renew false it is already paid for: no renewals, no monthly cost.';
 
@@ -165,19 +169,21 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
         'first. totals is what the plans listed come to a month and a year: it follows the filters (and counts every page, not ' +
         'only this one). all_plans_totals is the same for every plan, whatever the filters. status: "current" (default: active and ' +
         'trials), "active", "trial", "cancelled" or "all". thing_id keeps the plans attached to one thing. used_by keeps the plans ' +
-        'used by one member (a member id, or "me" for this computer\'s member: the plans that name them) or "household" (the plans ' +
-        'said to be used by the household as a whole; a member\'s list does not include those). query matches the name ' +
+        'one member uses (a member id, or "me" for this computer\'s member): the ones that name them and the ones the household ' +
+        'uses as a whole, as the app shows a member\'s plans. exact: true leaves the household\'s out and keeps only the plans that ' +
+        'name them. used_by "household" keeps the plans used by the household as a whole. query matches the name ' +
         'and provider. review_before_renewal means the user asked to be asked before it renews. ' + PAGING + ' ' + IDS + HOUSEHOLD_NOTE + PLAN_NOTE + PRIVACY,
       inputSchema: z.object({
         status: z.string().optional().describe('current, active, trial, cancelled or all. Default current.'),
         thing_id: z.string().optional().describe('A thing id: only the plans attached to it.'),
         used_by: z.string().optional().describe('A member id from thingglance_list_members, "me" or "household".'),
+        exact: z.boolean().optional().describe('With used_by a member or "me": only the plans that name them, not the household\'s. Default false.'),
         query: z.string().optional().describe('Words to find in the plan name or provider.'),
         ...pagingSchema,
       }),
     },
-    async ({ status, thing_id, used_by, query, limit, cursor }) => {
-      const filter = { status: status ?? 'current', thing_id, used_by, query: query?.trim() || undefined };
+    async ({ status, thing_id, used_by, exact, query, limit, cursor }) => {
+      const filter = { status: status ?? 'current', thing_id, used_by, exact: exact === true ? true : undefined, query: query?.trim() || undefined };
       const r = await ask('list_plans', filter);
       if (!r.ok) return bridgeError(r);
       return page((data(r).items as unknown[]) ?? [], JSON.stringify(filter), limit, cursor, { totals: data(r).totals, all_plans_totals: data(r).all_plans_totals }, deps.timeZone());
@@ -238,7 +244,8 @@ export function registerReadTools(server: McpServer, deps: ReadToolDeps): void {
         'The household: everyone things are tracked for, whether or not they use the app (uses_the_app), how many things each owns ' +
         'and plans each pays for, which member this computer belongs to (is_this_device), and what belongs to the household itself: ' +
         'household_owns and household_pays_for count the things and plans whose owner or payer is null, and household_uses the ' +
-        'plans said to be used by the household as a whole (uses, on a member, counts the plans that name them). Member ids are ' +
+        'plans used by the household as a whole (uses, on a member, counts the plans that name them, by hand or as the owner of ' +
+        'the thing a plan is attached to). Member ids are ' +
         'what owner, payer, responsible and member_ids take; null, or the word "household", means the household.',
     },
     async () => {

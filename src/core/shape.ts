@@ -42,7 +42,7 @@ export function normalizeThing(raw: unknown): Thing {
 }
 
 export function normalizeSubscription(raw: unknown): Subscription {
-  const { thingId, payerId, startUnknown, coversHousehold, ...r } = raw as Loose
+  const { thingId, payerId, startUnknown, coversHousehold, coversSet, ...r } = raw as Loose
   const legacyThing = str(thingId)
   const payer = 'payerMemberId' in r ? str(r.payerMemberId) : str(payerId)
   const members = strs(r.coversMemberIds)
@@ -53,6 +53,8 @@ export function normalizeSubscription(raw: unknown): Subscription {
     // "The household uses it" is true or absent, and gives way to anyone
     // named: a row cannot say both.
     ...(coversHousehold === true && members.length === 0 ? { coversHousehold: true } : {}),
+    // "Chosen by hand" is true or absent.
+    ...(coversSet === true ? { coversSet: true } : {}),
     payerMemberId: payer,
     responsibleMemberId: str(r.responsibleMemberId),
     visibility: visibility(r.visibility, payer),

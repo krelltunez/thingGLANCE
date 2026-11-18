@@ -37,9 +37,9 @@ export const monthlyCost = (s: Subscription, ref: Day = today()): number => year
 
 // Where a plan's start stands. 'recorded': the day is on record. 'unknown':
 // it began before it was tracked, and whoever entered it said so. 'not_set':
-// nobody has answered yet. The last two count the same way (countedFrom), and
-// are different things all the same: anything that asks
-// for a missing start date asks only about 'not_set', never 'unknown'.
+// nobody has answered yet. Neither has a date to count from (countedFrom
+// says what each counts instead), and anything that asks for a missing start
+// date asks only about 'not_set', never 'unknown'.
 export type StartStatus = 'recorded' | 'unknown' | 'not_set'
 
 export const startStatus = (s: Pick<Subscription, 'startDate' | 'startUnknown'>): StartStatus =>
@@ -77,30 +77,39 @@ function cycleDays(anchor: Day, cycle: Cycle, from: Day, to: Day): Day[] {
 // Where a plan's payments are counted from, and why that day.
 //
 //   start_date  the day it began, which is on record.
-//   anchor      no start on record, and the plan was entered part-way through
-//               a cycle: the payment that cycle began with was made, or there
-//               would have been no plan to enter. Counted from that payment.
-//   entry_date  no start on record, and a payment fell on the very day it was
-//               entered: there is nothing earlier that is known.
+//   anchor      no start on record, and a payment from before the plan was
+//               entered is known to have been made. Counted from that payment.
+//   entry_date  no start on record, and nothing before the day it was entered
+//               is known.
+//
+// What is known depends on what was said about the start. 'unknown' says the
+// plan was already running: the payment its current cycle began with was
+// made, or there would have been no plan to enter. 'not_set' says nothing, and
+// the plan may be new, so only a payment the renewal date itself puts on or
+// before the day of entry is counted (someone entered a date already paid).
+// With its renewal date still ahead, nothing before entry is assumed.
 export type CountBasis = 'start_date' | 'anchor' | 'entry_date'
 
 // The longest any cycle runs, in days: how far back its last payment can be.
 const CYCLE_SPAN: Record<Cycle, number> = { weekly: 7, monthly: 31, quarterly: 92, yearly: 366 }
 
-export function countedFrom(s: Pick<Subscription, 'startDate' | 'createdAt' | 'anchorDate' | 'cycle'>): { day: Day; basis: CountBasis } {
+type Counted = Pick<Subscription, 'startDate' | 'createdAt' | 'anchorDate' | 'cycle'> & Partial<Pick<Subscription, 'startUnknown'>>
+
+export function countedFrom(s: Counted): { day: Day; basis: CountBasis } {
   if (s.startDate) return { day: s.startDate, basis: 'start_date' }
   const entered = dayOf(s.createdAt)
+  if (s.startUnknown !== true && s.anchorDate > entered) return { day: entered, basis: 'entry_date' }
   const before = cycleDays(s.anchorDate, s.cycle, addDays(entered, -CYCLE_SPAN[s.cycle]), entered)
   const last = before[before.length - 1]
   return last && last < entered ? { day: last, basis: 'anchor' } : { day: entered, basis: 'entry_date' }
 }
 
 // The day a plan's payments are counted from.
-export const planStart = (s: Pick<Subscription, 'startDate' | 'createdAt' | 'anchorDate' | 'cycle'>): Day => countedFrom(s).day
+export const planStart = (s: Counted): Day => countedFrom(s).day
 
 // What a plan's renewal days are worked out from. The anchor and the cycle
 // say where they fall; the rest only bound them, and may be left out.
-export type Renewing = Pick<Subscription, 'anchorDate' | 'cycle'> & Partial<Pick<Subscription, 'startDate' | 'endDate' | 'createdAt'>>
+export type Renewing = Pick<Subscription, 'anchorDate' | 'cycle'> & Partial<Pick<Subscription, 'startDate' | 'startUnknown' | 'endDate' | 'createdAt'>>
 
 // Every renewal day inside [from, to], inclusive. A plan renews on its cycle
 // from the day it began and stops before the day it ends: nothing renewed

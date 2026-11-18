@@ -134,6 +134,11 @@ module.exports = {
     electronLanguages: SHIPPED_LANGUAGES,
     extendInfo: {
       CFBundleLocalizations: SHIPPED_LANGUAGES.map((l) => APPLE_LANGUAGE_IDS[l] || l),
+      // Export compliance, as the iOS app's Info.plist declares it (docs/ios.md):
+      // only standard algorithms, for end-to-end sync. Without the key App
+      // Store Connect holds every Mac upload until the question is answered by
+      // hand. The mas build takes it from here like everything else.
+      ITSAppUsesNonExemptEncryption: false,
     },
     target: [
       { target: 'dmg', arch: ['x64', 'arm64'] },

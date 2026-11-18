@@ -15,7 +15,7 @@ import { categoryLabel } from '@/core/categories'
 import { addDays, isDay } from '@/core/dates'
 import { lifecycle, verdictLabel, type Verdict } from '@/core/health'
 import { attentionQueue, buildHorizon, eventKindLabel } from '@/core/horizon'
-import { handlerOfEvent, ownedSince } from '@/core/household'
+import { handlerOfEvent, holderOf, ownedSince, usedBy } from '@/core/household'
 import { leftOnTerm, monthlyCost, nextRenewal, paidToDate, startStatus, yearlyCost } from '@/core/money'
 import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
@@ -63,7 +63,7 @@ export function memberName(d: Pick<ReadData, 'members'>, id: string | null): str
 // Who owns a thing or pays for a plan. A null id there is not "nobody": it is
 // the household, and an answer has to say so, as the app does.
 const holderName = (d: Pick<ReadData, 'members'>, id: string | null): string | null => (id === null ? tr('common.household') : memberName(d, id))
-const holder = (id: string | null): 'household' | 'member' => (id === null ? 'household' : 'member')
+const holder = holderOf
 
 function event(d: ReadData, e: HorizonEvent): Record<string, unknown> {
   const thingById = new Map<string, Thing>(d.all.things.map((t) => [t.id, t]))
@@ -115,7 +115,10 @@ function thingSummary(d: ReadData, t: Thing): Record<string, unknown> {
     owner_member_id: t.ownerMemberId,
     owner_name: holderName(d, t.ownerMemberId),
     owned_since: ownedSince(t),
+    // Who deals with it: one member, or the household (everyone is asked).
+    responsible: holder(t.responsibleMemberId),
     responsible_member_id: t.responsibleMemberId,
+    responsible_name: holderName(d, t.responsibleMemberId),
     visibility: t.visibility,
     pinned: t.pinned === true,
   }
@@ -168,11 +171,17 @@ export function planSummary(d: ReadData, s: Subscription): Record<string, unknow
     // A fixed term (a lease, installments): what is still to pay before it ends.
     left_on_term: left ? { ends: left.ends, payments: left.payments, total: left.total } : null,
     thing_ids: s.coversThingIds,
+    // Who uses it: the members named, the household as a whole, or (an empty
+    // list and no household) nobody has said.
+    used_by: usedBy(s),
     member_ids: s.coversMemberIds,
+    member_names: usedBy(s) === 'household' ? [tr('common.household')] : s.coversMemberIds.map((id) => memberName(d, id)).filter((name): name is string => name !== null),
     payer: holder(s.payerMemberId),
     payer_member_id: s.payerMemberId,
     payer_name: holderName(d, s.payerMemberId),
+    responsible: holder(s.responsibleMemberId),
     responsible_member_id: s.responsibleMemberId,
+    responsible_name: holderName(d, s.responsibleMemberId),
     visibility: s.visibility,
     notes: s.notes ?? null,
   }
@@ -257,8 +266,20 @@ function getThing(d: ReadData, p: Record<string, unknown>): McpAnswer {
 function listPlans(d: ReadData, p: Record<string, unknown>): McpAnswer {
   const status = p.status ?? 'current'
   if (!['current', 'active', 'trial', 'cancelled', 'all'].includes(status as string)) return fail('validation', 'status must be current, active, trial, cancelled or all.')
+  // Like the owner filter on things: a member means the plans that name them,
+  // and "household" the plans said to be the household's as a whole.
+  let user: string | null | undefined
+  if (p.used_by !== undefined) {
+    if (p.used_by === 'household') user = null
+    else if (p.used_by === 'me') {
+      if (!d.meId) return fail('validation', 'used_by "me" needs this device to belong to a household member, and it does not yet.')
+      user = d.meId
+    } else if (typeof p.used_by === 'string' && d.members.some((m) => m.id === p.used_by)) user = p.used_by
+    else return fail('not_found', 'used_by: no household member with that id. Use thingglance_list_members.')
+  }
   const listed = d.data.subscriptions
     .filter((s) => status === 'all' || (status === 'current' ? s.status !== 'cancelled' : s.status === status))
+    .filter((s) => user === undefined || (user === null ? usedBy(s) === 'household' : s.coversMemberIds.includes(user)))
     .filter((s) => p.thing_id === undefined || s.coversThingIds.includes(p.thing_id as string))
     .filter((s) => matches(p.query, s.name, s.provider))
   const items = listed
@@ -299,11 +320,13 @@ function listMembers(d: ReadData): McpAnswer {
       member_id: m.id, name: m.name, uses_the_app: d.users.has(m.id), is_this_device: m.id === d.meId,
       owns: d.data.things.filter((t) => t.status === 'active' && t.ownerMemberId === m.id).length,
       pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === m.id).length,
+      uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.coversMemberIds.includes(m.id)).length,
     })),
     this_device_member_id: d.meId,
     // What belongs to no one member: an owner or a payer of null is the household.
     household_owns: d.data.things.filter((t) => t.status === 'active' && t.ownerMemberId === null).length,
     household_pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === null).length,
+    household_uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && usedBy(s) === 'household').length,
   })
 }
 

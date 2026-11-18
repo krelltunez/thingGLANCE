@@ -37,17 +37,13 @@ export const monthlyCost = (s: Subscription, ref: Day = today()): number => year
 
 // Where a plan's start stands. 'recorded': the day is on record. 'unknown':
 // it began before it was tracked, and whoever entered it said so. 'not_set':
-// nobody has answered yet. The last two count the same way, from the day the
-// plan was entered, and are different things all the same: anything that asks
+// nobody has answered yet. The last two count the same way (countedFrom), and
+// are different things all the same: anything that asks
 // for a missing start date asks only about 'not_set', never 'unknown'.
 export type StartStatus = 'recorded' | 'unknown' | 'not_set'
 
 export const startStatus = (s: Pick<Subscription, 'startDate' | 'startUnknown'>): StartStatus =>
   s.startDate ? 'recorded' : s.startUnknown === true ? 'unknown' : 'not_set'
-
-// The day a plan's payments are counted from: the day it began, when that is
-// on record, and otherwise the day it was entered.
-export const planStart = (s: Pick<Subscription, 'startDate' | 'createdAt'>): Day => s.startDate ?? dayOf(s.createdAt)
 
 // The nth occurrence from the anchor, computed from the anchor each time so a
 // monthly plan anchored on the 31st does not drift to the 28th forever.
@@ -64,6 +60,44 @@ function occurrence(anchor: Day, cycle: Cycle, n: number): Day {
 // A weekly plan for a lifetime: enough for any range this app asks about.
 const MAX_RENEWALS = 5000
 
+// The cycle's days inside [from, to], with nothing to bound them.
+function cycleDays(anchor: Day, cycle: Cycle, from: Day, to: Day): Day[] {
+  if (!anchor || from > to) return []
+  const approxDays = { weekly: 7, monthly: 30.44, quarterly: 91.3, yearly: 365.25 }[cycle]
+  let n = Math.floor(dayjs(from).diff(dayjs(anchor), 'day') / approxDays) - 1
+  const out: Day[] = []
+  for (let guard = 0; guard < MAX_RENEWALS; guard++, n++) {
+    const d = occurrence(anchor, cycle, n)
+    if (d > to) break
+    if (d >= from) out.push(d)
+  }
+  return out
+}
+
+// Where a plan's payments are counted from, and why that day.
+//
+//   start_date  the day it began, which is on record.
+//   anchor      no start on record, and the plan was entered part-way through
+//               a cycle: the payment that cycle began with was made, or there
+//               would have been no plan to enter. Counted from that payment.
+//   entry_date  no start on record, and a payment fell on the very day it was
+//               entered: there is nothing earlier that is known.
+export type CountBasis = 'start_date' | 'anchor' | 'entry_date'
+
+// The longest any cycle runs, in days: how far back its last payment can be.
+const CYCLE_SPAN: Record<Cycle, number> = { weekly: 7, monthly: 31, quarterly: 92, yearly: 366 }
+
+export function countedFrom(s: Pick<Subscription, 'startDate' | 'createdAt' | 'anchorDate' | 'cycle'>): { day: Day; basis: CountBasis } {
+  if (s.startDate) return { day: s.startDate, basis: 'start_date' }
+  const entered = dayOf(s.createdAt)
+  const before = cycleDays(s.anchorDate, s.cycle, addDays(entered, -CYCLE_SPAN[s.cycle]), entered)
+  const last = before[before.length - 1]
+  return last && last < entered ? { day: last, basis: 'anchor' } : { day: entered, basis: 'entry_date' }
+}
+
+// The day a plan's payments are counted from.
+export const planStart = (s: Pick<Subscription, 'startDate' | 'createdAt' | 'anchorDate' | 'cycle'>): Day => countedFrom(s).day
+
 // What a plan's renewal days are worked out from. The anchor and the cycle
 // say where they fall; the rest only bound them, and may be left out.
 export type Renewing = Pick<Subscription, 'anchorDate' | 'cycle'> & Partial<Pick<Subscription, 'startDate' | 'endDate' | 'createdAt'>>
@@ -73,19 +107,10 @@ export type Renewing = Pick<Subscription, 'anchorDate' | 'cycle'> & Partial<Pick
 // before there was a plan, and the last day of a term is not a payment.
 export function renewalsBetween(s: Renewing, from: Day, to: Day): Day[] {
   if (!s.anchorDate) return []
-  const began = s.startDate ?? (s.createdAt ? dayOf(s.createdAt) : null)
+  const began = s.startDate ?? (s.createdAt ? countedFrom({ ...s, createdAt: s.createdAt }).day : null)
   if (began && began > from) from = began
   if (s.endDate && s.endDate <= to) to = addDays(s.endDate, -1)
-  if (from > to) return []
-  const approxDays = { weekly: 7, monthly: 30.44, quarterly: 91.3, yearly: 365.25 }[s.cycle]
-  let n = Math.floor(dayjs(from).diff(dayjs(s.anchorDate), 'day') / approxDays) - 1
-  const out: Day[] = []
-  for (let guard = 0; guard < MAX_RENEWALS; guard++, n++) {
-    const d = occurrence(s.anchorDate, s.cycle, n)
-    if (d > to) break
-    if (d >= from) out.push(d)
-  }
-  return out
+  return cycleDays(s.anchorDate, s.cycle, from, to)
 }
 
 export function nextRenewal(s: Renewing, from: Day = today()): Day | null {
@@ -96,14 +121,13 @@ export function nextRenewal(s: Renewing, from: Day = today()): Day | null {
 // What a plan has taken so far: its renewal days from the day it began up to
 // yesterday, at what it costs now (what it cost before is not on record). A
 // trial has taken nothing until it converts.
-// `basis` says which day `since` is: the plan's own start, or the day it was
-// entered because no start is on record.
-export interface Paid { basis: 'start_date' | 'entry_date'; since: Day; payments: number; total: number; last: Day | null }
+// `basis` says which day `since` is (countedFrom).
+export interface Paid { basis: CountBasis; since: Day; payments: number; total: number; last: Day | null }
 
 export function paidToDate(s: Subscription, ref: Day = today()): Paid {
-  const since = planStart(s)
+  const { day: since, basis } = countedFrom(s)
   const days = renewalsBetween(s, since, addDays(ref, -1)).filter((d) => !(s.status === 'trial' && s.trialEnd && d < s.trialEnd))
-  return { basis: s.startDate ? 'start_date' : 'entry_date', since, payments: days.length, total: cents(days.length * s.amount), last: days[days.length - 1] ?? null }
+  return { basis, since, payments: days.length, total: cents(days.length * s.amount), last: days[days.length - 1] ?? null }
 }
 
 // What is left on a fixed term: the payments from today to the day it ends.

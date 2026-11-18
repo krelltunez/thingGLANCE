@@ -159,8 +159,12 @@ export const MAX_AMOUNT = 1_000_000_000
 
 const isUuid = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 
+// "household" is the household said out loud; left out, it is the household
+// too. Either way the row holds null.
+export const HOUSEHOLD = 'household'
+
 async function memberOrRefuse(id: string | undefined, key: string, ctx: IntentContext): Promise<string | null> {
-  if (!id) return null
+  if (!id || id === HOUSEHOLD) return null
   if (ctx.members && !(await ctx.members()).some((m) => m.id === id)) throw new Refused('not_found', `"${key}": no household member with that id`)
   return id
 }
@@ -243,6 +247,13 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
   const startDate = said ?? (startUnknown ? undefined : things.map((t) => t.purchaseDate).find((day) => !!day))
   const endDate = r.day('end_date')
   if (endDate && startDate && startDate > endDate) invalid('"start_date" is after "end_date"')
+  // Who uses it: the people named, or the household as a whole, or (with
+  // neither) nobody has said. Never the household and names together.
+  const memberIds = r.ids('member_ids')
+  const usedBy = r.oneOf('used_by', ['household', 'members', 'not_set'] as const)
+  if (usedBy && usedBy !== 'members' && memberIds.length) invalid(`"used_by": "${usedBy}" cannot come with "member_ids"`)
+  if (usedBy === 'members' && !memberIds.length) invalid('"used_by": "members" needs "member_ids"')
+  for (const memberId of memberIds) await memberOrRefuse(memberId, 'member_ids', ctx)
   const input: SubscriptionInput = {
     name: r.str('name', true)!, amount: r.num('amount', true)!,
     cycle: r.oneOf('cycle', CYCLES) ?? 'monthly',
@@ -252,7 +263,7 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
     status, trialEnd: status === 'trial' ? trialEnd : undefined,
     review: r.bool('review') ?? false,
     provider: r.str('provider'), notes: r.str('notes', false, 2000),
-    coversThingIds: thingIds, coversMemberIds: [],
+    coversThingIds: thingIds, coversMemberIds: memberIds, coversHousehold: usedBy === 'household' ? true : undefined,
     payerMemberId: await memberOrRefuse(r.str('payer_member_id'), 'payer_member_id', ctx),
     responsibleMemberId: null,
     visibility: 'shared',

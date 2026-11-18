@@ -20,11 +20,12 @@
 import { CATEGORIES } from '@/core/categories'
 import { isDay } from '@/core/dates'
 import { MAX_LIFESPAN_MONTHS } from '@/core/health'
+import type { UsedBy } from '@/core/household'
 import type { StartStatus } from '@/core/money'
 import type { CategoryId, Cycle, Decision, OwnershipSpan, Subscription, Thing } from '@/core/types'
 import { db } from '@/db/client'
 import { decide, deleteCoverage, deleteSubscription, deleteThing, patchSubscription, retireThing, reviveThing, undecide, updateThing, type OwnerChangeOptions, type SubscriptionInput, type ThingInput } from '@/db/queries'
-import { MAX_AMOUNT, type ExternalWrite, type IntentResult } from '@/intents/handleIntent'
+import { HOUSEHOLD, MAX_AMOUNT, type ExternalWrite, type IntentResult } from '@/intents/handleIntent'
 import { dispatchExternalWrite } from '@/intents/inbound'
 import { readData } from './readData'
 import { planSummary, thingDetail, type ReadData } from './readModel'
@@ -88,6 +89,7 @@ const fromIntent = (r: IntentResult): WriteAnswer => ({
 const CATEGORY_IDS = CATEGORIES.map((c) => c.id) as readonly CategoryId[]
 const CYCLES: readonly Cycle[] = ['weekly', 'monthly', 'quarterly', 'yearly']
 const START_STATUSES: readonly StartStatus[] = ['recorded', 'unknown', 'not_set']
+const USED_BY: readonly UsedBy[] = ['household', 'members', 'not_set']
 
 function fields(p: Record<string, unknown>, d: ReadData) {
   const given = (k: string) => p[k] !== undefined
@@ -113,10 +115,10 @@ function fields(p: Record<string, unknown>, d: ReadData) {
   const bool = (k: string): boolean => (typeof p[k] === 'boolean' ? (p[k] as boolean) : invalid(`"${k}" must be true or false`))
   const oneOf = <T extends string>(k: string, allowed: readonly T[]): T =>
     ((allowed as readonly unknown[]).includes(p[k]) ? (p[k] as T) : invalid(`"${k}" must be one of: ${allowed.join(', ')}`))
-  // A household member's id, or null for the household (or for nobody in particular).
+  // A household member's id. Null is the household, and so is the word.
   const member = (k: string): string | null => {
     const v = p[k]
-    if (v === null) return null
+    if (v === null || v === HOUSEHOLD) return null
     if (typeof v === 'string' && d.members.some((m) => m.id === v)) return v
     throw new Invalid('not_found', `"${k}": no household member with that id. Use thingglance_list_members.`)
   }
@@ -127,7 +129,14 @@ function fields(p: Record<string, unknown>, d: ReadData) {
     for (const id of ids) if (!d.data.things.some((t) => t.id === id)) throw new Invalid('not_found', `"${k}": no thing with id ${id}. Use thingglance_list_things.`)
     return ids
   }
-  return { given, text, day, amount, bool, oneOf, member, things }
+  const members = (k: string): string[] => {
+    const v = p[k]
+    if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) return invalid(`"${k}" must be a list of member ids`)
+    const ids = [...new Set(v as string[])]
+    for (const id of ids) if (!d.members.some((m) => m.id === id)) throw new Invalid('not_found', `"${k}": no household member with id ${id}. Use thingglance_list_members.`)
+    return ids
+  }
+  return { given, text, day, amount, bool, oneOf, member, members, things }
 }
 
 // The value a field had, as an undo record can carry it: JSON has no
@@ -314,6 +323,22 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
     }
   }
   if (f.given('thing_ids')) patch.coversThingIds = f.things('thing_ids')
+  // Who uses it: names, the household as a whole, or nobody has said.
+  if (f.given('member_ids')) {
+    patch.coversMemberIds = f.members('member_ids')
+    if ((patch.coversMemberIds as string[]).length) patch.coversHousehold = undefined
+  }
+  if (f.given('used_by')) {
+    const who = f.oneOf('used_by', USED_BY)
+    const named = (patch.coversMemberIds as string[] | undefined) ?? (who === 'members' ? cur.coversMemberIds : [])
+    if (who === 'members') {
+      if (!named.length) invalid('"used_by": "members" needs "member_ids".')
+    } else {
+      if (named.length) invalid(`"used_by": "${who}" cannot come with "member_ids".`)
+      patch.coversMemberIds = []
+      patch.coversHousehold = who === 'household' ? true : undefined
+    }
+  }
   if (f.given('payer_member_id')) patch.payerMemberId = f.member('payer_member_id')
   if (f.given('responsible_member_id')) patch.responsibleMemberId = f.member('responsible_member_id')
   if (f.given('visibility')) patch.visibility = f.oneOf('visibility', ['shared', 'private'] as const)

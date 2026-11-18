@@ -153,7 +153,9 @@ export async function saveSubscription(input: SubscriptionInput, id?: string): P
   // clean() keeps null (the household) and drops only undefined and ''.
   const merged = { ...cur, ...input }
   // A start date settles the question: "unknown" does not outlive one.
-  const row = clean({ ...merged, startUnknown: merged.startDate ? undefined : merged.startUnknown, id: id ?? uuid(), kind: 'subscription', createdAt: cur?.createdAt ?? stamp, updatedAt: stamp, sample: undefined }) as Subscription
+  // And naming someone settles who uses it: "the household" gives way.
+  const coversHousehold = merged.coversMemberIds?.length ? undefined : merged.coversHousehold
+  const row = clean({ ...merged, startUnknown: merged.startDate ? undefined : merged.startUnknown, coversHousehold, id: id ?? uuid(), kind: 'subscription', createdAt: cur?.createdAt ?? stamp, updatedAt: stamp, sample: undefined }) as Subscription
   await db.subscriptions.put(row)
   markDirty(row.id)
   return row

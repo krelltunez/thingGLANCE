@@ -321,6 +321,42 @@ await B.waitForTimeout(4500)
 await syncNow(A)
 const settledOnA = await startOf(A, leaseId)
 check('A: a date given on B replaces "unknown"', settledOnA?.status === 'recorded' && settledOnA.startDate === '2026-09-22' && settledOnA.startUnknown === null, JSON.stringify(settledOnA))
+
+// Who a plan is used by: people, the household as a whole, or nobody has
+// said. In the form the household and names never stand together, and what
+// is saved reaches the other device as the household in all three places a
+// plan can name it (who pays, who deals with it, who uses it).
+await A.evaluate((id) => window.__thingglance.openLink(`thingglance://plan/${id}`), unansweredId)
+await A.waitForTimeout(600)
+const usedBy = A.getByRole('dialog').last().locator('[data-used-by]')
+const pressed = async (name) => (await usedBy.getByRole('button', { name, exact: true }).getAttribute('aria-pressed')) === 'true'
+const unsaid = !(await pressed('Household')) && !(await pressed('Blake'))
+await usedBy.getByRole('button', { name: 'Household', exact: true }).click()
+const householdOn = (await pressed('Household')) && !(await pressed('Blake'))
+await usedBy.getByRole('button', { name: 'Blake', exact: true }).click()
+const blakeOn = !(await pressed('Household')) && (await pressed('Blake'))
+await usedBy.getByRole('button', { name: 'Household', exact: true }).click()
+check('A: "Household" and a member\'s name never stand together in "Who is it for?"', unsaid && householdOn && blakeOn && (await pressed('Household')) && !(await pressed('Blake')), JSON.stringify({ unsaid, householdOn, blakeOn }))
+await A.getByRole('dialog').last().getByRole('button', { name: 'Save', exact: true }).click()
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+const whoOf = (page, id) => page.evaluate(async (planId) => {
+  const row = await (await import('/src/db/client.ts')).db.subscriptions.get(planId)
+  const { holderOf, usedBy: used } = await import('/src/core/household.ts')
+  return row ? { payer: holderOf(row.payerMemberId), responsible: holderOf(row.responsibleMemberId), usedBy: used(row), members: row.coversMemberIds, flag: row.coversHousehold ?? null } : null
+}, id)
+const householdOnB = await whoOf(B, unansweredId)
+check('B: the household arrives as the household, for who pays, who deals with it and who uses it',
+  householdOnB?.payer === 'household' && householdOnB.responsible === 'household' && householdOnB.usedBy === 'household' && householdOnB.flag === true && householdOnB.members.length === 0, JSON.stringify(householdOnB))
+const unsaidOnB = await whoOf(B, leaseId)
+check('B: a plan nobody was named on stays "not set", not the household', unsaidOnB?.usedBy === 'not_set' && unsaidOnB.flag === null, JSON.stringify(unsaidOnB))
+// Naming someone on the other device takes the household's place everywhere.
+const blakeId = await B.evaluate(async () => (await (await import('/src/db/client.ts')).db.members.toArray()).find((m) => m.name === 'Blake')?.id)
+await B.evaluate(async ([id, member]) => (await import('/src/db/queries.ts')).patchSubscription(id, { coversMemberIds: [member], payerMemberId: member, responsibleMemberId: member }), [unansweredId, blakeId])
+await B.waitForTimeout(4500)
+await syncNow(A)
+const namedOnA = await whoOf(A, unansweredId)
+check('A: a member named on B replaces the household in all three', namedOnA?.payer === 'member' && namedOnA.responsible === 'member' && namedOnA.usedBy === 'members' && namedOnA.flag === null && namedOnA.members[0] === blakeId, JSON.stringify(namedOnA))
 await B.waitForTimeout(300)
 
 // ── Owned since: the record of a purchase travels with everything else ──────
@@ -488,16 +524,21 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
   const page = await ctx.newPage()
   await page.goto(APP)
   await page.waitForTimeout(1000)
-  const ids = { recorded: crypto.randomUUID(), unknown: crypto.randomUUID(), not_set: crypto.randomUUID() }
+  const ids = { recorded: crypto.randomUUID(), unknown: crypto.randomUUID(), not_set: crypto.randomUUID(), household: crypto.randomUUID(), members: crypto.randomUUID() }
   for (const [id, payload] of [
     [ids.recorded, { name: 'Backup Recorded', amount: 5, start_date: '2025-03-01' }],
     [ids.unknown, { name: 'Backup Unknown', amount: 6, start_date_status: 'unknown' }],
     [ids.not_set, { name: 'Backup Unanswered', amount: 7 }],
+    [ids.household, { name: 'Backup Household', amount: 8, payer_member_id: 'household', used_by: 'household' }],
+    [ids.members, { name: 'Backup Members', amount: 9 }],
   ]) await page.evaluate((w) => window.__thingglance.intent(w), { action: 'create_plan', clientId: id, payload })
+  // No roster on this device, so the names are put on the row itself.
+  await page.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { coversMemberIds: ['m-1', 'm-2'], payerMemberId: 'm-1', responsibleMemberId: 'm-2' }), ids.members)
   const restored = await page.evaluate(async (planIds) => {
     const { buildBackup, importBackup, wipeLocalData } = await import('/src/db/backup.ts')
     const { db } = await import('/src/db/client.ts')
     const { startStatus } = await import('/src/core/money.ts')
+    const { holderOf, usedBy } = await import('/src/core/household.ts')
     const text = JSON.stringify(await buildBackup())
     await wipeLocalData()
     const emptied = await db.subscriptions.count()
@@ -506,12 +547,16 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
     for (const [state, id] of Object.entries(planIds)) {
       const row = await db.subscriptions.get(id)
       out[state] = row ? `${startStatus(row)}:${row.startDate ?? ''}:${row.startUnknown ?? ''}` : 'missing'
+      out[`${state}Who`] = row ? `${holderOf(row.payerMemberId)}/${holderOf(row.responsibleMemberId)}/${usedBy(row)}:${row.coversMemberIds.join('+')}:${row.coversHousehold ?? ''}` : 'missing'
     }
     return out
   }, ids)
   check('a backup file brings each state of a start back as it was',
-    restored.emptied === 0 && restored.added === 3 && restored.recorded === 'recorded:2025-03-01:' && restored.unknown === 'unknown::true' && restored.not_set === 'not_set::',
+    restored.emptied === 0 && restored.added === 5 && restored.recorded === 'recorded:2025-03-01:' && restored.unknown === 'unknown::true' && restored.not_set === 'not_set::',
     JSON.stringify(restored))
+  check('and the household, members and "nobody has said" for who pays, deals with and uses a plan',
+    restored.householdWho === 'household/household/household::true' && restored.membersWho === 'member/member/members:m-1+m-2:' && restored.not_setWho === 'household/household/not_set::',
+    JSON.stringify({ household: restored.householdWho, members: restored.membersWho, unsaid: restored.not_setWho }))
   await ctx.close()
 }
 

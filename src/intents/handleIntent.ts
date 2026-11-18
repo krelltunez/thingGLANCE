@@ -247,8 +247,8 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
   const startDate = said ?? (startUnknown ? undefined : things.map((t) => t.purchaseDate).find((day) => !!day))
   const endDate = r.day('end_date')
   if (endDate && startDate && startDate > endDate) invalid('"start_date" is after "end_date"')
-  // Who uses it: the people named, or the household as a whole, or (with
-  // neither) nobody has said. Never the household and names together.
+  // Who uses it: the people named, the household as a whole, or nobody in
+  // particular ("not_set"). Never the household and names together.
   const memberIds = r.ids('member_ids')
   const usedBy = r.oneOf('used_by', ['household', 'members', 'not_set'] as const)
   if (usedBy && usedBy !== 'members' && memberIds.length) invalid(`"used_by": "${usedBy}" cannot come with "member_ids"`)
@@ -264,6 +264,9 @@ async function createPlan(p: Record<string, unknown>, clientId: string, ctx: Int
     review: r.bool('review') ?? false,
     provider: r.str('provider'), notes: r.str('notes', false, 2000),
     coversThingIds: thingIds, coversMemberIds: memberIds, coversHousehold: usedBy === 'household' ? true : undefined,
+    // Said, in any of the three ways, it was chosen by hand. Left unsaid, a
+    // plan on a thing is used by whoever owns the thing.
+    coversSet: usedBy || memberIds.length ? true : undefined,
     payerMemberId: await memberOrRefuse(r.str('payer_member_id'), 'payer_member_id', ctx),
     responsibleMemberId: null,
     visibility: 'shared',

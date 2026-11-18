@@ -33,12 +33,13 @@ export function MemberPicker({ label, value, onChange, hint, below }: { label: s
 // Any number of members, or the household as a whole. The two are different
 // answers and never both: picking one lets go of the other. Nothing picked is
 // a third, "nobody has said".
-export function MembersPicker({ label, value, household, onChange, hint }: {
+export function MembersPicker({ label, value, household, onChange, hint, below }: {
   label: string
   value: string[]
   household: boolean
   onChange: (next: { ids: string[]; household: boolean }) => void
   hint?: ReactNode
+  below?: ReactNode
 }) {
   const { t } = useTranslation()
   const d = useData()
@@ -53,6 +54,7 @@ export function MembersPicker({ label, value, household, onChange, hint }: {
         })}
       </div>
       {hint && <p className="mt-1.5 text-xs text-faint">{hint}</p>}
+      {below}
     </div>
   )
 }

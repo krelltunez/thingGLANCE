@@ -65,8 +65,36 @@ export type Holder = 'household' | 'member'
 export const holderOf = (memberId: string | null): Holder => (memberId === null ? 'household' : 'member')
 
 export type UsedBy = 'household' | 'members' | 'not_set'
+// What the row itself says. Who a plan is used by is usersOf(): a plan on a
+// thing may be taking the answer from the thing.
 export const usedBy = (s: Pick<Subscription, 'coversMemberIds' | 'coversHousehold'>): UsedBy =>
   s.coversMemberIds.length > 0 ? 'members' : s.coversHousehold === true ? 'household' : 'not_set'
+
+// Who uses a plan, and where that answer comes from.
+//
+//   'set'    it was chosen by hand: the members named, the household, or
+//            nobody in particular. A plan attached to nothing has no other
+//            source.
+//   'thing'  nobody chose, and the plan is attached to a thing: whoever owns
+//            the thing uses the plan, and a new owner takes it over. Things
+//            with different owners settle nothing, and neither does a thing
+//            this device cannot see: the answer is then 'not_set', and it is
+//            still the things that are being followed.
+//
+// A row from before `coversSet` that names someone was chosen by hand.
+export interface PlanUsers { who: UsedBy; memberIds: string[]; source: 'thing' | 'set' }
+type Covers = Pick<Subscription, 'coversThingIds' | 'coversMemberIds' | 'coversHousehold' | 'coversSet'>
+
+export const followsThing = (s: Covers): boolean => s.coversSet !== true && usedBy(s) === 'not_set' && s.coversThingIds.length > 0
+
+export function usersOf(s: Covers, thingById: Map<string, Thing>): PlanUsers {
+  if (!followsThing(s)) return { who: usedBy(s), memberIds: s.coversMemberIds, source: 'set' }
+  const things = s.coversThingIds.map((id) => thingById.get(id))
+  const owners = new Set(things.map((t) => (t ? t.ownerMemberId : undefined)))
+  const [owner] = owners
+  if (owners.size !== 1 || owner === undefined) return { who: 'not_set', memberIds: [], source: 'thing' }
+  return owner === null ? { who: 'household', memberIds: [], source: 'thing' } : { who: 'members', memberIds: [owner], source: 'thing' }
+}
 
 // ── Whose it is (the member filter) ──────────────────────────────────────────
 
@@ -76,12 +104,14 @@ export const concernsThing = (t: Thing, memberId: string): boolean =>
   t.ownerMemberId === null || t.ownerMemberId === memberId || t.responsibleMemberId === memberId
 
 // A plan concerns a member when they pay for it, handle it or use it, alone
-// or as one of the household. A household-paid plan nobody is named on
-// follows the things it is attached to; one attached to nothing is everyone's.
+// or as one of the household. A household-paid plan whose users are not
+// settled follows the things it is attached to; one attached to nothing is
+// everyone's.
 export function concernsPlan(s: Subscription, memberId: string, thingById: Map<string, Thing>): boolean {
-  if (s.payerMemberId === memberId || s.responsibleMemberId === memberId || s.coversMemberIds.includes(memberId)) return true
+  if (s.payerMemberId === memberId || s.responsibleMemberId === memberId) return true
   // Used by the household is used by each of its members, whoever pays.
-  if (usedBy(s) === 'household') return true
+  const users = usersOf(s, thingById)
+  if (users.who === 'household' || users.memberIds.includes(memberId)) return true
   if (s.payerMemberId !== null) return false
   const things = s.coversThingIds.map((id) => thingById.get(id)).filter((t): t is Thing => !!t)
   return things.length === 0 || things.some((t) => concernsThing(t, memberId))

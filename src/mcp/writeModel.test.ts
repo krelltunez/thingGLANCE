@@ -224,7 +224,7 @@ describe('editing a plan', () => {
     // Ann pays for the cloud plan. Hand all three to the household, in words.
     const a = done(await write('update_plan', { plan_id: 'p-cloud', payer_member_id: 'household', responsible_member_id: 'household', used_by: 'household' }))
     expect(plan(h, 'p-cloud')).toMatchObject({ payerMemberId: null, responsibleMemberId: null, coversMemberIds: [], coversHousehold: true })
-    expect(a.data).toMatchObject({ changed: ['coversHousehold', 'payerMemberId'], plan: { payer: 'household', responsible: 'household', used_by: 'household', member_names: ['Household'] } })
+    expect(a.data).toMatchObject({ changed: ['coversHousehold', 'coversSet', 'payerMemberId'], plan: { payer: 'household', responsible: 'household', used_by: 'household', used_by_source: 'set', member_ids: [], member_names: [] } })
     // Naming people takes the household's place.
     const named = done(await write('update_plan', { plan_id: 'p-cloud', member_ids: ['ann', 'kid'] }))
     expect(plan(h, 'p-cloud').coversMemberIds).toEqual(['ann', 'kid'])
@@ -249,6 +249,43 @@ describe('editing a plan', () => {
     expect(plan(h, ID2)).toMatchObject({ coversMemberIds: ['kid'] })
     expect(plan(h, ID2).coversHousehold).toBeUndefined()
     expect(refusal(await write('create_plan', { name: 'Both', amount: 1, member_ids: ['kid'], used_by: 'household', new_id: '8a1c2a3b-4d5e-5f60-8a7b-9c0d1e2f3a4d' }))).toBe('validation')
+  })
+  it('lets a plan on a thing follow the thing\'s owner, until someone chooses', async () => {
+    const { h, write } = setup()
+    // A plan on Kit's phone, and nobody says who it is for.
+    const made = done(await write('create_plan', { name: 'Phone care', amount: 5, thing_ids: ['t-phone'], new_id: ID }))
+    expect(plan(h, ID)).toMatchObject({ coversMemberIds: [] })
+    expect(plan(h, ID).coversSet).toBeUndefined()
+    expect(made.data.plan).toMatchObject({ used_by: 'members', used_by_source: 'thing', member_ids: ['kid'], member_names: ['Kit'] })
+    const now = async () => (done(await write('update_plan', { plan_id: ID })).data.plan as Row)
+    // The phone turns out to be Ann's: the plan goes with it, and nothing is written to the plan.
+    done(await write('reassign_thing', { thing_id: 't-phone', owner_member_id: 'ann', correction: true }))
+    expect(await now()).toMatchObject({ used_by_source: 'thing', member_ids: ['ann'] })
+    // Someone chooses: it stays put when the phone moves again.
+    const chosen = done(await write('update_plan', { plan_id: ID, member_ids: ['ben'] }))
+    expect(plan(h, ID)).toMatchObject({ coversMemberIds: ['ben'], coversSet: true })
+    expect(chosen.data.plan).toMatchObject({ used_by_source: 'set', member_ids: ['ben'] })
+    done(await write('reassign_thing', { thing_id: 't-phone', owner_member_id: null }))
+    expect(await now()).toMatchObject({ used_by_source: 'set', member_ids: ['ben'] })
+    // Handed back to the thing: the household owns the phone now.
+    const back = done(await write('update_plan', { plan_id: ID, used_by_source: 'thing' }))
+    expect(plan(h, ID).coversMemberIds).toEqual([])
+    expect(plan(h, ID).coversSet).toBeUndefined()
+    expect(back.data.plan).toMatchObject({ used_by: 'household', used_by_source: 'thing', member_ids: [] })
+    // "set" on its own keeps today's answer and stops following.
+    const kept = done(await write('update_plan', { plan_id: ID, used_by_source: 'set' }))
+    expect(plan(h, ID)).toMatchObject({ coversHousehold: true, coversSet: true })
+    expect(kept.data.plan).toMatchObject({ used_by: 'household', used_by_source: 'set' })
+    // "Nobody in particular" is a choice, and holds on a plan that is attached.
+    expect(done(await write('update_plan', { plan_id: ID, used_by: 'not_set' })).data.plan).toMatchObject({ used_by: 'not_set', used_by_source: 'set' })
+    // Across things with different owners nothing is assumed.
+    const mixed = done(await write('update_plan', { plan_id: ID, thing_ids: ['t-phone', 't-laptop'], used_by_source: 'thing' }))
+    expect(mixed.data.plan).toMatchObject({ used_by: 'not_set', used_by_source: 'thing', member_ids: [] })
+
+    expect(refusal(await write('update_plan', { plan_id: ID, used_by_source: 'thing', member_ids: ['ann'] }))).toBe('validation')
+    expect(refusal(await write('update_plan', { plan_id: ID, used_by_source: 'owner' }))).toBe('validation')
+    // A plan attached to nothing has no owner to follow.
+    expect(refusal(await write('update_plan', { plan_id: 'p-stream', used_by_source: 'thing' }))).toBe('validation')
   })
   it('keeps the form\'s rules', async () => {
     const { write } = setup()

@@ -153,6 +153,17 @@ describe('who a plan from outside is for', () => {
     expect(saved(ctx).coversMemberIds).toEqual([])
     expect(saved(ctx).coversHousehold).toBeUndefined()
   })
+  it('marks what was said as chosen, and leaves a plan on a thing to follow its owner otherwise', async () => {
+    const ctx = fakes()
+    await handleIntent({ action: 'create_plan', clientId: 'a', payload: { name: 'Care', amount: 5, thing_ids: ['t1'] } }, ctx, memory())
+    expect(saved(ctx).coversSet).toBeUndefined()
+    await handleIntent({ action: 'create_plan', clientId: 'b', payload: { name: 'Care', amount: 5, thing_ids: ['t1'], used_by: 'not_set' } }, ctx, memory())
+    expect(saved(ctx)).toMatchObject({ coversMemberIds: [], coversSet: true })
+    await handleIntent({ action: 'create_plan', clientId: 'c', payload: { name: 'Care', amount: 5, thing_ids: ['t1'], member_ids: ['ann'] } }, ctx, memory())
+    expect(saved(ctx)).toMatchObject({ coversMemberIds: ['ann'], coversSet: true })
+    await handleIntent({ action: 'create_plan', clientId: 'd', payload: { name: 'Care', amount: 5, thing_ids: ['t1'], used_by: 'household' } }, ctx, memory())
+    expect(saved(ctx)).toMatchObject({ coversHousehold: true, coversSet: true })
+  })
   it('refuses the household together with names, and a member who is not there', async () => {
     const ctx = fakes()
     expect(await handleIntent({ action: 'create_plan', clientId: 'a', payload: { name: 'X', amount: 1, member_ids: ['ann'], used_by: 'household' } }, ctx, memory())).toMatchObject({ code: 'invalid' })

@@ -357,6 +357,43 @@ await B.waitForTimeout(4500)
 await syncNow(A)
 const namedOnA = await whoOf(A, unansweredId)
 check('A: a member named on B replaces the household in all three', namedOnA?.payer === 'member' && namedOnA.responsible === 'member' && namedOnA.usedBy === 'members' && namedOnA.flag === null && namedOnA.members[0] === blakeId, JSON.stringify(namedOnA))
+
+// A plan on a thing is used by whoever owns the thing, until someone chooses.
+// Nothing is written on the plan for that: it is read from the thing, so a new
+// owner takes the plan over on every device with no write to the plan at all.
+const followId = crypto.randomUUID()
+await A.evaluate((w) => window.__thingglance.intent(w), { action: 'create_plan', clientId: followId, payload: { name: 'E2E Follows', amount: 4, thing_ids: [outsideId] } })
+const usersOn = (page, id) => page.evaluate(async (planId) => {
+  const { db } = await import('/src/db/client.ts')
+  const row = await db.subscriptions.get(planId)
+  const things = new Map((await db.things.toArray()).map((t) => [t.id, t]))
+  return row ? { ...(await import('/src/core/household.ts')).usersOf(row, things), stored: row.coversMemberIds, set: row.coversSet ?? null } : null
+}, id)
+await A.evaluate((id) => window.__thingglance.openLink(`thingglance://plan/${id}`), followId)
+await A.waitForTimeout(600)
+const followForm = A.getByRole('dialog').last()
+const source = () => followForm.locator('[data-used-by-source]').getAttribute('data-used-by-source')
+const following = { source: await source(), household: await followForm.locator('[data-used-by]').getByRole('button', { name: 'Household', exact: true }).getAttribute('aria-pressed') }
+await followForm.locator('[data-used-by]').getByRole('button', { name: 'Blake', exact: true }).click()
+const chosen = await source()
+await followForm.getByRole('button', { name: 'Follow the owner of what it is attached to' }).click()
+check('A: the form says a plan follows its thing\'s owner, and offers the way back once someone is picked', following.source === 'thing' && following.household === 'true' && chosen === 'set' && (await source()) === 'thing', JSON.stringify({ following, chosen }))
+await followForm.getByRole('button', { name: 'Cancel', exact: true }).click()
+await A.waitForTimeout(4500) // debounced push
+await syncNow(B)
+const followsHousehold = await usersOn(B, followId)
+check('B: a plan on the household\'s thing is the household\'s, with nothing written on the plan', followsHousehold?.who === 'household' && followsHousehold.source === 'thing' && followsHousehold.stored.length === 0 && followsHousehold.set === null, JSON.stringify(followsHousehold))
+await A.evaluate(async ([id, member]) => (await import('/src/db/queries.ts')).updateThing(id, { ownerMemberId: member }), [outsideId, blakeId])
+await A.waitForTimeout(4500)
+await syncNow(B)
+const followsBlake = await usersOn(B, followId)
+check('B: the thing changes owner on A and the plan goes with it', followsBlake?.who === 'members' && followsBlake.memberIds[0] === blakeId && followsBlake.source === 'thing' && followsBlake.stored.length === 0, JSON.stringify(followsBlake))
+// Chosen by hand on B: it no longer follows, on either device.
+await B.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { coversMemberIds: [], coversHousehold: true, coversSet: true }), followId)
+await B.waitForTimeout(4500)
+await syncNow(A)
+const overridden = await usersOn(A, followId)
+check('A: once someone has chosen on B, the plan stays where it was put', overridden?.who === 'household' && overridden.source === 'set' && overridden.set === true, JSON.stringify(overridden))
 await B.waitForTimeout(300)
 
 // ── Owned since: the record of a purchase travels with everything else ──────
@@ -533,7 +570,7 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
     [ids.members, { name: 'Backup Members', amount: 9 }],
   ]) await page.evaluate((w) => window.__thingglance.intent(w), { action: 'create_plan', clientId: id, payload })
   // No roster on this device, so the names are put on the row itself.
-  await page.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { coversMemberIds: ['m-1', 'm-2'], payerMemberId: 'm-1', responsibleMemberId: 'm-2' }), ids.members)
+  await page.evaluate(async (id) => (await import('/src/db/queries.ts')).patchSubscription(id, { coversMemberIds: ['m-1', 'm-2'], coversSet: true, payerMemberId: 'm-1', responsibleMemberId: 'm-2' }), ids.members)
   const restored = await page.evaluate(async (planIds) => {
     const { buildBackup, importBackup, wipeLocalData } = await import('/src/db/backup.ts')
     const { db } = await import('/src/db/client.ts')
@@ -547,7 +584,7 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
     for (const [state, id] of Object.entries(planIds)) {
       const row = await db.subscriptions.get(id)
       out[state] = row ? `${startStatus(row)}:${row.startDate ?? ''}:${row.startUnknown ?? ''}` : 'missing'
-      out[`${state}Who`] = row ? `${holderOf(row.payerMemberId)}/${holderOf(row.responsibleMemberId)}/${usedBy(row)}:${row.coversMemberIds.join('+')}:${row.coversHousehold ?? ''}` : 'missing'
+      out[`${state}Who`] = row ? `${holderOf(row.payerMemberId)}/${holderOf(row.responsibleMemberId)}/${usedBy(row)}:${row.coversMemberIds.join('+')}:${row.coversHousehold ?? ''}:${row.coversSet ?? ''}` : 'missing'
     }
     return out
   }, ids)
@@ -555,7 +592,7 @@ check('C (shell): it syncs like any other device', await C.getByText('E2E Outsid
     restored.emptied === 0 && restored.added === 5 && restored.recorded === 'recorded:2025-03-01:' && restored.unknown === 'unknown::true' && restored.not_set === 'not_set::',
     JSON.stringify(restored))
   check('and the household, members and "nobody has said" for who pays, deals with and uses a plan',
-    restored.householdWho === 'household/household/household::true' && restored.membersWho === 'member/member/members:m-1+m-2:' && restored.not_setWho === 'household/household/not_set::',
+    restored.householdWho === 'household/household/household::true:true' && restored.membersWho === 'member/member/members:m-1+m-2::true' && restored.not_setWho === 'household/household/not_set:::',
     JSON.stringify({ household: restored.householdWho, members: restored.membersWho, unsaid: restored.not_setWho }))
   await ctx.close()
 }

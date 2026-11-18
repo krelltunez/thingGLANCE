@@ -15,7 +15,7 @@ import { categoryLabel } from '@/core/categories'
 import { addDays, isDay } from '@/core/dates'
 import { lifecycle, verdictLabel, type Verdict } from '@/core/health'
 import { attentionQueue, buildHorizon, eventKindLabel } from '@/core/horizon'
-import { handlerOfEvent, holderOf, ownedSince, usedBy } from '@/core/household'
+import { handlerOfEvent, holderOf, ownedSince, usersOf, type PlanUsers } from '@/core/household'
 import { leftOnTerm, monthlyCost, nextRenewal, paidToDate, startStatus, yearlyCost } from '@/core/money'
 import { tr } from '@/core/text'
 import type { GlanceSnapshot } from '@/core/snapshot'
@@ -142,9 +142,19 @@ export function thingDetail(d: ReadData, t: Thing): Record<string, unknown> {
   }
 }
 
+// Who uses a plan, as this member sees it: what was chosen, or the owner of
+// the thing it is attached to (household.ts: usersOf).
+const thingMaps = new WeakMap<object, Map<string, Thing>>()
+function users(d: Pick<ReadData, 'data'>, s: Subscription): PlanUsers {
+  let byId = thingMaps.get(d.data)
+  if (!byId) thingMaps.set(d.data, byId = new Map(d.data.things.map((t) => [t.id, t])))
+  return usersOf(s, byId)
+}
+
 export function planSummary(d: ReadData, s: Subscription): Record<string, unknown> {
   const paid = paidToDate(s, d.today)
   const left = leftOnTerm(s, d.today)
+  const who = users(d, s)
   return {
     plan_id: s.id,
     name: s.name,
@@ -171,11 +181,14 @@ export function planSummary(d: ReadData, s: Subscription): Record<string, unknow
     // A fixed term (a lease, installments): what is still to pay before it ends.
     left_on_term: left ? { ends: left.ends, payments: left.payments, total: left.total } : null,
     thing_ids: s.coversThingIds,
-    // Who uses it: the members named, the household as a whole, or (an empty
-    // list and no household) nobody has said.
-    used_by: usedBy(s),
-    member_ids: s.coversMemberIds,
-    member_names: usedBy(s) === 'household' ? [tr('common.household')] : s.coversMemberIds.map((id) => memberName(d, id)).filter((name): name is string => name !== null),
+    // Who uses it: the members named, the household as a whole (then both
+    // lists are empty: used_by says it), or nobody has said. The names line
+    // up with the ids, one for one. `used_by_source` says whether that was
+    // chosen ("set") or is the owner of the thing it is attached to ("thing").
+    used_by: who.who,
+    used_by_source: who.source,
+    member_ids: who.memberIds,
+    member_names: who.memberIds.map((id) => memberName(d, id)),
     payer: holder(s.payerMemberId),
     payer_member_id: s.payerMemberId,
     payer_name: holderName(d, s.payerMemberId),
@@ -266,8 +279,9 @@ function getThing(d: ReadData, p: Record<string, unknown>): McpAnswer {
 function listPlans(d: ReadData, p: Record<string, unknown>): McpAnswer {
   const status = p.status ?? 'current'
   if (!['current', 'active', 'trial', 'cancelled', 'all'].includes(status as string)) return fail('validation', 'status must be current, active, trial, cancelled or all.')
-  // Like the owner filter on things: a member means the plans that name them,
-  // and "household" the plans said to be the household's as a whole.
+  // A member means the plans they use, the household's included (as the app's
+  // member filter shows them); `exact` keeps only the ones that name them.
+  // "household" means the plans used by the household as a whole.
   let user: string | null | undefined
   if (p.used_by !== undefined) {
     if (p.used_by === 'household') user = null
@@ -279,7 +293,14 @@ function listPlans(d: ReadData, p: Record<string, unknown>): McpAnswer {
   }
   const listed = d.data.subscriptions
     .filter((s) => status === 'all' || (status === 'current' ? s.status !== 'cancelled' : s.status === status))
-    .filter((s) => user === undefined || (user === null ? usedBy(s) === 'household' : s.coversMemberIds.includes(user)))
+    .filter((s) => {
+      if (user === undefined) return true
+      const who = users(d, s)
+      if (user === null) return who.who === 'household'
+      // What the household uses, each member uses: as in the app, unless
+      // only the plans that name them are asked for.
+      return who.memberIds.includes(user) || (p.exact !== true && who.who === 'household')
+    })
     .filter((s) => p.thing_id === undefined || s.coversThingIds.includes(p.thing_id as string))
     .filter((s) => matches(p.query, s.name, s.provider))
   const items = listed
@@ -320,13 +341,13 @@ function listMembers(d: ReadData): McpAnswer {
       member_id: m.id, name: m.name, uses_the_app: d.users.has(m.id), is_this_device: m.id === d.meId,
       owns: d.data.things.filter((t) => t.status === 'active' && t.ownerMemberId === m.id).length,
       pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === m.id).length,
-      uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.coversMemberIds.includes(m.id)).length,
+      uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && users(d, s).memberIds.includes(m.id)).length,
     })),
     this_device_member_id: d.meId,
     // What belongs to no one member: an owner or a payer of null is the household.
     household_owns: d.data.things.filter((t) => t.status === 'active' && t.ownerMemberId === null).length,
     household_pays_for: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && s.payerMemberId === null).length,
-    household_uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && usedBy(s) === 'household').length,
+    household_uses: d.data.subscriptions.filter((s) => s.status !== 'cancelled' && users(d, s).who === 'household').length,
   })
 }
 

@@ -20,7 +20,7 @@
 import { CATEGORIES } from '@/core/categories'
 import { isDay } from '@/core/dates'
 import { MAX_LIFESPAN_MONTHS } from '@/core/health'
-import type { UsedBy } from '@/core/household'
+import { usersOf, type UsedBy } from '@/core/household'
 import type { StartStatus } from '@/core/money'
 import type { CategoryId, Cycle, Decision, OwnershipSpan, Subscription, Thing } from '@/core/types'
 import { db } from '@/db/client'
@@ -327,6 +327,7 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
   if (f.given('member_ids')) {
     patch.coversMemberIds = f.members('member_ids')
     if ((patch.coversMemberIds as string[]).length) patch.coversHousehold = undefined
+    patch.coversSet = true
   }
   if (f.given('used_by')) {
     const who = f.oneOf('used_by', USED_BY)
@@ -337,6 +338,25 @@ async function updatePlanFields(p: Record<string, unknown>, deps: WriteDeps): Pr
       if (named.length) invalid(`"used_by": "${who}" cannot come with "member_ids".`)
       patch.coversMemberIds = []
       patch.coversHousehold = who === 'household' ? true : undefined
+    }
+    patch.coversSet = true
+  }
+  // Where the answer comes from: chosen by hand, or the owner of what the plan
+  // is attached to.
+  if (f.given('used_by_source')) {
+    const said = f.given('member_ids') || f.given('used_by')
+    if (f.oneOf('used_by_source', ['thing', 'set'] as const) === 'thing') {
+      if (said) invalid('"used_by_source": "thing" takes the place of "member_ids" and "used_by": send it on its own.')
+      if (!((patch.coversThingIds as string[] | undefined) ?? cur.coversThingIds).length) invalid('This plan is not attached to a thing, so there is no owner to follow. Attach it with "thing_ids" first.')
+      patch.coversMemberIds = []
+      patch.coversHousehold = undefined
+      patch.coversSet = undefined
+    } else if (!said) {
+      // Keep who uses it today, and stop following.
+      const now = usersOf(cur, new Map(d.data.things.map((t) => [t.id, t])))
+      patch.coversMemberIds = now.memberIds
+      patch.coversHousehold = now.who === 'household' ? true : undefined
+      patch.coversSet = true
     }
   }
   if (f.given('payer_member_id')) patch.payerMemberId = f.member('payer_member_id')

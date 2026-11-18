@@ -56,7 +56,8 @@ const MEMBER = 'A member id from thingglance_list_members, or null (or "househol
 // Who a plan is used by: three answers, and the tools keep them apart.
 const USED_BY =
   ' Who uses it is member_ids (the members it covers) or used_by "household" (the household as a whole, said on purpose), never ' +
-  'both. With neither it is "not_set": nobody has said, which is not the same as the household.';
+  'both. With neither, a plan attached to a thing is used by whoever owns the thing and follows it to a new owner ' +
+  '(used_by_source "thing"); one attached to nothing is "not_set": nobody has said, which is not the same as the household.';
 const NO_DELETE = ' Nothing can be deleted over MCP: removing anything is done in the app.';
 const UNDO_NOTE = ' The user can undo this change from thingGLANCE.';
 const EDIT_NOTE = ' Send only the fields to change: a field left out is untouched, and null clears one that can be empty.';
@@ -243,7 +244,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         review: z.boolean().optional().describe('Ask before it renews. Default false.'),
         thing_ids: z.array(z.string()).optional().describe('Thing ids it is attached to.'),
         member_ids: z.array(z.string()).optional().describe('The members who use it: ids from thingglance_list_members.'),
-        used_by: z.string().optional().describe('"household": the household as a whole uses it. Not with member_ids.'),
+        used_by: z.string().optional().describe('"household": the household as a whole uses it. "not_set": nobody in particular. Not with member_ids. Left out with no member_ids, a plan on a thing follows the thing\'s owner.'),
         payer_member_id: z.string().optional().describe('A member id from thingglance_list_members. Left out, or "household", the household pays.'),
         notes: z.string().optional(),
         idempotency_key: KEY,
@@ -262,7 +263,9 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         'setting one makes start_date_status "recorded". start_date_status "unknown" (with no start_date) records that it began ' +
         'before it was tracked and clears any date; "not_set" clears both, as if it had never been answered. member_ids ' +
         'replaces who uses it; used_by "household" says the household as a whole does and clears the names, and "not_set" ' +
-        'clears both. '+
+        'says nobody in particular. Any of those is a choice made by hand, and the plan stops following its thing\'s owner. ' +
+        'used_by_source "thing", on its own, hands the answer back to the owner of the thing it is attached to; "set" on its ' +
+        'own keeps who uses it today and stops following. ' +
         'thing_ids replaces the things it is attached to. visibility "private" shows it only on the payer\'s devices, so it needs ' +
         'a payer.' + PLAN_ENDS + EDIT_NOTE + NO_DELETE + UNDO_NOTE,
       inputSchema: z.object({
@@ -282,6 +285,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
         thing_ids: z.array(z.string()).optional(),
         member_ids: z.array(z.string()).optional().describe('The members who use it. Replaces the list.'),
         used_by: z.string().optional().describe('"household" or "not_set", without member_ids; "members" only alongside them.'),
+        used_by_source: z.string().optional().describe('"thing": follow the owner of the thing it is attached to (no member_ids or used_by with it). "set": stop following.'),
         payer_member_id: z.string().nullable().optional().describe(MEMBER),
         responsible_member_id: z.string().nullable().optional().describe('A member id, or null (or "household") for the household: everyone is asked.'),
         visibility: z.string().optional().describe('"shared" or "private".'),
@@ -291,7 +295,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps): void
     },
     async (args) => write('update_plan', args.idempotency_key, 'update_plan', () => named(args, [
       'plan_id', 'name', 'amount', 'cycle', 'anchor_date', 'start_date', 'start_date_status', 'provider', 'status', 'trial_end', 'end_date', 'auto_renew', 'review_before_renewal',
-      'thing_ids', 'member_ids', 'used_by', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
+      'thing_ids', 'member_ids', 'used_by', 'used_by_source', 'payer_member_id', 'responsible_member_id', 'visibility', 'notes',
     ])),
   );
 

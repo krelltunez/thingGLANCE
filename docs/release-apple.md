@@ -48,7 +48,7 @@ In the order it asks. The text is in [`store-assets/apple/listing.md`](../store-
 - [ ] **Support, marketing and privacy policy addresses.** The product page and the policy's update for these apps are pull requests on `glance-apps-dotcom`; merge them before submitting, since the policy has to describe what is submitted.
 - [ ] **App Privacy**: Data Not Collected.
 - [ ] **Age rating**, **category** (Productivity, then Utilities), **copyright**.
-- [ ] **Export compliance** is answered by the Info.plists; the yearly self-classification report is separate.
+- [ ] **Export compliance** is answered in each bundle (`ITSAppUsesNonExemptEncryption` is `false`: the iOS app's `Info.plist`, and `mac.extendInfo` in `electron-builder.config.cjs` for the Mac app), so neither upload stops on "App Encryption Documentation". A Mac build from before 2026-11-18 has no answer in it and asks once, by hand. The yearly self-classification report is separate.
 - [ ] **Notes for App Review**, with the video for the Mac app's network server entitlement.
 - [ ] **Universal purchase**: add the macOS platform to the same record, so buying one is buying all three.
 

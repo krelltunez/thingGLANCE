@@ -108,6 +108,15 @@ describe('electron-builder.config.cjs', () => {
     expect(config.mac.extendInfo.CFBundleLocalizations).toHaveLength(locales.length);
   });
 
+  it('answers the export compliance question in the bundle, as the iOS app does', () => {
+    // App Store Connect holds a Mac upload on "App Encryption Documentation"
+    // when the key is missing. The two apps are one purchase and say one thing.
+    expect(config.mac.extendInfo.ITSAppUsesNonExemptEncryption).toBe(false);
+    expect(config.mas.extendInfo).toBeUndefined();
+    const ios = readFileSync(path.join(root, 'ios/App/App/Info.plist'), 'utf8');
+    expect(ios).toMatch(/<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/);
+  });
+
   it('gives the deb the metadata it fails without', () => {
     expect(config.linux.maintainer).toMatch(/<.+@.+>/);
     expect(config.linux.category).toBeTruthy();

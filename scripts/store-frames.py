@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""The framed store set, made from the captures with the family's screenshot kit.
+
+  python3 scripts/store-frames.py --kit <kitv2.3 folder> --eyebrow-font <DejaVuSans-Bold.ttf> [iphone] [ipad] [mac]
+
+The kit is not in this repository (ask the maintainer for the zip; its README
+is the authority on every number it holds). Nothing in it is edited or copied:
+its framers are imported from where it was unzipped, and the paths, the brand
+colour and the chrome tones they hold as module globals are set from here,
+which is how the kit's own README says a second app is framed.
+
+It needs Pillow and numpy, and DejaVu Sans Bold for the eyebrow line, which
+the kit expects from the system and a Mac does not have.
+
+What goes in is store-assets/captures/ (scripts/store-captures.mjs and
+store-capture-popup.mjs), plus one capture of an iPhone Home Screen with the
+widgets on it, made in the simulator (store-assets/README.md says how).
+What comes out, in the sizes the stores take:
+
+  store-assets/apple/iphone/   1206 x 2622   "iPhone with Dynamic Island (medium display)"
+  store-assets/apple/ipad/     2064 x 2752   iPad 13-inch, the tablet lying down in an upright canvas
+  store-assets/apple/mac/      2880 x 1800
+
+The captions are below, one line each, so a change of wording is a change here.
+"""
+import argparse, os, sys
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CAPTURES = os.path.join(ROOT, 'store-assets', 'captures')
+OUT = os.path.join(ROOT, 'store-assets', 'apple')
+
+# thingGLANCE's sky blue, the accent of its dark theme.
+BRAND = (56, 189, 248)
+
+# (capture, eyebrow, first line in warm white, second line in the brand's italic)
+IPHONE = [
+    ('1-glance',  "WHAT'S NEXT FOR YOUR THINGS", 'Every date that matters,', "before it's too late."),
+    ('2-decide',  'NEEDS A DECISION',            'A short list to clear,',   'one decision at a time.'),
+    ('3-horizon', 'THE HORIZON',                 'The whole year ahead,',    'on one timeline.'),
+    ('4-things',  'SHELF LIFE',                  'How much life is left,',   'in everything you own.'),
+    ('5-plans',   'PLANS AND RENEWALS',          'What it all costs,',       'month by month.'),
+    ('6-thing',   'THE WHOLE STORY',             'Warranty, support, replacement,', 'on one page.'),
+]
+WIDGETS = ('ON YOUR HOME SCREEN', "What's next,", 'without opening the app.', [
+    'Dates that need a decision',
+    'Settle one with a single tap',
+    "Each thing's life left, as a ring",
+    'Plan charges for the next 30 days',
+    'On your Lock Screen too',
+])
+IPAD = [
+    ('1-glance',  'THE BIG PICTURE',    'Everything that needs you,', 'on one screen.'),
+    ('3-horizon', 'THE HORIZON',        'Every date ahead,',          'on one timeline.'),
+    ('5-plans',   'PLANS AND RENEWALS', 'What it all costs,',         'month by month.'),
+]
+# The Mac's caption is one line: white, then the brand's italic.
+MAC = [
+    ('1-glance',  'ON YOUR MAC',        "What's next for your things, ", 'in a single window.'),
+    ('3-horizon', 'THE HORIZON',        'Every date ahead, ',            'on one timeline.'),
+    ('4-things',  'SHELF LIFE',         'How much life is left, ',       'in everything you own.'),
+]
+
+# Where the three widget cards sit in the Home Screen capture (an iPhone 17,
+# 1206 x 2622), each inset to its last clean pixel, and their corner radius.
+# Measured from the capture's own pixels; a looser box lets wallpaper into the
+# corners.
+HOME = os.path.join(CAPTURES, 'iphone-home', 'home-screen-widgets-dark.png')
+CARDS = [(80, 272, 573, 761), (633, 272, 1126, 761), (81, 874, 1125, 1364)]
+CARD_RADIUS = 80
+
+
+def tone(path, where):
+    """The app's own chrome tone at the top or bottom edge of a capture."""
+    import numpy as np
+    a = np.asarray(Image.open(path).convert('RGB'))
+    rows = a[2:10] if where == 'top' else a[-10:-2]
+    return tuple(int(v) for v in np.median(rows.reshape(-1, 3), axis=0))
+
+
+def kit(args):
+    """The kit's framers, pointed at its own fonts and donors and at this app's colour."""
+    sys.path.insert(0, os.path.join(args.kit, 'build-scripts'))
+    import build_frame_iphone as iphone, build_frame_ipad_v2 as ipad, build_frame_mac as mac
+    fonts, donors = os.path.join(args.kit, 'fonts'), os.path.join(args.kit, 'chrome-donors')
+    donor = lambda prefix: os.path.join(donors, next(f for f in os.listdir(donors) if f.startswith(prefix)))
+    for m in (iphone, ipad, mac):
+        m.FONT_SERIF, m.FONT_SERIF_IT = os.path.join(fonts, 'Lora.ttf'), os.path.join(fonts, 'Lora-Italic.ttf')
+        m.FONT_SANS_BOLD = args.eyebrow_font
+        m.ORANGE = BRAND
+    iphone.HER, ipad.DONOR, mac.MAC_DONOR = donor('iphone-chrome'), donor('ipad-chrome'), donor('mac-chrome')
+    return iphone, ipad, mac
+
+
+def frame_iphone(F):
+    out = os.path.join(OUT, 'iphone'); os.makedirs(out, exist_ok=True)
+    for name, eyebrow, l1, l2 in IPHONE:
+        src = os.path.join(CAPTURES, 'iphone', f'{name}-dark.png')
+        # tab_bottom is the capture's full height: nothing is cut off it. The
+        # bands behind the status bar and the home indicator take the tones of
+        # the capture's own top and bottom, which differ when a page is open.
+        F.render(src, Image.open(src).height, eyebrow, l1, l2, os.path.join(out, f'{name}.png'),
+                 bar_bg=tone(src, 'top'), safe_bg=tone(src, 'bottom'))
+    frame_widgets(F, os.path.join(out, '7-widgets.png'))
+
+
+def frame_widgets(F, out):
+    """The Home Screen's widgets, cut out on their own corners and floated on the house background.
+
+    The kit's widget framer is dayGLANCE's: one card, on the retired 1320-wide
+    canvas. This is the same composition (its caption, its halo, its bullets)
+    with this app's three cards, kept where the Home Screen has them and at
+    their own size, on the canvas the store takes now.
+    """
+    eyebrow, l1, l2, bullets = WIDGETS
+    W, H = F.CANVASES['di_medium_large']
+    k = W / 1320
+    px = lambda v: int(round(v * k))
+    canvas = F.build_bg(W, H).convert('RGBA')
+    shot = Image.open(HOME).convert('RGB')
+    top = px(620)
+    dy = top - min(c[1] for c in CARDS)
+    placed = [(shot.crop(c), c[0], c[1] + dy) for c in CARDS]
+    bottom = max(y + card.height for card, _, y in placed)
+
+    # A near-black card on a near-black ground has no edge: a soft light halo
+    # behind each is what separates them (the kit's "lift").
+    halo = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    pad = px(70)
+    for card, x, y in placed:
+        ImageDraw.Draw(halo).rounded_rectangle([x - pad, y - pad, x + card.width + pad, y + card.height + pad], radius=CARD_RADIUS + pad, fill=(198, 208, 230, 52))
+    canvas = Image.alpha_composite(canvas, halo.filter(ImageFilter.GaussianBlur(px(110))))
+    for card, x, y in placed:
+        card = card.convert('RGB'); card.putalpha(F.rmask(card.size, CARD_RADIUS))
+        canvas.paste(card, (x, y), card)
+
+    d = ImageDraw.Draw(canvas); cx = W // 2
+    F.tracked(d, cx, px(150), eyebrow, ImageFont.truetype(F.FONT_SANS_BOLD, px(34)), BRAND, px(10))
+    size = px(132); target = W - px(210)
+    longest = max(d.textlength(l1, font=F.serif(size)), d.textlength(l2, font=F.serif(size, it=True)))
+    if longest > target: size = int(size * target / longest)
+    f1, f2 = F.serif(size), F.serif(size, it=True)
+    y = px(236); lh = int(size * 1.14)
+    d.text((cx - d.textlength(l1, font=f1) / 2, y), l1, font=f1, fill=F.WARM_WHITE)
+    d.text((cx - d.textlength(l2, font=f2) / 2, y + lh), l2, font=f2, fill=BRAND)
+
+    # The bullets, centred on their real ink between the cards and the bottom.
+    fb = F.serif(px(58), it=True); gap = px(152); dot_r = px(11); dot_x = px(180); text_x = px(232)
+    boxes = [d.textbbox((text_x, i * gap), b, font=fb) for i, b in enumerate(bullets)]
+    ink_top, ink_bot = min(b[1] for b in boxes), max(b[3] for b in boxes)
+    start = bottom + ((H - bottom) - (ink_bot - ink_top)) / 2 - ink_top
+    for i, b in enumerate(bullets):
+        by = start + i * gap
+        x0, y0, x1, y1 = d.textbbox((text_x, by), b, font=fb)
+        cy = (y0 + y1) / 2
+        d.ellipse([dot_x - dot_r, cy - dot_r, dot_x + dot_r, cy + dot_r], fill=BRAND if i % 2 == 0 else F.WARM_WHITE)
+        d.text((text_x, by), b, font=fb, fill=F.WARM_WHITE if i % 2 == 0 else BRAND)
+    canvas.convert('RGB').save(out); print('saved', out, canvas.size)
+
+
+def frame_ipad(F):
+    out = os.path.join(OUT, 'ipad'); os.makedirs(out, exist_ok=True)
+    for name, eyebrow, l1, l2 in IPAD:
+        src = os.path.join(CAPTURES, 'ipad', f'{name}-dark.png')
+        # A tablet lying down in the upright canvas: body_w is the upright
+        # device's height, and the donor's date is cut off its status bar.
+        F.render(src, eyebrow, l1, l2, tone(src, 'top'), os.path.join(out, f'{name}.png'), body_w=1832, device_top=880, show_date=False)
+
+
+def frame_mac(F):
+    out = os.path.join(OUT, 'mac'); os.makedirs(out, exist_ok=True)
+    kit_window = F.build_window
+
+    def window(content_path, win_w):
+        # The kit stacks the donor's real title bar above the app. Its bar is
+        # dayGLANCE's tone, a lighter stripe over this app's darker header, so
+        # the bar is put on this app's own tone first: the traffic lights are
+        # the donor's pixels, and the dark behind them is replaced.
+        import build_frame_iphone as phone
+        donor = Image.open(F.MAC_DONOR).convert('RGB')
+        bar = phone.recolor_chrome(donor.crop((116, 76, 3131, 133)), None, tone(content_path, 'top'))
+        content = Image.open(content_path).convert('RGB')
+        bar = bar.resize((content.width, round(bar.height * content.width / bar.width)))
+        win = Image.new('RGB', (content.width, bar.height + content.height))
+        win.paste(bar, (0, 0)); win.paste(content, (0, bar.height))
+        win_h = int(win_w * win.height / win.width)
+        w = win.resize((win_w, win_h)); r = int(win_w * 0.010)
+        w.putalpha(F.rmask((win_w, win_h), r))
+        ImageDraw.Draw(w).rounded_rectangle([0, 0, win_w - 1, win_h - 1], radius=r, outline=(70, 74, 82, 140), width=2)
+        return w
+
+    F.build_window = window
+    try:
+        for name, eyebrow, white, brand in MAC:
+            F.render(os.path.join(CAPTURES, 'mac-plain', f'{name}-dark.png'), eyebrow, white, brand, os.path.join(out, f'{name}.png'))
+    finally:
+        F.build_window = kit_window
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    p.add_argument('--kit', required=True, help='the unzipped kit folder (the one holding build-scripts, fonts and chrome-donors)')
+    p.add_argument('--eyebrow-font', required=True, help='DejaVuSans-Bold.ttf')
+    p.add_argument('sets', nargs='*', choices=['iphone', 'ipad', 'mac', []], help='which sets (all of them when none is named)')
+    args = p.parse_args()
+    iphone, ipad, mac = kit(args)
+    sets = args.sets or ['iphone', 'ipad', 'mac']
+    if 'iphone' in sets: frame_iphone(iphone)
+    if 'ipad' in sets: frame_ipad(ipad)
+    if 'mac' in sets: frame_mac(mac)

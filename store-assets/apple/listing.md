@@ -208,8 +208,12 @@ The video is yours to record: dayGLANCE passed review with the same entitlement 
 
 ## Screenshots
 
-- **iPhone with Dynamic Island (medium display)**, 1206 by 2622: `iphone-placeholder/`, six raw captures from the simulator on the sample data. **Placeholders**, like the Play set: no frame and no caption. Made by `node scripts/ios-placeholder-screenshots.mjs` ([README](../README.md)).
-- **iPad 13-inch**, 2064 by 2752: still to be made. Required because the app runs on iPad.
-- **Mac**, 2880 by 1800 or one of the other Mac sizes: still to be made.
+The sets to upload, framed and captioned with the family's screenshot kit, no alpha. The file names are the upload order.
 
-The real set is made with the family's screenshot kit, which is not in this repository.
+- **iPhone with Dynamic Island (medium display)**, 1206 by 2622: `iphone/`, seven frames. Glance, what needs a decision, Horizon, Things, Plans, one thing's page, and the Home Screen's widgets.
+- **iPad 13-inch**, 2064 by 2752: `ipad/`, three frames. Glance, Horizon, Plans.
+- **Mac**, 2880 by 1800: `mac/`, three frames. Glance, Horizon, Things.
+
+How they are made, and how to change a caption, is in [`../README.md`](../README.md). `iphone-placeholder/` is the earlier stand-in set (raw simulator captures, light mode, no frame): not for upload.
+
+App Store Connect's own text under each drop zone is the authority on the sizes it takes today; these were right for the kit's last check, on 2026-10-31.

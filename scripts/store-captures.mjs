@@ -17,9 +17,12 @@
 //   pixel          400 x 805  @4   1600 x 3220   and its Pixel one
 //   ipad           1376 x 1032 @2  2752 x 2064   a landscape tablet, as lastGLANCE's
 //   ipad-portrait  1032 x 1376 @2  2064 x 2752   the same tablet, upright
-//   mac            1680 x 1050 @2  3360 x 2100   dayGLANCE's desktop size, 16:10
-//   mac-plain      the same, without the room the Mac app leaves for the
-//                  window's traffic lights, for a frame that draws its own bar
+//   mac-plain      1440 x 900 @2   2880 x 1800   the kit's Mac content size, 16:10.
+//                  The kit stacks a real title bar above it, so this one has
+//                  no room left for the window's traffic lights. (dayGLANCE's
+//                  1680 x 1050 fits too, but this app's page stops growing at
+//                  1560 wide and its text reads small in the frame at that.)
+//   mac            the same with that room, as the Mac app itself draws it
 //
 // The data is the app's sample set, re-dated to today as always, made into
 // real rows with a household around it, and with two changes for a store
@@ -42,8 +45,8 @@ const DEVICES = {
   pixel: { viewport: { width: 400, height: 805 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true },
   ipad: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, hasTouch: true },
   'ipad-portrait': { viewport: { width: 1032, height: 1376 }, deviceScaleFactor: 2, hasTouch: true },
-  mac: { viewport: { width: 1680, height: 1050 }, deviceScaleFactor: 2, classes: ['desktop', 'desktop-darwin'] },
-  'mac-plain': { viewport: { width: 1680, height: 1050 }, deviceScaleFactor: 2 },
+  mac: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, classes: ['desktop', 'desktop-darwin'] },
+  'mac-plain': { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 },
 }
 
 const args = process.argv.slice(2)

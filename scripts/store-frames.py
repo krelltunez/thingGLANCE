@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The framed store set, made from the captures with the family's screenshot kit.
 
-  python3 scripts/store-frames.py --kit <kitv2.3 folder> --eyebrow-font <DejaVuSans-Bold.ttf> [iphone] [ipad] [mac] [play]
+  python3 scripts/store-frames.py --kit <kitv2.3 folder> --eyebrow-font <DejaVuSans-Bold.ttf> [iphone] [ipad] [mac] [play] [play-tablet]
 
 The kit is not in this repository (ask the maintainer for the zip; its README
 is the authority on every number it holds). Nothing in it is edited or copied:
@@ -22,6 +22,7 @@ What comes out, in the sizes the stores take:
   store-assets/apple/ipad/     2064 x 2752   iPad 13-inch, the tablet lying down in an upright canvas
   store-assets/apple/mac/      2880 x 1800
   store-assets/play/phone/     1320 x 2640   Google Play's phone slot, exactly its 2:1 limit
+  store-assets/play/tablet/    2064 x 2752   Google Play's tablet slots, 7-inch and 10-inch alike
 
 The captions are below, one line each, so a change of wording is a change here.
 """
@@ -61,6 +62,9 @@ IPAD = [
 # widgets are Android's own, which are lists where the iPhone's are tiles, and
 # there is no Lock Screen to put one on.
 PLAY = IPHONE
+# And its tablet set is the iPad's, in an Android tablet: the kit's own rule
+# is that one landscape render serves both tablets.
+PLAY_TABLET = IPAD
 PLAY_WIDGETS = (WIDGETS[0], WIDGETS[1], WIDGETS[2], [
     'Clear a decision with a single tap',
     'Plan charges for the next 30 days',
@@ -102,15 +106,16 @@ def tone(path, where):
 def kit(args):
     """The kit's framers, pointed at its own fonts and donors and at this app's colour."""
     sys.path.insert(0, os.path.join(args.kit, 'build-scripts'))
-    import build_frame_iphone as iphone, build_frame_ipad_v2 as ipad, build_frame_mac as mac, build_frame_pixel as pixel
+    import build_frame_iphone as iphone, build_frame_ipad_v2 as ipad, build_frame_mac as mac, build_frame_pixel as pixel, build_frame_atablet_v2 as atablet
     fonts, donors = os.path.join(args.kit, 'fonts'), os.path.join(args.kit, 'chrome-donors')
     donor = lambda prefix: os.path.join(donors, next(f for f in os.listdir(donors) if f.startswith(prefix)))
-    for m in (iphone, ipad, mac, pixel):
+    for m in (iphone, ipad, mac, pixel, atablet):
         m.FONT_SERIF, m.FONT_SERIF_IT = os.path.join(fonts, 'Lora.ttf'), os.path.join(fonts, 'Lora-Italic.ttf')
         m.FONT_SANS_BOLD = args.eyebrow_font
         m.ORANGE = BRAND
     iphone.HER, ipad.DONOR, mac.MAC_DONOR, pixel.CAP = donor('iphone-chrome'), donor('ipad-chrome'), donor('mac-chrome'), donor('pixel-chrome')
-    return iphone, ipad, mac, pixel
+    atablet.DONOR = donor('samsung-tablet-chrome')
+    return iphone, ipad, mac, pixel, atablet
 
 
 def frame_iphone(F):
@@ -198,6 +203,36 @@ def frame_play(F):
     frame_widgets(F, os.path.join(out, '7-widgets.png'), (1320, 2640), PLAY_WIDGETS, PLAY_HOME, PLAY_CARDS, PLAY_CARD_RADIUS, PLAY_CARD_SCALE, gap=140)
 
 
+def frame_play_tablet(F):
+    import numpy as np
+    out = os.path.join(ROOT, 'store-assets', 'play', 'tablet'); os.makedirs(out, exist_ok=True)
+    kit_recolor = F.recolor
+
+    def recolor(block, new_bg, **tones):
+        # The kit's crop of the donor's gesture strip starts a few rows early,
+        # in the donor's own app, which comes through as a faint line above
+        # the pill. A row of the strip is the strip's dark from edge to edge
+        # with at most the pill in it, so a row with none of that dark is not
+        # the strip, and is put on the dark before the kit recolours it.
+        if tones.get('lo') == 35:
+            a = np.asarray(block).copy(); lum = a.mean(axis=2)
+            dark = np.median(a.reshape(-1, 3), axis=0)
+            a[lum.min(axis=1) > 35] = dark
+            block = Image.fromarray(a.astype('uint8'))
+        return kit_recolor(block, new_bg, **tones)
+
+    F.recolor = recolor
+    try:
+        for name, eyebrow, l1, l2 in PLAY_TABLET:
+            # The iPad's capture and the iPad's numbers: the same tablet lying
+            # down, with an Android status bar above it and a gesture pill
+            # below, each on the capture's own tone.
+            src = os.path.join(CAPTURES, 'ipad', f'{name}-dark.png')
+            F.render(src, eyebrow, l1, l2, tone(src, 'top'), tone(src, 'bottom'), os.path.join(out, f'{name}.png'), body_w=1832, device_top=880, show_date=False)
+    finally:
+        F.recolor = kit_recolor
+
+
 def frame_ipad(F):
     out = os.path.join(OUT, 'ipad'); os.makedirs(out, exist_ok=True)
     for name, eyebrow, l1, l2 in IPAD:
@@ -241,11 +276,12 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     p.add_argument('--kit', required=True, help='the unzipped kit folder (the one holding build-scripts, fonts and chrome-donors)')
     p.add_argument('--eyebrow-font', required=True, help='DejaVuSans-Bold.ttf')
-    p.add_argument('sets', nargs='*', choices=['iphone', 'ipad', 'mac', 'play', []], help='which sets (all of them when none is named)')
+    p.add_argument('sets', nargs='*', choices=['iphone', 'ipad', 'mac', 'play', 'play-tablet', []], help='which sets (all of them when none is named)')
     args = p.parse_args()
-    iphone, ipad, mac, pixel = kit(args)
-    sets = args.sets or ['iphone', 'ipad', 'mac', 'play']
+    iphone, ipad, mac, pixel, atablet = kit(args)
+    sets = args.sets or ['iphone', 'ipad', 'mac', 'play', 'play-tablet']
     if 'iphone' in sets: frame_iphone(iphone)
     if 'ipad' in sets: frame_ipad(ipad)
     if 'mac' in sets: frame_mac(mac)
     if 'play' in sets: frame_play(pixel)
+    if 'play-tablet' in sets: frame_play_tablet(atablet)

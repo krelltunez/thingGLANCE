@@ -15,6 +15,7 @@ import { startSync } from '@/sync/manager'
 import { dispatchExternalWrite } from '@/intents/inbound'
 import { openLink } from '@/native/links'
 import { setBackHandler } from '@/native/backStack'
+import { searchShortcutHint } from '@/native/shortcutHint'
 import { describeDevice, setBadge } from '@/native/platform'
 import { attachThisDevice, removeSamples, recordOwnership, repairEntryOwnership } from '@/db/queries'
 import { GlanceView } from '@/views/GlanceView'
@@ -195,8 +196,7 @@ function Shell({ ui }: { ui: UI }) {
               // filter beside it the wide field pushed Add off the edge (an iPad Pro
               // held upright is 1032 wide). There it is the icon again.
               className="hidden h-9 items-center gap-2 rounded-lg border border-line/10 bg-raised/50 pl-3 pr-2 text-[13px] text-faint transition hover:border-line/25 hover:text-ink md:flex lg:hidden xl:flex">
-              {/* eslint-disable-next-line i18next/no-literal-string -- a key's name, the same in every language */}
-              <Search size={14} /> {t('app.header.search')} <kbd className="label ml-6 rounded border border-line/15 px-1.5 py-0.5">⌘K</kbd>
+              <Search size={14} /> {t('app.header.search')} <kbd className="label ml-6 whitespace-nowrap rounded border border-line/15 px-1.5 py-0.5">{searchShortcutHint(navigator.userAgent)}</kbd>
             </button>
             <button type="button" className="icon-btn md:hidden lg:flex xl:hidden" aria-label={t('app.header.search')} onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
             <MemberFilter />

@@ -6,7 +6,7 @@
 //   node scripts/store-captures.mjs [dark|light|both] [device ...]
 //
 // Dark by default, as the family's store shots are. Devices: iphone, ipad,
-// ipad-portrait, mac, mac-plain, pixel (all of them when none is named).
+// ipad-portrait, atablet, mac, mac-plain, pixel (all of them when none is named).
 // Written to store-assets/captures/<device>/, which git ignores: they are
 // regenerated, and the framed set made from them is what gets committed.
 //
@@ -14,9 +14,12 @@
 // not the store's canvas sizes:
 //
 //   iphone         400 x 771  @4   1600 x 3084   kit v2.2's iPhone content area
-//   pixel          400 x 805  @4   1600 x 3220   and its Pixel one
+//   pixel          400 x 805  @4   1600 x 3220   and its Pixel one, as an Android phone
 //   ipad           1376 x 1032 @2  2752 x 2064   a landscape tablet, as lastGLANCE's
 //   ipad-portrait  1032 x 1376 @2  2064 x 2752   the same tablet, upright
+//   atablet        1376 x 1032 @2  2752 x 2064   the iPad's size, as an Android tablet: the
+//                  page reads its platform from the user agent (the search
+//                  field's shortcut is Ctrl K there, not the Command key)
 //   mac-plain      1440 x 900 @2   2880 x 1800   the kit's Mac content size, 16:10.
 //                  The kit stacks a real title bar above it, so this one has
 //                  no room left for the window's traffic lights. (dayGLANCE's
@@ -40,11 +43,15 @@ import { seed } from './store-capture-data.mjs'
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), '../store-assets/captures')
 const APP = process.env.APP_URL ?? 'http://localhost:5190/'
 
+const ANDROID_PHONE = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
+const ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 15; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+
 const DEVICES = {
   iphone: { viewport: { width: 400, height: 771 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true },
-  pixel: { viewport: { width: 400, height: 805 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true },
+  pixel: { viewport: { width: 400, height: 805 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true, userAgent: ANDROID_PHONE },
   ipad: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, hasTouch: true },
   'ipad-portrait': { viewport: { width: 1032, height: 1376 }, deviceScaleFactor: 2, hasTouch: true },
+  atablet: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, hasTouch: true, userAgent: ANDROID_TABLET },
   mac: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, classes: ['desktop', 'desktop-darwin'] },
   'mac-plain': { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 },
 }

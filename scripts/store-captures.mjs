@@ -14,7 +14,7 @@
 // not the store's canvas sizes:
 //
 //   iphone         400 x 771  @4   1600 x 3084   kit v2.2's iPhone content area
-//   pixel          400 x 805  @4   1600 x 3220   and its Pixel one
+//   pixel          400 x 805  @4   1600 x 3220   and its Pixel one, as an Android phone
 //   ipad           1376 x 1032 @2  2752 x 2064   a landscape tablet, as lastGLANCE's
 //   ipad-portrait  1032 x 1376 @2  2064 x 2752   the same tablet, upright
 //   atablet        1376 x 1032 @2  2752 x 2064   the iPad's size, as an Android tablet: the
@@ -43,11 +43,12 @@ import { seed } from './store-capture-data.mjs'
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), '../store-assets/captures')
 const APP = process.env.APP_URL ?? 'http://localhost:5190/'
 
+const ANDROID_PHONE = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
 const ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 15; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
 
 const DEVICES = {
   iphone: { viewport: { width: 400, height: 771 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true },
-  pixel: { viewport: { width: 400, height: 805 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true },
+  pixel: { viewport: { width: 400, height: 805 }, deviceScaleFactor: 4, isMobile: true, hasTouch: true, userAgent: ANDROID_PHONE },
   ipad: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, hasTouch: true },
   'ipad-portrait': { viewport: { width: 1032, height: 1376 }, deviceScaleFactor: 2, hasTouch: true },
   atablet: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, hasTouch: true, userAgent: ANDROID_TABLET },

@@ -191,11 +191,14 @@ function Shell({ ui }: { ui: UI }) {
 
           <div className="ml-auto flex items-center gap-2">
             <button type="button" onClick={() => open({ type: 'palette' })}
-              className="hidden h-9 items-center gap-2 rounded-lg border border-line/10 bg-raised/50 pl-3 pr-2 text-[13px] text-faint transition hover:border-line/25 hover:text-ink md:flex">
+              // Between lg and xl the tabs are in the header too, and with a household's
+              // filter beside it the wide field pushed Add off the edge (an iPad Pro
+              // held upright is 1032 wide). There it is the icon again.
+              className="hidden h-9 items-center gap-2 rounded-lg border border-line/10 bg-raised/50 pl-3 pr-2 text-[13px] text-faint transition hover:border-line/25 hover:text-ink md:flex lg:hidden xl:flex">
               {/* eslint-disable-next-line i18next/no-literal-string -- a key's name, the same in every language */}
               <Search size={14} /> {t('app.header.search')} <kbd className="label ml-6 rounded border border-line/15 px-1.5 py-0.5">⌘K</kbd>
             </button>
-            <button type="button" className="icon-btn md:hidden" aria-label={t('app.header.search')} onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
+            <button type="button" className="icon-btn md:hidden lg:flex xl:hidden" aria-label={t('app.header.search')} onClick={() => open({ type: 'palette' })}><Search size={16} /></button>
             <MemberFilter />
             <SyncButton onOpen={open} />
             <button type="button" className="icon-btn" aria-label={t('app.header.settings')} title={t('app.header.settings')} onClick={() => open({ type: 'settings' })}><SettingsIcon size={16} /></button>

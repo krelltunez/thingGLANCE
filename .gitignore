@@ -18,3 +18,7 @@ electron/*.provisionprofile
 
 # End-to-end screenshots
 e2e/out
+
+# Raw store captures (scripts/store-captures.mjs): regenerated, and the framed
+# set made from them is what is committed.
+store-assets/captures/

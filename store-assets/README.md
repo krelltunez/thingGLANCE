@@ -39,4 +39,6 @@ The real sets are made with the family's screenshot kit, which is not in this re
 
 The data is the app's sample set made into real rows, so the "you are looking at sample data" note is not there to hide, with a household around it (three members, this device one of them) and two changes for a store page: the sample that names another phone platform's handset is a different out-of-support device, since nothing in an Apple listing may show one, and one plan has a fixed term so that a lease shows.
 
-Not captured, because they are not the web surface: the widgets, a reminder, and the Mac's menu bar popup. Those come from a device or the running app.
+The Mac's menu bar popup is a window of the desktop app, not a page a browser can open, so it has a script of its own: `node scripts/store-capture-popup.mjs`, after `npm run build:electron:main`, with the dev server running. It starts the desktop app unpackaged on a profile of its own, fills it with the same data, opens the popup as a click on the menu bar icon does, and saves it twice into `captures/mac/`, as it opens and scrolled to its end, at four times its size (380 by 560 becomes 1520 by 2240).
+
+Not captured, because they are not drawn by the app's page at all: the widgets and a reminder. Those come from a device.

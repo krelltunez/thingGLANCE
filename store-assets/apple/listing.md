@@ -11,7 +11,7 @@ Character limits are Apple's; the counts are in the comments.
 | Field | Text |
 | --- | --- |
 | Name (30) | `thingGLANCE` |
-| Subtitle (30) | `Warranties, renewals, upkeep` |
+| Subtitle (30) | `Warranty & subscription dates` |
 
 ## Promotional text (170)
 
@@ -159,8 +159,10 @@ No inventory to keep up. Just an honest picture of what is next for your things.
 ## Keywords (100, comma separated, no spaces after commas)
 
 ```
-warranty,subscription,renewal,tracker,expiry,gadgets,devices,upgrade,replace,support,lifespan,plans
+renewal,tracker,expiry,expiration,trial,lease,gadgets,devices,upgrade,replace,support,lifespan,plans
 ```
+
+Exactly 100. "warranty", "subscription" and "dates" are left out on purpose: the subtitle carries them, the store indexes the subtitle, and a word in both places earns nothing.
 
 ## What's New (first version)
 

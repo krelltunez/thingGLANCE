@@ -62,8 +62,10 @@ IPAD = [
 # widgets are Android's own, which are lists where the iPhone's are tiles, and
 # there is no Lock Screen to put one on.
 PLAY = IPHONE
-# And its tablet set is the iPad's, in an Android tablet: the kit's own rule
-# is that one landscape render serves both tablets.
+# And its tablet set is the iPad's, in an Android tablet. The kit's rule is
+# that one landscape render serves both tablets, and the size is the same, but
+# the captures are its own: the page shows a keyboard shortcut beside the
+# search field, written with the Command key on an iPad and with Ctrl here.
 PLAY_TABLET = IPAD
 PLAY_WIDGETS = (WIDGETS[0], WIDGETS[1], WIDGETS[2], [
     'Clear a decision with a single tap',
@@ -224,10 +226,10 @@ def frame_play_tablet(F):
     F.recolor = recolor
     try:
         for name, eyebrow, l1, l2 in PLAY_TABLET:
-            # The iPad's capture and the iPad's numbers: the same tablet lying
-            # down, with an Android status bar above it and a gesture pill
-            # below, each on the capture's own tone.
-            src = os.path.join(CAPTURES, 'ipad', f'{name}-dark.png')
+            # The iPad's numbers: the same tablet lying down, with an Android
+            # status bar above it and a gesture pill below, each on the
+            # capture's own tone.
+            src = os.path.join(CAPTURES, 'atablet', f'{name}-dark.png')
             F.render(src, eyebrow, l1, l2, tone(src, 'top'), tone(src, 'bottom'), os.path.join(out, f'{name}.png'), body_w=1832, device_top=880, show_date=False)
     finally:
         F.recolor = kit_recolor
